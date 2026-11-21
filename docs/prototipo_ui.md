@@ -103,6 +103,13 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
 
+## Actualización 21/11 — TRIGGER con la transparencia de FILE SEARCH
+
+- La página **TRIGGER** copia la estética de **FILE SEARCH**: paneles con fondo plano `rgba(8,12,20,.34)`, borde `--line` de 1 px, radio 10 px y sin blur ni insets de glass.
+- Los cuatro paneles del editor usan la misma familia, un punto más transparentes (`rgba(8,12,20,.20)`), con borde fino y sin sombras internas.
+- La tipografía se unifica: títulos de 10,5 px con letter-spacing .14em, labels de 10–12 px, valores en mono y chips algo más grandes; el texto del estado vacío se acortó para no truncarse.
+- El **banco de faders** también pasa a fondo plano .34 con borde fino; el fader seleccionado usa el tinte violeta de la fila seleccionada de FILE SEARCH.
+
 ## Actualización 21/11 — HOME, Esc y audition de slots
 
 - La vista principal pasa a llamarse **HOME** (antes Universe) en la UI y la documentación.

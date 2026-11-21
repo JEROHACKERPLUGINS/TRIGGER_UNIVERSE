@@ -1057,3 +1057,70 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 .slot.slot-audition{animation:slotAudition .38s ease-out}
 .slot.slot-audition .slot-name{color:#fff}
 .slot.slot-audition .slot-num{color:var(--mint)}
+
+/* ---------- TRIGGER window: FILE SEARCH transparency + type ---------- */
+/* Outer panels use the flat, dark translucency of .tree-pane / .file-main. */
+.trigger-view .detector-panel.liquid-glass,
+.trigger-view .inspector.liquid-glass{
+  background:rgba(8,12,20,.34);
+  border:1px solid var(--line);
+  border-radius:10px;
+  box-shadow:none;
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none}
+.trigger-view .detector-panel.liquid-glass::before,
+.trigger-view .inspector.liquid-glass::before,
+.trigger-view .detector-panel.liquid-glass::after,
+.trigger-view .inspector.liquid-glass::after{display:none}
+
+/* Inner editor panes: same family, a touch more transparent. */
+.trigger-view .panel{
+  background:rgba(8,12,20,.20);
+  border:1px solid rgba(255,255,255,.065);
+  border-radius:9px;
+  box-shadow:none}
+
+/* FILE SEARCH typography: 12–13 px labels, muted values, mono numbers. */
+.trigger-view .panel::before{font-size:10.5px;font-weight:600;letter-spacing:.14em;opacity:.9}
+.trigger-view .dp-title{font-size:12.5px;font-weight:700;letter-spacing:.14em}
+.trigger-view .dp-sub{font-size:11.5px;color:var(--muted)}
+.trigger-view .det-knobs .knob-label{font-size:9.5px;letter-spacing:.04em;color:var(--muted)}
+.trigger-view .det-knobs .knob-val{font-size:9px}
+.trigger-view .det-mix{font-size:11px}
+.trigger-view .det-mix b{font-size:10.5px}
+.trigger-view .det-wave-label{font-size:10.5px}
+.trigger-view .row-btns .chip{font-size:11px;padding:4px 8px}
+.trigger-view .sample-meta{font-size:12px}
+.trigger-view .env-note{font-size:11px}
+.trigger-view .wave-readout span,.trigger-view .env-readout span{font-size:10.5px}
+.trigger-view .wave-readout b,.trigger-view .env-readout b{font-size:10.5px}
+.trigger-view .tone-grid label{font-size:10.5px}
+.trigger-view .tone-grid b{font-size:10.5px}
+.trigger-view .pb-label{font-size:10px}
+.trigger-view .seg button{font-size:10px}
+.trigger-view .panel[data-panel="slot"] .sp-phase-head{font-size:10.5px}
+.trigger-view .panel[data-panel="slot"] .sp-phase-head select{font-size:10px}
+.trigger-view .panel[data-panel="slot"] .sp-auto{font-size:10.5px;padding:3px 5px}
+.trigger-view .panel[data-panel="slot"] .sp-timing{font-size:10.5px;padding:0 6px}
+.trigger-view .panel[data-panel="slot"] .sp-result{font-size:10px;min-height:10px}
+.trigger-view .panel[data-panel="slot"] .sp-row{font-size:10px}
+.trigger-view .panel[data-panel="slot"] .sp-phase-row .lbl{font-size:10px}
+.trigger-view .panel[data-panel="slot"] .seg button{font-size:10px}
+
+/* Fader strips: flat translucency and FILE SEARCH selected tint. */
+.trigger-view .slot-fader{
+  background:rgba(8,12,20,.34);
+  border-color:var(--line);
+  border-radius:10px;
+  box-shadow:none}
+.trigger-view .slot-fader:hover{background:rgba(255,255,255,.05);border-color:var(--line-strong)}
+.trigger-view .slot-fader.selected{
+  background:rgba(124,92,255,.14);
+  border-color:rgba(124,92,255,.34);
+  box-shadow:none}
+.trigger-view .sf-num{font-size:10.5px}
+.trigger-view .sf-name{font-size:11.5px}
+.trigger-view .sf-head{height:14px}
+.trigger-view .sf-level{font-size:10.5px}
+.trigger-view .sf-phase{font-size:9.5px}
+.trigger-view .sf-btns button{font-size:10px}

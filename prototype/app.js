@@ -1918,7 +1918,7 @@ function updateInspector() {
 
   $('#sampleMeta').textContent = smp
     ? `${CAT[smp.category].short} · ${fmtMs(smp.dur)} · ${fmtHz(smp.bright)} · ${smp.path}`
-    : 'Empty slot — drag a sample from HOME or File Search.';
+    : 'Drop a sample from HOME.';
 
   $('#tone').value = slot.tone;
   $('#toneVal').textContent = (slot.tone > 0 ? '+' : '') + slot.tone;

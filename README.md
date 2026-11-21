@@ -36,7 +36,7 @@ Controles principales:
 - **SIMILARITY** (abajo): al seleccionar un sample se arma una lista de 33 parecidos. Las flechas `◂ ▸` o las teclas `← →` recorren esa lista; HOME hace un paneo suave solo si el sample queda cerca del borde y dibuja una línea animada entre ambos.
 - **♥** en la barra de similitud o en cada fila de FILE SEARCH: agrega/quita favoritos persistentes. **FAVORITES** aparece arriba del árbol de carpetas.
 - El corchete **SETTINGS** (derecha) abre el menú con AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS y AUDIO/MIDI.
-- La textura **glass** es la misma familia en el search, los Trigger Slots, la página TRIGGER, Settings y el bloque OUTPUT.
+- La textura **glass** es la misma familia en el search, los Trigger Slots, Settings y el bloque OUTPUT. La página **TRIGGER** toma de **FILE SEARCH** su transparencia plana (rgba(8,12,20,.34), borde fino, radio 10 px) y su tipografía, para que ambas vistas se lean igual.
 
 ## Documentación
 
