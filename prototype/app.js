@@ -295,7 +295,7 @@ let trailFadeRAF = null;
 function startScrubTrail(smp) {
   if (!smp) return;
   cancelAnimationFrame(trailFadeRAF);
-  state.scrubTrail = { pts: [smp], alpha: 1 };
+  state.scrubTrail = { pts: [smp], alpha: 1, cut: 0 };
 }
 
 function appendScrubTrail(smp) {
@@ -305,7 +305,7 @@ function appendScrubTrail(smp) {
   if (last && last.id === smp.id) return;
   tr.pts.push(smp);
   if (tr.pts.length > 80) tr.pts.shift();
-  tr.alpha = 1;
+  tr.alpha = 1; tr.cut = 0;
 }
 
 function stopScrub() {
@@ -315,17 +315,18 @@ function stopScrub() {
   if (was) fadeScrubTrail();
 }
 
+// The trail erases from its oldest point toward the newest one: tr.cut sweeps 0 → 1 along it.
 function fadeScrubTrail() {
   cancelAnimationFrame(trailFadeRAF);
   const tr = state.scrubTrail;
-  if (tr.pts.length < 2) { tr.pts = []; tr.alpha = 1; drawUniverse(); return; }
+  if (tr.pts.length < 2) { tr.pts = []; tr.alpha = 1; tr.cut = 0; drawUniverse(); return; }
   const t0 = performance.now(), dur = 2400;
   const step = now => {
     const k = clamp((now - t0) / dur, 0, 1);
-    tr.alpha = 1 - k;
+    tr.cut = k * k * (3 - 2 * k);           // ease in-out
     drawUniverse();
     if (k < 1) trailFadeRAF = requestAnimationFrame(step);
-    else { tr.pts = []; tr.alpha = 1; drawUniverse(); }
+    else { tr.pts = []; tr.alpha = 1; tr.cut = 0; drawUniverse(); }
   };
   trailFadeRAF = requestAnimationFrame(step);
 }
@@ -353,6 +354,9 @@ function drawScrubTrail(ctx) {
   if (!tr || tr.pts.length < 2 || tr.alpha <= 0) return;
   const pts = tr.pts.map(toPx);
   const a = tr.alpha, n = pts.length;
+  // visibility along the trail while it erases (t = 0 oldest … 1 newest), soft edge of width W
+  const W = .25, c = (tr.cut || 0) * (1 + W);
+  const vis = t => clamp((t - c + W) / W, 0, 1);
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.lineCap = 'round';
@@ -360,18 +364,22 @@ function drawScrubTrail(ctx) {
   for (let i = 1; i < n; i++) {
     const t = i / (n - 1);
     const color = CAT[tr.pts[i].category].color;
-    ctx.globalAlpha = (.06 + .14 * t) * a;
+    const v = vis(t) * a;
+    if (v <= 0) continue;
+    ctx.globalAlpha = (.06 + .14 * t) * v;
     ctx.strokeStyle = color;
     ctx.lineWidth = 8 - 3 * t;
     ctx.beginPath(); ctx.moveTo(pts[i - 1].x, pts[i - 1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
-    ctx.globalAlpha = (.28 + .60 * t) * a;
+    ctx.globalAlpha = (.28 + .60 * t) * v;
     ctx.lineWidth = 1.7;
     ctx.beginPath(); ctx.moveTo(pts[i - 1].x, pts[i - 1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
   }
   for (let i = 0; i < n; i++) {
     const t = i / (n - 1);
     const color = CAT[tr.pts[i].category].color;
-    ctx.globalAlpha = (.15 + .45 * t) * a;
+    const v = vis(t) * a;
+    if (v <= 0) continue;
+    ctx.globalAlpha = (.15 + .45 * t) * v;
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, 1.8 + t * 1.2, 0, 6.2832); ctx.fill();
   }
