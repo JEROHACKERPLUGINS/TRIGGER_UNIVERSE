@@ -648,7 +648,7 @@ body{
 .universe.trigger-mode .map-tools{display:none}
 
 .trigger-page{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;
-  padding:70px 36px calc(18px + var(--slot-size) + 12px);min-height:0}
+  padding:70px 36px calc(var(--slot-dock-bottom) + var(--slot-size) + 12px);min-height:0}
 .trigger-page-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex:none}
 .trigger-page-title{display:flex;align-items:baseline;gap:12px;min-width:0}
 .trigger-page-title b{font-size:18px;letter-spacing:.22em;font-weight:750}
@@ -673,7 +673,7 @@ body{
 @keyframes triggerIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 /* persistent bottom dock */
-.slot-dock{position:fixed;left:0;right:0;bottom:18px;z-index:50;display:flex;
+.slot-dock{position:fixed;left:0;right:0;bottom:var(--slot-dock-bottom);z-index:50;display:flex;
   justify-content:center;height:auto;pointer-events:none}
 .slot-dock .slots{pointer-events:auto}
 .slot-dock .trigger-tab{position:relative;left:auto;right:auto;bottom:auto;top:auto;
@@ -856,7 +856,7 @@ body{
 .sf-phase{font-size:8.5px;color:var(--muted-2);overflow:hidden;text-overflow:ellipsis;max-width:52%}
 
 /* detector: compact single-row knobs, bigger waveform */
-.trigger-view .inspector-body{grid-template-rows:1.4fr .9fr}
+.trigger-view .inspector-body{grid-template-rows:1.3fr 1fr}
 .trigger-view .dp-title{font-size:14px}
 .trigger-view .dp-sub{font-size:10px}
 .trigger-view .det-knobs{grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:auto;gap:3px}
@@ -896,8 +896,9 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 /* ---------- XO-style bottom name bar ---------- */
 :root{
   --name-bar-h:26px;
-  --name-bar-bottom:calc(18px + var(--slot-size) + 8px);
-  --dock-clear:calc(var(--name-bar-bottom) + var(--name-bar-h) + 12px);
+  --name-bar-bottom:8px;
+  --slot-dock-bottom:calc(var(--name-bar-bottom) + var(--name-bar-h) + 8px);
+  --dock-clear:calc(var(--slot-dock-bottom) + var(--slot-size) + 20px);
 }
 .name-bar{position:fixed;left:36px;right:36px;bottom:var(--name-bar-bottom);height:var(--name-bar-h);
   z-index:46;display:flex;align-items:center;justify-content:center;pointer-events:none;

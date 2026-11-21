@@ -544,11 +544,20 @@ function pickSample(mx, my) {
 }
 
 
-function setNameBar(smp) {
+function setNameBar(smp, fallback = true) {
   if (!nameBar || !nameBarText) return;
-  const s = smp || state.selectedSample;
+  const s = smp || (fallback ? state.selectedSample : null);
   nameBarText.textContent = s ? s.name : '';
   nameBar.classList.toggle('show', !!s);
+}
+
+function setSlotNameBar(i) {
+  const smp = slotSample(state.slots[i]);
+  if (smp) setNameBar(smp, false);
+  else {
+    nameBarText.textContent = `SLOT ${String(i + 1).padStart(2, '0')} · EMPTY`;
+    nameBar.classList.add('show');
+  }
 }
 
 // ---------- similarity ----------
@@ -1265,6 +1274,7 @@ function selectSlot(i) {
   state.selectedSlot = i;
   renderSlots();
   updateInspector();
+  if (state.viewMode === 'trigger') setSlotNameBar(i);
 }
 
 function clearSlot(i) {
@@ -1276,7 +1286,10 @@ function clearSlot(i) {
   s.polarity = false; s.shift = 0; s.offset = 0;
   syncSlotAudio(i);
   renderSlots();
-  if (state.selectedSlot === i) updateInspector();
+  if (state.selectedSlot === i) {
+    updateInspector();
+    if (state.viewMode === 'trigger') setSlotNameBar(i);
+  }
   toast(`SLOT ${String(i + 1).padStart(2, '0')} cleared`);
 }
 
@@ -1738,7 +1751,6 @@ function setView(mode) {
   $('#universePanel').classList.toggle('trigger-mode', isTrigger);
   $('#triggerTab').classList.toggle('active', isTrigger);
   $('#triggerTab').title = isTrigger ? 'Back to browser' : 'Open TRIGGER page';
-  nameBar.classList.toggle('hide', isTrigger);
   const vt = $('#viewToggle');
   vt.title = isFiles ? 'Back to universe' : 'File search';
   vt.setAttribute('aria-label', vt.title);

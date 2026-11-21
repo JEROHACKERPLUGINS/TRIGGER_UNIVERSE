@@ -591,7 +591,7 @@ AAX **no** se necesita.
 16. **Layout Slate-style**: TRIGGER pasó arriba junto a Settings, con el mismo tamaño. Los slots ahora son cuadrados, centrados y con más separación. En la página TRIGGER se recuperó el banco de 8 faders verticales con meter, M/S/Ø y nivel, alineado sobre los slots. Ver 7.1 y 7.5.
 17. **TRIGGER expandido**: se quitó la fila de título/INPUT/HITS/MASTER para subir todo; el detector pasó a 400 px de ancho con waveform de ≈205 px y knobs en una fila; el ADSR creció a ≈158 px; los 4 paneles del editor se muestran juntos (SAMPLE/ENVELOPE arriba, TONE/SLOT abajo) y los faders se alargaron a ≈116 px. Ver 7.5.
 18. **Drag de partículas**: ALT + drag ya no usa un pill de texto; el sample se convierte en una partícula del mismo tamaño que su dot del Universe, con glow y una estela con los mismos anchos/puntos que la del scrub, sin orbe, anillo ni tether; el nombre aparece como caption sutil. Los slots tienen magnetismo con radio de captura y el drop hace fly-in + burst + impact en el slot y en el fader. Todo el FX vive dentro de la app (canvas fijo), nunca sobre el Finder. Ver 7.2.
-19. **Barra de nombre XO**: se eliminó el tooltip flotante del Universe. El nombre del sample hovereado (o de la fila de FILE SEARCH) aparece centrado en una barra fina sobre el dock; al salir vuelve al seleccionado. En la página TRIGGER la barra se oculta. Ver 7.2.
+19. **Barra de nombre XO**: se eliminó el tooltip flotante del Universe. El nombre del sample hovereado (o de la fila de FILE SEARCH) aparece centrado en una barra fina **debajo de los slots**; al salir vuelve al seleccionado. En la página TRIGGER muestra el slot seleccionado o `SLOT 0X · EMPTY`. Ver 7.2.
 
 ---
 

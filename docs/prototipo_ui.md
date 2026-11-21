@@ -105,9 +105,9 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 ## Actualización 21/11 — barra de nombre XO
 
 - Se eliminó el **tooltip flotante** del Universe.
-- El nombre del sample hovereado aparece centrado en una **barra fina y sutil sobre el dock**, con fondo oscuro translúcido y texto al 72%.
+- El nombre del sample hovereado aparece centrado en una **barra fina y sutil debajo de los slots**, con fondo oscuro translúcido y texto al 72%.
 - También actualiza al hoverear filas de FILE SEARCH; al salir vuelve al sample seleccionado.
-- En la página TRIGGER la barra se oculta para no chocar con los faders.
+- En la página TRIGGER la barra sigue debajo de los slots y muestra el slot seleccionado (o `SLOT 0X · EMPTY`).
 - La similarity bar, el file browser y las herramientas de zoom se corrieron hacia arriba para dejarle lugar.
 
 ## Actualización 21/11 — drag de partículas
@@ -152,7 +152,7 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - El waveform del **INPUT** solo se redibuja con la página TRIGGER abierta.
 - Los meters corren a ~25 fps y solo escriben el DOM cuando el valor cambia. El VU de OUTPUT sigue siempre.
 - `drawUniverse` se coalesce por `requestAnimationFrame` en mousemove/wheel.
-- El nombre del hover se muestra en una barra fija sutil sobre el dock; no hay tooltip flotante.
+- El nombre del hover se muestra en una barra fija sutil debajo de los slots; no hay tooltip flotante.
 - Resultado: el renderer de OpenCode pasó de ~99 % a ~12 % de CPU en reposo.
 
 ## Actualización 21/11 — scrub y estela
