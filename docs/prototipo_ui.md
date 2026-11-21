@@ -43,7 +43,7 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 - Árbol con root `LOCATION` (carpeta elegida) y subcarpetas reales.
 - En el prototipo los paths son sintéticos (`SAMPLES FOLDER/Kicks/...`); en el plugin se construirán desde la carpeta real elegida con selector nativo.
-- **Rediseño 20/11:** árbol con iconos de carpeta, filas de 24 px y tipografía 10.5 px; lista con filas altas (11.5 px) y solo **nombre + duración + punto de categoría** (sin columnas CAT/BRIGHT). Path con contador a la derecha; preview footer con categoría, duración y Audition. El search sigue flotante arriba y la lista arranca debajo para no tapar la cabecera.
+- **Rediseño 20/11:** árbol con iconos de carpeta, filas de 24 px y tipografía 10.5 px; lista con filas altas (11.5 px) y solo **nombre + duración + punto de categoría** (sin columnas CAT/BRIGHT). Path con contador a la derecha; el preview footer es solo informativo (categoría y duración) y al clickear una fila el sample se reproduce al instante. El search sigue flotante arriba y la lista arranca debajo para no tapar la cabecera.
 
 ## Estética
 
@@ -66,7 +66,7 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - **Fase**: 0/90/180/260; **180 = Ø**. El badge del fader muestra `90°`, `180°` o `260°` y se mantiene recíproco con la ventana.
 - **Faders**: solo números 01–08.
 - **Audio real**: `prototype/samples/SNARE.cm.wav` se decodifica con Web Audio. El primer golpe (0.51 s) queda como sample del fader 01; el archivo completo es el **INPUT** del trigger. El botón **▶ INPUT** dispara las 8 capas en cada transiente detectado.
-- **AUDIO TEST eliminado** de la barra: el audio se inicia con **▶ INPUT** o con Audition.
+- **AUDIO TEST eliminado** de la barra: el audio se inicia con **▶ INPUT** o al clickear un sample del Universo o una fila de FILE SEARCH.
 - **Medidores reales**: master y faders usan analizadores Web Audio.
 - **Polaridad 180** verificada offline (correlación −1.0). 90/260 quedan como UI hasta el DSP C++.
 - **Cache busting**: `index.html` carga `style.css?v=N` y `app.js?v=N`. Subir la versión al editar assets para evitar que Chromium sirva la versión vieja.
@@ -86,7 +86,7 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - El logo + **TRIGGER UNIVERSE** quedó centrado como masthead del plugin.
 - **FILE SEARCH** dejó de ser un botón de texto: ahora es un ícono dentro del buscador. En Universe muestra una carpeta; en File Search muestra una órbita para volver.
 - **Settings** quedó a la derecha. **OUTPUT** pasó al extremo derecho, con un **mini VU vertical** de salida. **Export se eliminó** de la UI.
-- Se eliminaron **AUDIO TEST**, el LED de estado y **Export**. El audio se inicia con **▶ INPUT** o Audition.
+- Se eliminaron **AUDIO TEST**, el LED de estado y **Export**. El audio se inicia con **▶ INPUT** o al clickear un sample del Universo o una fila de FILE SEARCH.
 - El toggle folder/universo ahora tiene **contorno circular** (hover/foco).
 
 ## Actualización 20/11 — similitud y favoritos
@@ -100,6 +100,12 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - **♥** en la barra de similitud y en cada fila de FILE SEARCH agrega/quita favoritos.
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
+
+## Actualización 21/11 — file browser
+
+- Click en una fila de FILE SEARCH: selecciona y **reproduce el audio al instante**. Se eliminó el botón **▶ Audition** del pie; el preview footer quedó solo informativo.
+- Al entrar a FILE SEARCH se cierran **TRIGGER**, **INPUT DETECTOR** y el editor de sample con una salida animada (fade + slide). El drawer ya se deslizaba; ahora el detector, el editor y Settings acompañan con la misma curva.
+- Los paneles usan `visibility` + `opacity` + `transform` en vez de `display:none` para poder animar el cierre.
 
 ## Actualización 21/11 — performance
 

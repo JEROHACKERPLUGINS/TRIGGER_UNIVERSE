@@ -1341,7 +1341,11 @@ $('#fileList').addEventListener('mousedown', e => {
   const smp = state.samples.find(s => s.id === +row.dataset.id);
   if (!smp) return;
   if (e.altKey) beginDrag(smp, e, { altDrag: true });
-  else selectSample(smp, true);
+  else {
+    selectSample(smp, true);
+    // Every click on a row auditions the sample right away.
+    playHoverPreview(smp);
+  }
 });
 $('#fileList').addEventListener('click', e => {
   const btn = e.target.closest('.fav-btn[data-id]');
@@ -1378,23 +1382,9 @@ $('#simDots').addEventListener('click', e => {
   travelTo(smp, from);
   restartSimTimer();
 });
-$('#fileAudition').onclick = () => {
-  const smp = state.selectedSample;
-  if (!smp) { toast('Select a file first'); return; }
-  const ctx = ensureAudio();
-  const buf = getBuffer(smp);
-  if (!ctx || !buf) { toast('Audio loading…'); return; }
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  const g = ctx.createGain();
-  g.gain.value = dbToAmp(-3);
-  src.connect(g).connect(inputGain);
-  src.start();
-  toast(`Audition · ${smp.name}`);
-};
-
 $('#fileView').addEventListener('mousedown', e => {
-  if (e.target.closest('input, select, button')) return;
+  // Rows play their own audition; don't let the view-level dismiss stop it.
+  if (e.target.closest('input, select, button, .file-row')) return;
   dismissWindows();
 });
 
@@ -1414,8 +1404,9 @@ function setView(mode) {
       if (state.selectedSample) focusSample(state.selectedSample, true);
     });
   } else {
-    stopScrub();
-    hideSimilarity();
+    // Switching to the file browser closes the floating TRIGGER / INPUT DETECTOR
+    // and sample editor windows; CSS animates them out instead of hiding instantly.
+    dismissWindows();
     renderFolderTree(); renderFileList();
   }
 }

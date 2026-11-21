@@ -267,13 +267,16 @@ body{
   box-shadow:0 0 7px currentColor}
 .file-preview .fp-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .file-preview .fp-hint{font-size:12px;color:var(--muted-2);letter-spacing:.04em;white-space:nowrap}
-.file-preview .chip{font-size:12px;padding:4px 10px}
 
 /* ---------- inspector ---------- */
 .inspector{position:fixed;bottom:78px;right:36px;width:360px;height:370px;max-height:calc(100vh - 146px);z-index:40;
-  display:none;grid-template-rows:32px 30px 1fr;padding:7px 8px 8px;overflow:hidden;
-  transition:bottom .28s cubic-bezier(.2,.8,.2,1),max-height .28s cubic-bezier(.2,.8,.2,1)}
-.inspector.show{display:grid}
+  display:grid;grid-template-rows:32px 30px 1fr;padding:7px 8px 8px;overflow:hidden;
+  opacity:0;visibility:hidden;pointer-events:none;transform:translateY(10px) scale(.985);
+  transition:bottom .28s cubic-bezier(.2,.8,.2,1),max-height .28s cubic-bezier(.2,.8,.2,1),
+    opacity .2s ease,transform .26s cubic-bezier(.2,.8,.2,1),visibility 0s linear .26s}
+.inspector.show{opacity:1;visibility:visible;pointer-events:auto;transform:none;
+  transition:bottom .28s cubic-bezier(.2,.8,.2,1),max-height .28s cubic-bezier(.2,.8,.2,1),
+    opacity .22s ease,transform .28s cubic-bezier(.2,.8,.2,1),visibility 0s}
 /* side panels sit right on top of the TRIGGER drawer (drawer top = 30 + 310px) */
 .app.trigger-open .inspector{bottom:350px;max-height:calc(100vh - 418px)}
 .inspector-head{display:flex;align-items:center;gap:7px;min-width:0}
@@ -397,8 +400,11 @@ body{
 /* detector */
 /* floating panel on the left, mirrors the sample editor on the right; shown while TRIGGER is open */
 .detector-panel{position:fixed;bottom:350px;left:36px;width:360px;height:370px;max-height:calc(100vh - 418px);z-index:40;
-  display:none;grid-template-rows:32px 1fr;padding:7px 10px 10px;overflow:hidden}
-.app.trigger-open .detector-panel{display:grid}
+  display:grid;grid-template-rows:32px 1fr;padding:7px 10px 10px;overflow:hidden;
+  opacity:0;visibility:hidden;pointer-events:none;transform:translateY(10px) scale(.985);
+  transition:opacity .2s ease,transform .26s cubic-bezier(.2,.8,.2,1),visibility 0s linear .26s}
+.app.trigger-open .detector-panel{opacity:1;visibility:visible;pointer-events:auto;transform:none;
+  transition:opacity .22s ease,transform .28s cubic-bezier(.2,.8,.2,1),visibility 0s}
 .dp-head{display:flex;align-items:baseline;gap:9px;min-width:0;border-bottom:1px solid var(--line);padding:2px 2px 0}
 .dp-title{font-size:13px;font-weight:750;letter-spacing:.16em;white-space:nowrap}
 .dp-sub{font-size:12px;color:var(--muted-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -540,8 +546,11 @@ body{
   background:linear-gradient(145deg,rgba(30,37,54,.97),rgba(9,13,21,.97));
   border:1px solid rgba(255,255,255,.18);border-radius:12px;
   box-shadow:0 30px 70px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.18);
-  backdrop-filter:blur(30px) saturate(150%);display:none;flex-direction:column;gap:4px}
-.settings-menu.show{display:flex}
+  backdrop-filter:blur(30px) saturate(150%);display:flex;flex-direction:column;gap:4px;
+  opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-4px) scale(.97);
+  transition:opacity .16s ease,transform .2s cubic-bezier(.2,.8,.2,1),visibility 0s linear .2s}
+.settings-menu.show{opacity:1;visibility:visible;pointer-events:auto;transform:none;
+  transition:opacity .18s ease,transform .22s cubic-bezier(.2,.8,.2,1),visibility 0s}
 .sm-head{font-size:12px;letter-spacing:.18em;color:var(--muted);padding:2px 4px 6px;
   border-bottom:1px solid var(--line);margin-bottom:3px}
 .sm-item{border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:var(--muted);

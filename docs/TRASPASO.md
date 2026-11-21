@@ -230,7 +230,8 @@ Estética: glassmorphism, fondo aurora, puntos saturados con halo aditivo y bril
 - Lista con filas altas (11.5 px): solo **nombre + duración + punto de categoría**, sin columnas CAT/BRIGHT. Path con contador a la derecha.
 - Búsqueda global por texto (nombre, categoría, carpeta, path), flotante arriba; la lista arranca debajo para no tapar la cabecera.
 - **FAVORITES** es un nodo fijo arriba del árbol. El corazón de cada fila (y el de la barra de similitud) agrega/quita favoritos, que se persisten en `localStorage`.
-- Preview inferior con categoría, duración y **▶ Audition**.
+- Click en una fila: selecciona y **reproduce el audio al instante**; no hay botón Audition. El preview inferior solo muestra categoría y duración.
+- Al entrar a FILE SEARCH, TRIGGER, INPUT DETECTOR y el editor se cierran con una animación de salida (fade + slide).
 - Drag de una fila a un fader de TRIGGER.
 - Hasta 1200 filas visibles; contador real.
 - `CHANGE` muestra un toast demo: en el plugin abrirá selector nativo de carpeta.
@@ -285,7 +286,7 @@ Tabs:
   - AUTO PHASE ALL re-analiza las 8 capas.
   - FLIP ALL invierte polaridad en los 8 slots.
   - Los otros dos son toasts demo.
-- **AUDIO TEST y LED eliminados** de la barra: el audio se inicia con **▶ INPUT** o con Audition.
+- **AUDIO TEST y LED eliminados** de la barra: el audio se inicia con **▶ INPUT** o al clickear un sample del Universo o una fila de FILE SEARCH.
 
 ---
 
@@ -582,6 +583,7 @@ AAX **no** se necesita.
 11. **Barra superior rediseñada**: título centrado, search con toggle folder/universo, OUTPUT + mini VU al extremo derecho y AUDIO TEST eliminado. Ver 7.1 y 7.6.
 12. **SIMILARITY funcional + FAVORITES**: navegación por 33 vecinos, seguimiento suave y línea animada, teclas ← →, favoritos persistentes y nodo FAVORITES en FILE SEARCH. Ver 7.2 y 7.3.
 13. **Performance del prototipo**: el waveform del INPUT solo se dibuja con el drawer TRIGGER abierto; meters a ~25 fps y slots solo cuando el drawer está visible; redraw del Universe coalescido por frame; tooltip con caché de HTML. El renderer de OpenCode bajó de ~99 % a ~12 % de CPU en reposo.
+14. **File browser**: click en una fila reproduce el audio al instante y se eliminó el botón Audition del pie. Al cambiar a FILE SEARCH se cierran TRIGGER, INPUT DETECTOR y el editor con animación de salida. Ver 7.3.
 
 ---
 

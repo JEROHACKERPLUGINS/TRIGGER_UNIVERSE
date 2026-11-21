@@ -19,7 +19,7 @@ cd prototype
 python3 -m http.server 8765 --bind 127.0.0.1
 ```
 
-Abrir <http://127.0.0.1:8765/>. Para escuchar: abrí **TRIGGER ▲** (abajo), click en **▶ INPUT** dentro del drawer para reproducir el snare real y disparar las 8 capas; o seleccioná un sample y usá **▶ Audition**. El audio arranca con el primer click (política de autoplay del browser).
+Abrir <http://127.0.0.1:8765/>. Para escuchar: abrí **TRIGGER ▲** (abajo), click en **▶ INPUT** dentro del drawer para reproducir el snare real y disparar las 8 capas; o hacé click en un sample del Universo o de **FILE SEARCH** para escucharlo al instante. El audio arranca con el primer click (política de autoplay del browser).
 
 Controles principales:
 
@@ -28,7 +28,8 @@ Controles principales:
 - Mantené el click y movete por el Universe: se escucha un preview inmediato de cada sample (snap dentro de un aura de ~20 px) y queda una **estela de colores** entre los puntos visitados. Al soltar, la estela se desvanece.
 - Click en un sample: lo selecciona y permite hacer hover por el mapa. **ALT + arrastrar** desde el Universe o FILE SEARCH a un fader para asignarlo; si se suelta fuera de un fader, se muestra el toast de export a Finder (demo).
 - Rueda del mouse: zoom anclado al cursor. Click derecho + arrastrar o **Ctrl + click izquierdo + arrastrar**: pan. Click izquierdo en vacío: solo cierra paneles, sin mover la cámara.
-- **FILE SEARCH** alterna entre el universo y el árbol de carpetas (ícono de carpeta a la derecha del buscador).
+- **FILE SEARCH** alterna entre el universo y el árbol de carpetas (ícono de carpeta a la derecha del buscador). Al entrar, TRIGGER, INPUT DETECTOR y el editor se cierran con una salida animada.
+- Click en una fila de FILE SEARCH: selecciona el sample y **reproduce su audio al instante**; ya no hay botón Audition en el pie.
 - **SIMILARITY** (abajo): al seleccionar un sample se arma una lista de 33 parecidos. Las flechas `◂ ▸` o las teclas `← →` recorren esa lista; el Universe hace un paneo suave solo si el sample queda cerca del borde y dibuja una línea animada entre ambos.
 - **♥** en la barra de similitud o en cada fila de FILE SEARCH: agrega/quita favoritos persistentes. **FAVORITES** aparece arriba del árbol de carpetas.
 - **Settings** contiene AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS y AUDIO/MIDI.
