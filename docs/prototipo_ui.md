@@ -4,11 +4,11 @@ Fecha: 20/11/2026. Prototipo navegable en `prototype/` (`index.html`, `style.css
 
 ## Layout elegido (Opción A)
 
-- **Universe / File Search full-bleed**: ocupa toda el área principal.
-- **Sample editor flotante** a la derecha: se abre al clickear un fader de TRIGGER. No recorta el mapa; entra sobre la imagen.
-- **TRIGGER como drawer inferior**: pestaña abajo; se abre al clickearla o al arrastrar desde la waveform. Contiene el detector y los 8 faders.
+- **Universe / File Search / TRIGGER full-bleed**: tres páginas que ocupan toda el área principal.
+- **Página TRIGGER**: INPUT DETECTOR + editor de sample/ADSR en una sola vista, abierta desde el botón TRIGGER.
+- **Dock fijo de 8 slots** abajo, visible en todas las vistas: recuadros de glass vacíos donde se arrastran los samples.
 - **Search flotante** arriba del Universe, centrado, estilo XO.
-- **Similarity bar** flotante abajo, estilo XO.
+- **Similarity bar** flotante arriba del dock, estilo XO.
 - **FILE SEARCH** con árbol tipo Finder y root `LOCATION` (la carpeta elegida por el usuario).
 
 Opciones alternativas propuestas:
@@ -17,27 +17,28 @@ Opciones alternativas propuestas:
 
 ## Sample editor = slot cargado
 
-El editor corresponde al sample cargado en el fader seleccionado (por defecto **TRIGGER 01**). Se abre al clickear el fader. Incluye:
+El editor vive dentro de la página TRIGGER y corresponde al slot seleccionado (por defecto **SLOT 01**). Se abre al clickear un slot del dock. Incluye:
 
 - **SLOT**: Level, Pan, Tune, Mute/Solo/Ø, Auto Phase (REF INPUT / SLOT 1), Timing, Offset, Shift 0°/90°/180°/260°.
 - **SAMPLE**: waveform, start/end, fade in/out, reverse, normalize, audition.
 - **ENVELOPE**: ADSR editable.
 - **TONE**: tone, cut, velocity sensitivity, gain, playback one-shot/gate, loop.
 
-El browser (Universe / File Search) solo selecciona y preescucha; no abre el editor. El flujo es: buscar → arrastrar a un fader → clickear el fader para editar.
+El browser (Universe / File Search) solo selecciona y preescucha; no abre el editor. El flujo es: buscar → **ALT + drag** a un slot del dock → clickear el slot para abrir TRIGGER y editar.
 
 ## Fase / polaridad
 
 - **Ø = 180°**; el botón Ø y el segmento 180° están sincronizados.
 - 90° y 260° son phase shift real (all-pass/Hilbert), separados de la polaridad.
-- **Auto Phase** corre automáticamente al cargar un sample en un fader. Por defecto **solo corrige polaridad**; el offset queda en **0** y se muestra como `suggested`. El toggle **TIMING** permite aplicar también el offset medido.
+- **Auto Phase** corre automáticamente al cargar un sample en un slot. Por defecto **solo corrige polaridad**; el offset queda en **0** y se muestra como `suggested`. El toggle **TIMING** permite aplicar también el offset medido.
 - El análisis real será GCC-PHAT (ver `docs/auto_phase.md`).
 
-## Faders
+## Slots
 
-- Se identifican solo por número: **01 … 08**.
-- Cada uno: level, meter, M/S/Ø, pan/tune, badge de fase.
-- El nombre del sample se muestra debajo, no como nombre del fader.
+- Ocho recuadros de glass **01 … 08** en un dock fijo abajo, visibles en todas las vistas.
+- Arrancan **vacíos**: muestran `DROP SAMPLE` / `ALT + drag`.
+- Al llenarse muestran dot de categoría, nombre y duración; el × los vacía.
+- Ya no hay fader, meter por canal ni M/S/Ø en el dock: la edición vive en la página TRIGGER.
 
 ## FILE SEARCH
 
@@ -61,13 +62,13 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 - **La app es el Universe**: logo y título centrados, search con toggle folder/universo, Settings y OUTPUT + VU vertical a la derecha. No hay topbar separado.
 - **Search centrado** arriba, sin contorno de panel; **Similarity** flotante abajo.
-- **TRIGGER** es una pestaña mínima (`TRIGGER ▲`). Se abre al **arrastrar un sample** o al clickear la pestaña, y **queda abierto**. Se cierra al clickear el Universe, al seleccionar un sample, o desde la cabecera.
+- **TRIGGER** es un botón dentro del dock. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/ADSR; se vuelve con **← BACK** o el mismo botón.
 - **Editor de sample**: tabs **SAMPLE → ENVELOPE → TONE → SLOT**. El tab SLOT quedó solo con **AUTO PHASE** (REF, re-analizar, TIMING, resultado, OFFSET, SHIFT); se quitaron Level/Pan/Tune/Mute/Solo/Pol de esa ventana.
-- **Fase**: 0/90/180/260; **180 = Ø**. El badge del fader muestra `90°`, `180°` o `260°` y se mantiene recíproco con la ventana.
-- **Faders**: solo números 01–08.
-- **Audio real**: `prototype/samples/SNARE.cm.wav` se decodifica con Web Audio. El primer golpe (0.51 s) queda como sample del fader 01; el archivo completo es el **INPUT** del trigger. El botón **▶ INPUT** dispara las 8 capas en cada transiente detectado.
+- **Fase**: 0/90/180/260; **180 = Ø**. Los badges se mantienen en el editor.
+- **Slots**: solo números 01–08, sin faders.
+- **Audio real**: `prototype/samples/SNARE.cm.wav` se decodifica con Web Audio y el archivo completo es el **INPUT** del trigger. El botón **▶ INPUT** dispara los slots cargados en cada transiente detectado. Los slots arrancan vacíos; se llenan con ALT + drag.
 - **AUDIO TEST eliminado** de la barra: el audio se inicia con **▶ INPUT** o al clickear un sample del Universo o una fila de FILE SEARCH.
-- **Medidores reales**: master y faders usan analizadores Web Audio.
+- **Medidores reales**: master y salida usan analizadores Web Audio.
 - **Polaridad 180** verificada offline (correlación −1.0). 90/260 quedan como UI hasta el DSP C++.
 - **Cache busting**: `index.html` carga `style.css?v=N` y `app.js?v=N`. Subir la versión al editar assets para evitar que Chromium sirva la versión vieja.
 - Detalles y mediciones en `docs/audio_tests.md`.
@@ -101,16 +102,24 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
 
+## Actualización 21/11 — TRIGGER page + dock de slots
+
+- TRIGGER, INPUT DETECTOR y el editor/ADSR se unificaron en una **tercera página full-screen**, abierta desde el botón TRIGGER del dock.
+- El drawer inferior y los faders desaparecieron. Quedan **8 slots de glass vacíos** en un dock fijo abajo, visibles en Universe, FILE SEARCH y TRIGGER.
+- **ALT + drag** desde el Universe o FILE SEARCH asigna el sample a un slot; el × lo vacía.
+- Click en un slot abre la página TRIGGER con ese slot cargado; el editor abre en **ENVELOPE (ADSR)**.
+- El paneo suave del Universe deja libre el dock y el waveform del INPUT solo corre con la página TRIGGER visible.
+
 ## Actualización 21/11 — file browser
 
 - Click en una fila de FILE SEARCH: selecciona y **reproduce el audio al instante**. Se eliminó el botón **▶ Audition** del pie; el preview footer quedó solo informativo.
-- Al entrar a FILE SEARCH se cierran **TRIGGER**, **INPUT DETECTOR** y el editor de sample con una salida animada (fade + slide). El drawer ya se deslizaba; ahora el detector, el editor y Settings acompañan con la misma curva.
+- El dock de slots queda siempre visible al cambiar de vista; así se puede arrastrar desde Universe o FILE SEARCH sin abrir la página TRIGGER. Settings y la barra de similitud siguen animando su salida.
 - Los paneles usan `visibility` + `opacity` + `transform` en vez de `display:none` para poder animar el cierre.
 
 ## Actualización 21/11 — performance
 
-- El waveform del **INPUT** solo se redibuja con el drawer TRIGGER abierto.
-- Los meters corren a ~25 fps; los 8 slots solo se actualizan si el drawer está visible. El VU de OUTPUT sigue siempre.
+- El waveform del **INPUT** solo se redibuja con la página TRIGGER abierta.
+- Los meters corren a ~25 fps y solo escriben el DOM cuando el valor cambia. El VU de OUTPUT sigue siempre.
 - `drawUniverse` se coalesce por `requestAnimationFrame` en mousemove/wheel.
 - El tooltip solo rehace su HTML cuando cambia el sample; la posición se actualiza aparte.
 - Resultado: el renderer de OpenCode pasó de ~99 % a ~12 % de CPU en reposo.

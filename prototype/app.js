@@ -166,13 +166,13 @@ const state = {
   pointer: null,
   scrubTrail: { pts: [], alpha: 1 },
   viewMode: 'universe',
+  prevView: 'universe',
   fileFolder: 'ALL',
   expanded: new Set(['ALL', 'SAMPLES FOLDER', 'SAMPLES FOLDER/Kicks', 'SAMPLES FOLDER/Snares', 'SAMPLES FOLDER/Hats', 'SAMPLES FOLDER/Percussion']),
   filters: { search: '' },
   view: { zoom: 1, panX: 0, panY: 0 },
   drag: null,
   dragAlt: false,
-  dragOpen: false,
   pan: null,
   popoverSlot: null,
   autoRef: 'INPUT',
@@ -185,16 +185,10 @@ function pickByCategory(cat, offset = 0) {
   return pool[offset % pool.length];
 }
 function buildSlots() {
-  const roles = [
-    ['KICK 1', 'Kick', -3.0], ['KICK 2', 'Kick', -4.5],
-    ['SNARE 3', 'Snare', -2.0], ['CLAP 4', 'Clap', -5.0],
-    ['CL HH 5', 'HHC', -6.0], ['OP HH 6', 'HHO', -7.0],
-    ['PERC 7', 'Perc', -4.0], ['TOM 8', 'Tom', -3.0],
-  ];
-  state.slots = roles.map(([label, cat, level], i) => ({
-    id: i, label,
-    sampleId: pickByCategory(cat, i).id,
-    level, pan: 0, tune: 0,
+  state.slots = Array.from({ length: 8 }, (_, i) => ({
+    id: i, label: `SLOT ${String(i + 1).padStart(2, '0')}`,
+    sampleId: null,
+    level: -3, pan: 0, tune: 0,
     mute: false, solo: false,
     polarity: false, shift: 0, offset: 0,
     autoPhase: false, corr: 0, suggestedLag: 0,
@@ -226,25 +220,12 @@ const realSample = {
   audioBuffer: null,
 };
 samples.push(realSample);
-{
-  const s0 = state.slots[0];
-  s0.sampleId = realSample.id;
-  s0.label = 'SNARE 1';
-  s0.start = 0;
-  s0.end = 1;
-  s0.fadeIn = 0;
-  s0.fadeOut = 15;
-}
 const slotSample = slot => state.samples.find(s => s.id === slot.sampleId) || null;
 
 // ---------- browser selection + slot editor ----------
 function selectSample(smp, closeTrigger = true, opts = {}) {
   if (!smp) return;
   state.selectedSample = smp;
-  if (closeTrigger) {
-    setTriggerOpen(false);
-    $('.inspector').classList.remove('show');
-  }
   if (!opts.keepSim) resetSimilarity(smp);
   else updateSimilarityUI();
   drawUniverse();
@@ -254,8 +235,7 @@ function selectSample(smp, closeTrigger = true, opts = {}) {
 function openSlotEditor(i) {
   hideSimilarity();
   selectSlot(i);
-  $('.inspector').classList.add('show');
-  setInspectorTab('sample');
+  setInspectorTab('env');
   updateInspector();
 }
 
@@ -695,9 +675,11 @@ let viewAnimRAF = null;
 function softPanFor(s) {
   const p = toPx(s);
   const mx = Math.min(170, canvasW * .20);
-  const my = Math.min(150, canvasH * .21);
+  const myTop = Math.min(150, canvasH * .21);
+  // Keep the focused sample above the persistent slot dock at the bottom.
+  const myBottom = Math.min(230, canvasH * .30);
   const tx = clamp(p.x, mx, canvasW - mx);
-  const ty = clamp(p.y, my, canvasH - my);
+  const ty = clamp(p.y, myTop, canvasH - myBottom);
   return { x: state.view.panX + (tx - p.x), y: state.view.panY + (ty - p.y) };
 }
 
@@ -757,48 +739,37 @@ let dragStart = null;
 function beginDrag(smp, e, opts) {
   if (!smp) return;
   stopScrub();
-  const keepTrigger = !!(opts && opts.keepTrigger);
-  selectSample(smp, !keepTrigger);
+  selectSample(smp, false);
   state.dragAlt = !!(opts && opts.altDrag);
   if (opts && opts.fromUniverse) showSimilarity();
   else hideSimilarity();
   state.drag = smp;
-  state.dragOpen = true;
   dragStarted = false;
   dragStart = { x: e.clientX, y: e.clientY };
   e.preventDefault();
 }
 
 function setTriggerOpen(open) {
-  $('#triggerDrawer').classList.toggle('open', open);
-  $('.app').classList.toggle('trigger-open', open);
-  if (open) { hideSimilarity(); startInputLoop(); }
-  else { stopInputLoop(); $('.inspector').classList.remove('show'); }
+  if (open) openTriggerPage();
+  else closeTriggerPage();
 }
 
 function dismissWindows() {
   stopScrub();
   hideSimilarity();
-  setTriggerOpen(false);
-  $('.inspector').classList.remove('show');
   $('#settingsMenu').classList.remove('show');
+  if ($('#slotPopover')) closeSlotPopover();
 }
-$('#triggerToggle').addEventListener('click', e => {
-  if (e.target.closest('button')) return;
-  setTriggerOpen(!$('#triggerDrawer').classList.contains('open'));
-});
-$('#triggerTab').onclick = () => setTriggerOpen(true);
-
-// Dock-like: the drawer opens when a sample is picked up or via the tab,
-// and stays open until the Universe is clicked or a sample is selected.
-$('#inspectorClose').onclick = () => $('.inspector').classList.remove('show');
+$('#triggerTab').onclick = () => {
+  if (state.viewMode === 'trigger') closeTriggerPage();
+  else openTriggerPage();
+};
 
 window.addEventListener('mousemove', e => {
   if (!state.drag) return;
   const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
   if (!dragStarted && Math.hypot(dx, dy) > 6) {
     dragStarted = true;
-    if (state.dragOpen) setTriggerOpen(true);
     const gh = $('#dragGhost');
     gh.textContent = state.drag.name;
     gh.style.borderColor = CAT[state.drag.category].color;
@@ -809,8 +780,8 @@ window.addEventListener('mousemove', e => {
     gh.style.left = e.clientX + 'px';
     gh.style.top = e.clientY + 'px';
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const ch = el && el.closest ? el.closest('.channel') : null;
-    $$('.channel').forEach(x => x.classList.toggle('drop-target', x === ch));
+    const slot = el && el.closest ? el.closest('.slot[data-slot]') : null;
+    $$('.slot[data-slot]').forEach(x => x.classList.toggle('drop-target', x === slot));
   }
 });
 
@@ -819,16 +790,15 @@ window.addEventListener('mouseup', e => {
   if (state.drag) {
     if (dragStarted) {
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      const ch = el && el.closest ? el.closest('.channel') : null;
-      if (ch) assignSample(+ch.dataset.slot, state.drag);
+      const slot = el && el.closest ? el.closest('.slot[data-slot]') : null;
+      if (slot) assignSample(+slot.dataset.slot, state.drag);
       else if (state.dragAlt) toast(`Finder export (demo) · ${state.drag.name}`);
     }
     state.drag = null;
     state.dragAlt = false;
     dragStarted = false;
-    state.dragOpen = false;
     $('#dragGhost').classList.remove('show');
-    $$('.channel').forEach(x => x.classList.remove('drop-target'));
+    $$('.slot[data-slot]').forEach(x => x.classList.remove('drop-target'));
   }
   if (state.pan) {
     state.pan = null;
@@ -937,80 +907,66 @@ function phaseBadge(s) {
   return off ? `${label} ${off}` : label;
 }
 
-function renderChannels() {
-  const anySolo = state.slots.some(s => s.solo);
-  $('#channels').innerHTML = state.slots.map((s, i) => {
+function renderSlots() {
+  const host = $('#slots');
+  if (!host) return;
+  host.innerHTML = state.slots.map((s, i) => {
     const smp = slotSample(s);
-    const color = smp ? CAT[smp.category].color : '#3A4254';
+    const color = smp ? CAT[smp.category].color : '';
     const sel = i === state.selectedSlot ? ' selected' : '';
-    const dim = (anySolo && !s.solo) || s.mute ? ' dim' : '';
+    const stateCls = smp ? ' filled' : ' empty';
     return `
-      <div class="channel${sel}${dim}" data-slot="${i}">
-        <div class="ch-head">
-          <span class="ch-num">${String(i + 1).padStart(2, '0')}</span>
-          <span class="ch-dot" style="background:${color};color:${color}"></span>
+      <div class="slot${stateCls}${sel}" data-slot="${i}"${smp ? ` style="--slot-color:${color}"` : ''} title="${smp ? `${smp.name} · ${CAT[smp.category].short}` : 'Drop a sample here'}">
+        <div class="slot-head">
+          <span class="slot-num">${String(i + 1).padStart(2, '0')}</span>
+          ${smp ? `<span class="slot-dot" style="background:${color};color:${color}"></span>` : ''}
+          ${smp ? `<button class="slot-clear" data-clear="${i}" title="Clear slot">×</button>` : ''}
         </div>
-        <div class="ch-sample">${smp ? smp.name : 'drop sample'}</div>
-        <div class="ch-fader-row">
-          <div class="ch-meter"><i id="meter-${i}" style="height:${meterW(s.level)}%"></i></div>
-          <div class="ch-fader"><input class="vfader" id="fader-${i}" data-slot="${i}" type="range" min="-60" max="6" step="0.1" value="${s.level}"></div>
-        </div>
-        <div class="ch-level" id="slotLevel-${i}">${fmtDb(s.level)}</div>
-        <div class="ch-btns">
-          <button data-act="m" data-slot="${i}" class="${s.mute ? 'on' : ''}" title="Mute">M</button>
-          <button data-act="s" data-slot="${i}" class="${s.solo ? 'on solo' : ''}" title="Solo">S</button>
-          <button data-act="o" data-slot="${i}" class="${s.polarity ? 'on phase' : ''}" title="Polarity">Ø</button>
-        </div>
-        <div class="ch-meta">
-          <span id="slotPt-${i}">${panLabel(s.pan)} · ${s.tune.toFixed(2)}</span>
-          <span class="ch-phase">${phaseBadge(s)}</span>
-        </div>
+        <div class="slot-name">${smp ? smp.name : 'DROP SAMPLE'}</div>
+        <div class="slot-meta">${smp ? `${CAT[smp.category].short} · ${fmtMs(smp.dur)}` : 'ALT + drag'}</div>
       </div>`;
   }).join('');
 }
 
 function selectSlot(i) {
   state.selectedSlot = i;
-  renderChannels();
+  renderSlots();
+  updateInspector();
 }
 
-$('#channels').addEventListener('click', e => {
-  const btn = e.target.closest('button[data-act]');
-  if (btn) {
-    const i = +btn.dataset.slot, s = state.slots[i];
-    if (btn.dataset.act === 'm') s.mute = !s.mute;
-    if (btn.dataset.act === 's') s.solo = !s.solo;
-    if (btn.dataset.act === 'o') {
-      s.polarity = !s.polarity;
-      s.shift = s.polarity ? 180 : 0;
-    }
-    selectSlot(i);
-    syncAllSlotAudio();
-    if ($('.inspector').classList.contains('show')) updateInspector();
+function clearSlot(i) {
+  const s = state.slots[i];
+  s.sampleId = null;
+  s.label = `SLOT ${String(i + 1).padStart(2, '0')}`;
+  s.mute = false; s.solo = false;
+  s.autoPhase = false; s.corr = 0; s.suggestedLag = 0;
+  s.polarity = false; s.shift = 0; s.offset = 0;
+  syncSlotAudio(i);
+  renderSlots();
+  if (state.selectedSlot === i) updateInspector();
+  toast(`SLOT ${String(i + 1).padStart(2, '0')} cleared`);
+}
+
+$('#slots').addEventListener('click', e => {
+  const clear = e.target.closest('[data-clear]');
+  if (clear) {
+    e.preventDefault();
+    e.stopPropagation();
+    clearSlot(+clear.dataset.clear);
     return;
   }
-  const ch = e.target.closest('.channel');
-  if (ch) {
-    const i = +ch.dataset.slot;
-    const insp = $('.inspector');
-    if (insp.classList.contains('show') && state.selectedSlot === i) insp.classList.remove('show');
-    else openSlotEditor(i);
-  }
-});
-
-$('#channels').addEventListener('input', e => {
-  if (!e.target.classList.contains('vfader')) return;
-  const i = +e.target.dataset.slot, s = state.slots[i];
-  s.level = +e.target.value;
-  const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(s.level);
-  const mt = $(`#meter-${i}`); if (mt) mt.style.height = meterW(s.level) + '%';
-  syncSlotAudio(i);
+  const slot = e.target.closest('.slot[data-slot]');
+  if (!slot) return;
+  const i = +slot.dataset.slot;
+  selectSlot(i);
+  if (state.viewMode !== 'trigger') openTriggerPage();
 });
 
 function assignSample(i, smp) {
   const s = state.slots[i];
   s.sampleId = smp.id;
-  s.label = `${CAT[smp.category].short} ${i + 1}`;
+  s.label = `SLOT ${String(i + 1).padStart(2, '0')}`;
+  s.mute = false; s.solo = false;
   s.tune = 0;
   s.adsr = { a: 0, d: 250, s: .8, r: 300 };
   s.start = 0; s.end = 1; s.fadeIn = 0; s.fadeOut = 0;
@@ -1022,7 +978,7 @@ function assignSample(i, smp) {
   selectSlot(i);
   applyAutoPhase(i, state.autoRef, true);
   if (state.selectedSlot === i && $('.inspector').classList.contains('show')) updateInspector();
-  toast(`${smp.name} → TRIGGER ${String(i + 1).padStart(2, '0')} · auto phase ready`);
+  toast(`${smp.name} → SLOT ${String(i + 1).padStart(2, '0')} · auto phase ready`);
 }
 
 // ---------- AUTO PHASE ----------
@@ -1042,7 +998,7 @@ function applyAutoPhase(i, ref, silent) {
   s.autoPhase = true;
   s.corr = +corr.toFixed(2);
   s.autoRef = ref;
-  renderChannels();
+  renderSlots();
   syncAllSlotAudio();
   if (state.selectedSlot === i && $('.inspector').classList.contains('show')) updateInspector();
   if (!silent) {
@@ -1064,11 +1020,12 @@ $('#autoPhaseAll').onclick = () => {
     s.corr = +(0.62 + ((seed * 7) % 34) / 100).toFixed(2);
     s.autoRef = 'INPUT';
   });
-  renderChannels();
+  renderSlots();
   syncAllSlotAudio();
   if ($('.inspector').classList.contains('show')) updateInspector();
   $('#settingsMenu').classList.remove('show');
-  toast(`AUTO PHASE applied to 8 layers · ${state.autoTiming ? 'polarity + timing' : 'polarity only'} · ref INPUT`);
+  const loaded = state.slots.filter(s => slotSample(s)).length;
+  toast(`AUTO PHASE applied to ${loaded} layer${loaded === 1 ? '' : 's'} · ${state.autoTiming ? 'polarity + timing' : 'polarity only'} · ref INPUT`);
 };
 
 // ---------- slot popover ----------
@@ -1158,13 +1115,13 @@ function openSlotPopover(i, anchor, keepPosition) {
     $('#spTuneVal').textContent = `${s.tune.toFixed(2)} st`;
     const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(s.pan)} · ${s.tune.toFixed(2)}`;
   };
-  $('#spM').onclick = () => { s.mute = !s.mute; renderChannels(); openSlotPopover(i, $(`.channel[data-slot="${i}"]`), true); };
-  $('#spS').onclick = () => { s.solo = !s.solo; renderChannels(); openSlotPopover(i, $(`.channel[data-slot="${i}"]`), true); };
+  $('#spM').onclick = () => { s.mute = !s.mute; renderSlots(); openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true); };
+  $('#spS').onclick = () => { s.solo = !s.solo; renderSlots(); openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true); };
   $('#spO').onclick = () => {
     if (s.shift === 180) { s.shift = 0; s.polarity = false; }
     else { s.shift = 180; s.polarity = true; }
-    renderChannels();
-    openSlotPopover(i, $(`.channel[data-slot="${i}"]`), true);
+    renderSlots();
+    openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true);
   };
   $('#spRef').onchange = e => { state.autoRef = e.target.value; };
   $('#spTiming').onclick = () => {
@@ -1172,8 +1129,8 @@ function openSlotPopover(i, anchor, keepPosition) {
     if (!state.autoTiming) {
       s.offset = 0;
     }
-    renderChannels();
-    openSlotPopover(i, $(`.channel[data-slot="${i}"]`), true);
+    renderSlots();
+    openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true);
     toast(state.autoTiming
       ? 'Timing ON · re-analyze to apply the suggested offset'
       : 'Timing OFF · offset reset to 0');
@@ -1190,15 +1147,15 @@ function openSlotPopover(i, anchor, keepPosition) {
     s.offset = +e.target.value;
     s.autoPhase = true;
     $('#spOffsetVal').textContent = `${s.offset.toFixed(1)} ms`;
-    renderChannels();
+    renderSlots();
   };
   $('#spShift').onclick = e => {
     const b = e.target.closest('button[data-shift]');
     if (!b) return;
     s.shift = +b.dataset.shift;
     s.polarity = (s.shift === 180);
-    renderChannels();
-    openSlotPopover(i, $(`.channel[data-slot="${i}"]`), true);
+    renderSlots();
+    openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true);
   };
 }
 
@@ -1206,7 +1163,7 @@ document.addEventListener('mousedown', e => {
   const pop = $('#slotPopover');
   if (!pop || !pop.classList.contains('show')) return;
   if (pop.contains(e.target)) return;
-  if (e.target.closest('.channel')) return;
+  if (e.target.closest('.slot[data-slot]')) return;
   closeSlotPopover();
 });
 
@@ -1389,27 +1346,58 @@ $('#fileView').addEventListener('mousedown', e => {
 });
 
 // single view toggle
+function openTriggerPage() {
+  if (state.viewMode !== 'trigger') state.prevView = state.viewMode;
+  setView('trigger');
+}
+
+function closeTriggerPage() {
+  setView(state.prevView && state.prevView !== 'trigger' ? state.prevView : 'universe');
+}
+
 function setView(mode) {
+  if (mode === 'trigger' && state.viewMode !== 'trigger') state.prevView = state.viewMode;
   state.viewMode = mode;
   const isUni = mode === 'universe';
+  const isFiles = mode === 'files';
+  const isTrigger = mode === 'trigger';
   $('#universeView').classList.toggle('active', isUni);
-  $('#fileView').classList.toggle('active', !isUni);
-  $('#universePanel').classList.toggle('files-mode', !isUni);
+  $('#fileView').classList.toggle('active', isFiles);
+  $('#triggerView').classList.toggle('active', isTrigger);
+  $('#universePanel').classList.toggle('files-mode', isFiles);
+  $('#universePanel').classList.toggle('trigger-mode', isTrigger);
+  $('#triggerTab').classList.toggle('active', isTrigger);
+  $('#triggerTab').title = isTrigger ? 'Back to browser' : 'Open TRIGGER page';
   const vt = $('#viewToggle');
-  vt.title = isUni ? 'File search' : 'Back to universe';
+  vt.title = isFiles ? 'Back to universe' : 'File search';
   vt.setAttribute('aria-label', vt.title);
-  if (isUni) {
+  if (isTrigger) {
+    hideSimilarity();
+    stopScrub();
+    $('#settingsMenu').classList.remove('show');
+    selectSlot(state.selectedSlot);
+    setInspectorTab('env');
     requestAnimationFrame(() => {
-      resizeCanvas();
-      if (state.selectedSample) focusSample(state.selectedSample, true);
+      resizeInput();
+      requestAnimationFrame(() => {
+        resizeInput();
+        startInputLoop();
+      });
     });
   } else {
-    // Switching to the file browser closes the floating TRIGGER / INPUT DETECTOR
-    // and sample editor windows; CSS animates them out instead of hiding instantly.
-    dismissWindows();
-    renderFolderTree(); renderFileList();
+    stopInputLoop();
+    if (isUni) {
+      requestAnimationFrame(() => {
+        resizeCanvas();
+        if (state.selectedSample) focusSample(state.selectedSample, true);
+      });
+    } else if (isFiles) {
+      dismissWindows();
+      renderFolderTree(); renderFileList();
+    }
   }
 }
+$('#triggerBack').onclick = closeTriggerPage;
 $('#viewToggle').onclick = () => setView(state.viewMode === 'universe' ? 'files' : 'universe');
 
 $('#search').addEventListener('focus', hideSimilarity);
@@ -1457,11 +1445,11 @@ function currentSlotSample() { return slotSample(currentSlot()); }
 function updateInspector() {
   const slot = currentSlot();
   const smp = slotSample(slot);
-  $('#selSlotBadge').textContent = `TRIGGER ${String(state.selectedSlot + 1).padStart(2, '0')}`;
+  $('#selSlotBadge').textContent = `SLOT ${String(state.selectedSlot + 1).padStart(2, '0')}`;
   $('#selSampleTitle').textContent = smp ? smp.name : 'empty slot';
   $('#selSampleMeta').textContent = smp
     ? `${CAT[smp.category].short} · ${fmtMs(smp.dur)}`
-    : 'empty';
+    : 'drag a sample from the browser';
 
   $('#slotRef').value = state.autoRef;
   $('#slotTiming').classList.toggle('on', state.autoTiming);
@@ -1673,7 +1661,7 @@ $('#slotRef').onchange = e => { state.autoRef = e.target.value; };
 $('#slotTiming').onclick = () => {
   state.autoTiming = !state.autoTiming;
   if (!state.autoTiming) currentSlot().offset = 0;
-  renderChannels(); updateInspector();
+  renderSlots(); updateInspector();
   toast(state.autoTiming ? 'Timing ON · re-analyze to apply the offset' : 'Timing OFF · offset reset to 0');
 };
 $('#slotAuto').onclick = () => {
@@ -1691,7 +1679,7 @@ $('#slotOffset').addEventListener('input', e => {
   s.offset = +e.target.value;
   s.autoPhase = true;
   $('#slotOffsetVal').textContent = `${s.offset.toFixed(1)} ms`;
-  renderChannels();
+  renderSlots();
   $('#slotResult').innerHTML = `corr <b>${s.corr.toFixed(2)}</b> · ${s.polarity ? '180° inverted' : 'polarity OK'} · offset <b>${s.offset >= 0 ? '+' : ''}${s.offset.toFixed(1)} ms</b>`;
 });
 $('#slotShift').addEventListener('click', e => {
@@ -1700,7 +1688,7 @@ $('#slotShift').addEventListener('click', e => {
   const s = currentSlot();
   s.shift = +b.dataset.shift;
   s.polarity = (s.shift === 180);
-  renderChannels(); syncAllSlotAudio(); updateInspector();
+  renderSlots(); syncAllSlotAudio(); updateInspector();
 });
 
 // ---------- tone / playback ----------
@@ -1942,7 +1930,7 @@ $('#flipAll').onclick = () => {
     s.polarity = !s.polarity;
     s.shift = s.polarity ? 180 : 0;
   });
-  renderChannels();
+  renderSlots();
   syncAllSlotAudio();
   $('#settingsMenu').classList.remove('show');
   toast('Polarity flipped on all 8 slots (180°)');
@@ -2232,31 +2220,23 @@ function playSlot(i, when = 0) {
 function startMeters() {
   if (meterRAF) return;
   const mb = new Uint8Array(masterAnalyser.fftSize);
-  let lastMeter = 0;
+  let lastMeter = 0, lastVu = -1, lastMaster = -1;
   const loop = now => {
     if (audioCtx && now - lastMeter > 40) {
       lastMeter = now;
-      const drawerOpen = document.querySelector('#triggerDrawer').classList.contains('open');
-      if (drawerOpen) {
-        const anySolo = state.slots.some(s => s.solo);
-        state.slots.forEach((s, i) => {
-          const node = slotNodes[i];
-          if (!node) return;
-          node.analyser.getByteTimeDomainData(node.buf);
-          let sum = 0;
-          for (const v of node.buf) { const x = (v - 128) / 128; sum += x * x; }
-          const rms = Math.sqrt(sum / node.buf.length);
-          const active = !s.mute && (!anySolo || s.solo);
-          const h = active ? clamp(rms * 380, 3, 100) : 3;
-          const mt = $(`#meter-${i}`); if (mt) mt.style.height = h + '%';
-        });
-      }
       masterAnalyser.getByteTimeDomainData(mb);
       let sum = 0;
       for (const v of mb) { const x = (v - 128) / 128; sum += x * x; }
       const rms = Math.sqrt(sum / mb.length);
-      const mm = $('#masterMeter'); if (mm) mm.style.width = clamp(rms * 420, 0, 100) + '%';
-      const ov = $('#outVuBar'); if (ov) ov.style.height = clamp(rms * 420, 0, 100) + '%';
+      const vu = Math.round(clamp(rms * 420, 0, 100));
+      if (vu !== lastVu) {
+        lastVu = vu;
+        const ov = $('#outVuBar'); if (ov) ov.style.height = vu + '%';
+      }
+      if (vu !== lastMaster) {
+        lastMaster = vu;
+        const mm = $('#masterMeter'); if (mm) mm.style.width = vu + '%';
+      }
     }
     meterRAF = requestAnimationFrame(loop);
   };
@@ -2456,18 +2436,20 @@ window.__updateInspector = updateInspector;
 
 // ---------- init ----------
 function init() {
-  renderChannels();
+  renderSlots();
   state.slots.forEach((_, i) => applyAutoPhase(i, 'INPUT', true));
   renderFolderTree();
   renderFileList();
+  setInspectorTab('env');
   const first = samples.find(s => s.category === 'Kick') || samples[0];
   selectSample(first);
+  updateInspector();
   requestAnimationFrame(() => {
     resizeCanvas();
     new ResizeObserver(resizeCanvas).observe(wrap);
     resizeInput();
     new ResizeObserver(resizeInput).observe(inputCanvas.parentElement);
-    if (document.querySelector('#triggerDrawer').classList.contains('open')) startInputLoop();
+    if (state.viewMode === 'trigger') startInputLoop();
   });
   loadRealAudio();
 }

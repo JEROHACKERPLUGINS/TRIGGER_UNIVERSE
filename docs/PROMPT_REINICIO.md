@@ -48,7 +48,7 @@ cd /Users/dante/Desktop/TRIGGER_UNIVERSE/prototype
 python3 -m http.server 8765 --bind 127.0.0.1
 ```
 
-Abrir <http://127.0.0.1:8765/>. Para escuchar: abrí **TRIGGER ▲** y clickeá **▶ INPUT** para reproducir `SNARE.cm.wav` y disparar las 8 capas.
+Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá **TRIGGER** (dock inferior izquierdo) y clickeá **▶ INPUT** en INPUT DETECTOR. Los slots arrancan vacíos: volvé al browser y hacé **ALT + drag** de samples a los 8 slots.
 
 ---
 
@@ -60,8 +60,8 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: abrí **TRIGGER ▲** y clickeá 
 - **Envelope:** ADSR real (agregar Decay) + fade in/out + start/end/trim. **Sin time-stretch.**
 - **Fase:** `Ø = 180°` (polaridad). Phase shift separado: 0° / 90° / 180° / 260°.
 - **Auto-phase:** corre al cargar un sample. Por defecto solo polaridad; offset en 0 salvo **TIMING** activo.
-- **Faders:** solo números `01`–`08`, sin nombres de rol.
-- **Editor:** pertenece al sample del fader seleccionado (default TRIGGER 01). Se abre al clickear el fader.
+- **Slots:** dock fijo de 8 recuadros de glass `01`–`08`, vacíos al inicio, sin faders.
+- **Editor:** vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre al clickear un slot.
 - **Tabs del editor:** SAMPLE → ENVELOPE → TONE → SLOT.
 - **Tab SLOT:** solo Auto Phase y sus controles. Sin Level/Pan/Tune/Mute/Solo/Pol.
 - **TRIGGER:** pestaña chica abajo; abre al arrastrar un sample o al clickearla; queda abierto; cierra al clickear el Universe, al seleccionar un sample o desde la cabecera.
@@ -77,10 +77,10 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: abrí **TRIGGER ▲** y clickeá 
 
 - Universe full-bleed con 1000 samples sintéticos + `SNARE.cm.wav` real.
 - Zoom con rueda anclado al cursor; pan con click derecho o Ctrl+click; click izquierdo en vacío solo cierra paneles; hover/snap dentro de un aura de 20 px con tooltip.
-- FILE SEARCH con árbol, búsqueda, preview, audition al click en cada fila y ALT + drag a faders. Al entrar a FILE SEARCH se cierran TRIGGER, INPUT DETECTOR y el editor con animación.
-- Editor flotante con tabs SAMPLE / ENVELOPE / TONE / SLOT.
+- FILE SEARCH con árbol, búsqueda, preview, audition al click en cada fila y ALT + drag a los 8 slots del dock. El dock queda siempre visible.
+- Editor integrado en la página TRIGGER con tabs SAMPLE / ENVELOPE / TONE / SLOT; abre en ENVELOPE (ADSR).
 - Waveform real, start/end, fades, reverse, ADSR, tone/cut, tune, pan, loop.
-- TRIGGER drawer con detector, 8 faders numerados, meters reales, M/S/Ø, badges de fase.
+- TRIGGER como página full-screen con INPUT DETECTOR + editor/ADSR; dock de 8 slots vacíos para arrastrar samples.
 - Settings con AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS, AUDIO/MIDI.
 - SIMILARITY funcional: 33 vecinos por features, flechas y teclas ← →, seguimiento suave del Universe y línea animada.
 - Favoritos persistentes (`localStorage`) con corazón en la barra y en FILE SEARCH, más el nodo FAVORITES.
