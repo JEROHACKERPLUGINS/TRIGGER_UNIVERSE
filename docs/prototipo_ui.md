@@ -33,9 +33,10 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - **Auto Phase** corre automáticamente al cargar un sample en un slot. Por defecto **solo corrige polaridad**; el offset queda en **0** y se muestra como `suggested`. El toggle **TIMING** permite aplicar también el offset medido.
 - El análisis real será GCC-PHAT (ver `docs/auto_phase.md`).
 
-## Slots y faders
+## Trigger Slots y faders
 
-- Ocho recuadros de glass **01 … 08** cuadrados en un dock fijo abajo, centrados y con separación.
+- Ocho **Trigger Slots** de glass **01 … 08**, cuadrados, en un dock fijo abajo, centrados y con separación.
+- Al comenzar un drag, los 8 se encienden con un glow mint suave y un contorno pulsante alrededor de la zona; el slot magnetizado mantiene un glow más fuerte.
 - Arrancan **vacíos**: muestran `+` / `DROP`.
 - Al llenarse muestran dot de categoría, nombre y duración; el × los vacía.
 - En la página TRIGGER, arriba de cada slot hay un **fader vertical largo** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna. Los 4 paneles del editor (SAMPLE, ENVELOPE/ADSR, TONE, SLOT) se ven al mismo tiempo.
@@ -102,12 +103,19 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
 
+## Actualización 21/11 — Trigger Slots invitan al drag
+
+- Los 8 cuadrados pasan a llamarse **Trigger Slots**.
+- Al empezar un drag, **todos** se encienden con un glow mint suave: borde, sombra y tinte.
+- Un **contorno pulsante** rodea toda la zona de Trigger Slots para invitar a soltar.
+- El slot magnetizado mantiene su glow más fuerte; los demás quedan en modo invitación.
+
 ## Actualización 21/11 — barra de nombre XO
 
 - Se eliminó el **tooltip flotante** del Universe.
 - El nombre del sample hovereado aparece centrado en una **barra fina y sutil debajo de los slots**, con fondo oscuro translúcido y texto al 72%.
 - También actualiza al hoverear filas de FILE SEARCH; al salir vuelve al sample seleccionado.
-- En la página TRIGGER la barra sigue debajo de los slots y muestra el slot seleccionado (o `SLOT 0X · EMPTY`).
+- En la página TRIGGER la barra sigue debajo de los slots y muestra el slot seleccionado (o `TRIGGER SLOT 0X · EMPTY`).
 - La similarity bar, el file browser y las herramientas de zoom se corrieron hacia arriba para dejarle lugar.
 
 ## Actualización 21/11 — drag de partículas

@@ -555,7 +555,7 @@ function setSlotNameBar(i) {
   const smp = slotSample(state.slots[i]);
   if (smp) setNameBar(smp, false);
   else {
-    nameBarText.textContent = `SLOT ${String(i + 1).padStart(2, '0')} · EMPTY`;
+    nameBarText.textContent = `TRIGGER SLOT ${String(i + 1).padStart(2, '0')} · EMPTY`;
     nameBar.classList.add('show');
   }
 }
@@ -825,6 +825,7 @@ function startPlanetDrag(smp) {
   dragDepth = smp.z ?? .5;
   dragLabelText = smp.name.toUpperCase();
   dragLabelT0 = performance.now();
+  $('#slotDock').classList.add('invite');
   document.body.classList.add('dragging-planet');
   dragPos = { x: dragOrigin.x, y: dragOrigin.y };
   dragCursor = { ...dragPos };
@@ -837,6 +838,7 @@ function startPlanetDrag(smp) {
 
 function endPlanetDrag() {
   document.body.classList.remove('dragging-planet');
+  $('#slotDock').classList.remove('invite');
   setMagnetSlot(null);
   dragDrop = null;
   dragLabelText = '';
@@ -1290,7 +1292,7 @@ function clearSlot(i) {
     updateInspector();
     if (state.viewMode === 'trigger') setSlotNameBar(i);
   }
-  toast(`SLOT ${String(i + 1).padStart(2, '0')} cleared`);
+  toast(`TRIGGER SLOT ${String(i + 1).padStart(2, '0')} cleared`);
 }
 
 $('#slots').addEventListener('click', e => {
@@ -1354,7 +1356,7 @@ function assignSample(i, smp) {
   selectSlot(i);
   applyAutoPhase(i, state.autoRef, true);
   if (state.selectedSlot === i && $('.inspector').classList.contains('show')) updateInspector();
-  toast(`${smp.name} → SLOT ${String(i + 1).padStart(2, '0')} · auto phase ready`);
+  toast(`${smp.name} → TRIGGER SLOT ${String(i + 1).padStart(2, '0')} · auto phase ready`);
 }
 
 // ---------- AUTO PHASE ----------

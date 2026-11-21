@@ -60,7 +60,7 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá **TRIGGER** (arriba, junt
 - **Envelope:** ADSR real (agregar Decay) + fade in/out + start/end/trim. **Sin time-stretch.**
 - **Fase:** `Ø = 180°` (polaridad). Phase shift separado: 0° / 90° / 180° / 260°.
 - **Auto-phase:** corre al cargar un sample. Por defecto solo polaridad; offset en 0 salvo **TIMING** activo.
-- **Slots:** dock fijo de 8 recuadros de glass `01`–`08`, cuadrados y centrados, vacíos al inicio.
+- **Trigger Slots:** dock fijo de 8 recuadros de glass `01`–`08`, cuadrados y centrados, vacíos al inicio. Al arrancar un drag se encienden con glow mint y contorno.
 - **Faders:** en la página TRIGGER, 8 faders verticales largos (≈116 px) alineados arriba de los slots, con meter, M/S/Ø y nivel.
 - **Editor:** vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre al clickear un slot.
 - **Paneles del editor:** SAMPLE / ENVELOPE / TONE / SLOT, los 4 visibles a la vez en la página TRIGGER.
