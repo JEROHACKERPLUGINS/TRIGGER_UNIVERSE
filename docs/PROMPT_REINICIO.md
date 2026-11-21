@@ -48,7 +48,7 @@ cd /Users/dante/Desktop/TRIGGER_UNIVERSE/prototype
 python3 -m http.server 8765 --bind 127.0.0.1
 ```
 
-Abrir <http://127.0.0.1:8765/> y clickear **▶ AUDIO TEST** (arriba a la derecha). El LED verde indica audio activo. Ese botón reproduce `SNARE.cm.wav` y dispara las 8 capas.
+Abrir <http://127.0.0.1:8765/>. Para escuchar: abrí **TRIGGER ▲** y clickeá **▶ INPUT** para reproducir `SNARE.cm.wav` y disparar las 8 capas.
 
 ---
 
@@ -82,15 +82,18 @@ Abrir <http://127.0.0.1:8765/> y clickear **▶ AUDIO TEST** (arriba a la derech
 - Waveform real, start/end, fades, reverse, ADSR, tone/cut, tune, pan, loop.
 - TRIGGER drawer con detector, 8 faders numerados, meters reales, M/S/Ø, badges de fase.
 - Settings con AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS, AUDIO/MIDI.
-- OUTPUT knob real, AUDIO TEST + LED, Export demo.
+- SIMILARITY funcional: 25 vecinos por features, flechas y teclas ← →, centrado del Universe y línea animada.
+- Favoritos persistentes (`localStorage`) con corazón en la barra y en FILE SEARCH, más el nodo FAVORITES.
+- OUTPUT knob real con mini VU vertical de salida. Export eliminado.
 - Web Audio: 8 capas, snare real como INPUT, primer golpe como sample del slot 01, polaridad 180° real.
 
 Limitaciones del prototipo:
 
 - Auto-phase **simulado** (la UX es real; el análisis no).
+- Similitud basada en features sintéticas, no en análisis tímbrico real.
 - 90° / 260° **no** se aplican al audio; solo 180°.
 - Offsets negativos clampeados a 0 en Web Audio.
-- Velocity no aplicada; Normalize/Export/folder picker son demos.
+- Velocity no aplicada; Normalize/folder picker son demos.
 
 ---
 
@@ -123,7 +126,7 @@ Continuar en el prototipo y en los headers DSP:
 - No reescribas el motor sin una razón técnica documentada.
 - No agregues dependencias ni builds nuevos sin confirmar.
 - Si tocás `prototype/style.css` o `app.js`, subí el `?v=` en `index.html` para evitar cache.
-- Verificá visualmente con el browser y, si hay audio, con **AUDIO TEST**.
+- Verificá visualmente con el browser y, si hay audio, con **TRIGGER → ▶ INPUT**.
 - Documentá las decisiones nuevas en `docs/`.
 
 ---

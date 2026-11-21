@@ -46,15 +46,13 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8765/
 
 ### 3.2 Probar el audio en 10 segundos
 
-1. Click en **▶ AUDIO TEST** (arriba a la derecha).
-2. El LED verde junto al botón se enciende.
+1. Click en **TRIGGER ▲** (abajo).
+2. Click en **▶ INPUT** dentro del drawer.
 3. Se escucha `SNARE.cm.wav` y se disparan las 8 capas.
-4. El meter MASTER del drawer TRIGGER se mueve.
-5. Para verlo: click en la pestaña **TRIGGER ▲** (abajo).
+4. El meter MASTER del drawer y el mini VU de OUTPUT se mueven.
 
 Si no se escucha nada:
 
-- Verificar que el LED esté verde.
 - Hacer click dentro de la página (política de autoplay de Chromium).
 - Revisar la consola del browser (`tools.browser.console`).
 - Confirmar que `prototype/samples/SNARE.cm.wav` existe.
@@ -93,7 +91,7 @@ window.__setTriggerOpen(true)
 | 13 | Universe | Full-bleed, nube de puntos 3D abstracta, sin ejes de frecuencia/ms. Search arriba, similitud abajo |
 | 14 | FILE SEARCH | Árbol tipo Finder con root en la carpeta elegida por el usuario. Subcarpetas reales. Samples reales primero |
 | 15 | OUTPUT | Knob arriba a la derecha. Settings funcional. AUTO PHASE ALL vive en Settings |
-| 16 | Export | Botón presente; en el prototipo es solo un toast demo |
+| 16 | Export | **Eliminado de la UI** por decisión del usuario (20/11); el export real no está implementado |
 | 17 | XO | Solo se usó como referencia funcional/UX. **No se copió código, assets ni diseño propietario** |
 
 ### 4.1 Hallazgos de XO (referencia funcional)
@@ -203,7 +201,8 @@ Estética: glassmorphism, fondo aurora, puntos saturados con halo aditivo y bril
 
 ### 7.1 Layout
 
-- **La app es el Universe**: logo, nombre de sesión, FILE SEARCH, OUTPUT, AUDIO TEST, Settings y Export flotan dentro del mapa.
+- **La app es el Universe**: el canvas ocupa el 100% de la ventana, sin padding, borde, radio, fondo de panel ni sombra. El fondo aurora del `body` se ve a través del canvas y los puntos tienen un overscan de 36 px, así que sangran fuera del viewport. No se percibe el final del mapa.
+- **La UI flota** sobre ese mapa. Arriba: logo y título **TRIGGER UNIVERSE** centrados; search centrado con toggle folder/universo; Settings y **OUTPUT + mini VU vertical** al extremo derecho. Abajo: similarity, TRIGGER y zoom.
 - **Search** centrado arriba, sin contorno de panel.
 - **Similarity bar** flotante abajo, estilo XO.
 - **TRIGGER** es una pestaña mínima abajo (`TRIGGER ▲`); al abrirse es un drawer inferior.
@@ -220,15 +219,17 @@ Estética: glassmorphism, fondo aurora, puntos saturados con halo aditivo y bril
 - **Click izquierdo en vacío:** pan.
 - Botones `−`, `+`, `⤢` para zoom/reset.
 - Click en el Universo cierra TRIGGER, editor y Settings.
+- **SIMILARITY**: al seleccionar un sample se calculan 25 vecinos por categoría, duración (log), brightness (log) y druminess, con una separación visual mínima para no caer en casi-duplicados. Las flechas `◂ ▸` (o `← →`) recorren la lista; el mapa se centra en cada sample y traza una **línea animada** desde el anterior. Al volver desde FILE SEARCH, el Universe se centra en el sample seleccionado.
 
 ### 7.3 FILE SEARCH
 
 - Alterna Universe ↔ File Search con el botón superior.
-- Árbol tipo Finder con root `ALL SAMPLES` → `SAMPLES FOLDER` → subcarpetas (`Kicks`, `Snares`, `Hats`, `Percussion`, …).
+- **Rediseño 20/11:** árbol tipo Finder con iconos de carpeta, filas de 24 px y tipografía 10.5 px. Root `ALL SAMPLES` → `SAMPLES FOLDER` → subcarpetas (`Kicks`, `Snares`, `Hats`, `Percussion`, …).
 - En el prototipo los paths son sintéticos; el sample real aparece primero.
-- Columnas: **NAME, CAT, LEN, BRIGHT**.
-- Búsqueda global por texto (nombre, categoría, carpeta, path).
-- Preview inferior con **▶ Audition**.
+- Lista con filas altas (11.5 px): solo **nombre + duración + punto de categoría**, sin columnas CAT/BRIGHT. Path con contador a la derecha.
+- Búsqueda global por texto (nombre, categoría, carpeta, path), flotante arriba; la lista arranca debajo para no tapar la cabecera.
+- **FAVORITES** es un nodo fijo arriba del árbol. El corazón de cada fila (y el de la barra de similitud) agrega/quita favoritos, que se persisten en `localStorage`.
+- Preview inferior con categoría, duración y **▶ Audition**.
 - Drag de una fila a un fader de TRIGGER.
 - Hasta 1200 filas visibles; contador real.
 - `CHANGE` muestra un toast demo: en el plugin abrirá selector nativo de carpeta.
@@ -276,16 +277,14 @@ Tabs:
 - Click en un canal abre el editor de ese slot.
 - Drag & drop de samples a cualquier canal.
 
-### 7.6 Settings / OUTPUT / Export
+### 7.6 Settings / OUTPUT
 
-- **OUTPUT knob** arriba a la derecha: arrastrar verticalmente, −24…+6 dB, aplica al master gain real.
+- **OUTPUT knob** al extremo derecho: arrastrar verticalmente, −24…+6 dB, aplica al master gain real. Al lado tiene un **mini VU vertical** de salida, alimentado por el analizador master.
 - **Settings**: AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS…, AUDIO / MIDI…
   - AUTO PHASE ALL re-analiza las 8 capas.
   - FLIP ALL invierte polaridad en los 8 slots.
   - Los otros dos son toasts demo.
-- **▶ AUDIO TEST**: reanuda el contexto y dispara el snare real por las 8 capas.
-- **LED de audio**: verde cuando el `AudioContext` está `running`.
-- **Export**: toast demo (`AU / VST3`).
+- **AUDIO TEST y LED eliminados** de la barra: el audio se inicia con **▶ INPUT** o con Audition.
 
 ---
 
@@ -333,7 +332,8 @@ No es un solo hit: es una **secuencia de snare** con 11 golpes principales, ghos
 - El **auto-phase es simulado**: lag/polaridad/confianza determinísticos por `sample.id`. La UX es real; el análisis no.
 - **Offsets negativos no se aplican** en Web Audio: `scheduleSlot` usa `Math.max(0, s.offset)`. El rango de UI es −5…+50 ms.
 - **Velocity** no se usa en el preview.
-- **Normalize** y **Export** son toasts demo.
+- **Normalize** es un toast demo.
+- **Similitud**: usa features sintéticas (categoría, duración, brightness, druminess), no análisis tímbrico del audio. La línea/centrado son efectos de navegación.
 - **ONE SHOT / GATE** se guarda pero el scheduler no distingue el modo gate.
 - El motor C++ no se puede compilar como plugin (faltan SDKs); los headers DSP sí se compilan y testean.
 
@@ -465,15 +465,15 @@ AAX **no** se necesita.
 - Offsets negativos clampeados a 0.
 - Velocity no aplicada.
 - Gate/one-shot no diferenciados en el scheduler.
-- Normalize/Export/folder picker/Audio-MIDI son demos.
+- Normalize/folder picker/Audio-MIDI son demos.
 - Datos sintéticos: 1000 samples; el árbol no refleja una carpeta real.
-- Cache busting manual (`?v=3` en `index.html`); si se edita CSS/JS y no se ve el cambio, subir la versión.
+- Cache busting manual (`?v=N` en `index.html`); si se edita CSS/JS y no se ve el cambio, subir la versión.
 
 ### 11.3 Producto
 
 - Persistencia de biblioteca todavía no implementada.
 - Proyección 2D del Universe todavía no usa features tímbricas reales; usa duración y brightness.
-- Similitud todavía no es tímbrica.
+- La similitud del prototipo usa features sintéticas; falta similitud tímbrica real (MFCC, centroide, etc.) sobre audio analizado.
 - No hay presets ni automatización.
 
 ---
@@ -574,7 +574,11 @@ AAX **no** se necesita.
 5. **Pestaña TRIGGER no se ocultaba**: estaba fuera de `.app`; se movió adentro.
 6. **Hover con carreras**: reemplazado por apertura al arrastrar/tab y cierre al clickear el Universe.
 7. **Editor**: tabs reordenados; SLOT solo auto-phase; 180° recíproco con badge y Ø; badges 90°/180°/260°.
-8. **AUDIO TEST**: se agregó botón + LED de estado; el CSS/JS se sirve con `?v=3` para evitar cache viejo. Si se clickea antes de que termine la carga del WAV, espera hasta 5 s y arranca solo.
+8. **AUDIO TEST**: se agregó botón + LED de estado; el CSS/JS se sirve con `?v=` para evitar cache viejo. Si se clickea antes de que termine la carga del WAV, espera hasta 5 s y arranca solo.
+9. **Layout roto en ventanas angostas**: la media query de 1040 px conservaba reglas del layout viejo (`.app` con tres filas y `.workspace` con tres columnas); el Universe quedaba aplastado a 52 px. Se eliminaron esas dos reglas.
+10. **FILE SEARCH rediseñado**: menos datos por fila, tipografía mayor y jerarquía tipo Finder. Ver 7.3.
+11. **Barra superior rediseñada**: título centrado, search con toggle folder/universo, OUTPUT + mini VU al extremo derecho y AUDIO TEST eliminado. Ver 7.1 y 7.6.
+12. **SIMILARITY funcional + FAVORITES**: navegación por 25 vecinos, centrado y línea animada, teclas ← →, favoritos persistentes y nodo FAVORITES en FILE SEARCH. Ver 7.2 y 7.3.
 
 ---
 

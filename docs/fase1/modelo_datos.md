@@ -124,6 +124,16 @@ CREATE INDEX idx_features_centroid ON features(centroid_hz);
 - **Streaming a la UI:** mandar lotes con `OnIdle`, nunca un evento por archivo.
 - **Similitud (Fase 2):** normalizar features y usar distancia ponderada; no depender de la posición X/Y.
 
+### 3.1 Recordatorio 21/11 — similitud asistida por IA
+
+Dejar como mejora futura, **no como dependencia de la Fase 1**:
+
+- Evaluar **embeddings de audio** (CLAP, OpenL3, PANNs, MERT o un servicio externo) para comparar samples por similitud perceptual, no solo por features DSP.
+- Comparar ese ranking contra la distancia clásica (centroide, MFCC, duración, druminess) y medir si mejora la exploración.
+- Si se usa un servicio en la nube: pedir consentimiento, no enviar samples del usuario por defecto y ofrecer fallback 100 % local.
+- Cachear embeddings junto a las features; el análisis debe correr **fuera del audio thread**.
+- Revisar licencia del modelo/servicio antes de distribuirlo con el plugin.
+
 ## 4. Módulos C++ nuevos (bajo `engine/DrumReplacer/`)
 
 | Módulo | Responsabilidad |

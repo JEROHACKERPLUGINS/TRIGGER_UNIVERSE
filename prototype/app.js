@@ -140,6 +140,17 @@ function buildSamples() {
 
 const samples = buildSamples();
 
+const FAV_KEY = 'tu:favorites:v1';
+function loadFavoriteIds() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FAV_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(id => Number.isFinite(id)) : [];
+  } catch (e) { return []; }
+}
+function saveFavorites() {
+  try { localStorage.setItem(FAV_KEY, JSON.stringify([...state.favorites])); } catch (e) {}
+}
+
 // ---------- state ----------
 const state = {
   samples,
@@ -147,6 +158,9 @@ const state = {
   selectedSlot: 0,
   hover: null,
   selectedSample: null,
+  favorites: new Set(loadFavoriteIds()),
+  sim: { baseId: null, list: [], index: 0 },
+  travel: null,
   viewMode: 'universe',
   fileFolder: 'ALL',
   expanded: new Set(['ALL', 'SAMPLES FOLDER', 'SAMPLES FOLDER/Kicks', 'SAMPLES FOLDER/Snares', 'SAMPLES FOLDER/Hats', 'SAMPLES FOLDER/Percussion']),
@@ -219,14 +233,15 @@ samples.push(realSample);
 const slotSample = slot => state.samples.find(s => s.id === slot.sampleId) || null;
 
 // ---------- browser selection + slot editor ----------
-function selectSample(smp, closeTrigger = true) {
+function selectSample(smp, closeTrigger = true, opts = {}) {
   if (!smp) return;
   state.selectedSample = smp;
-  $('#filePreviewName').textContent = `${smp.name} · ${CAT[smp.category].short} · ${fmtMs(smp.dur)}`;
   if (closeTrigger) {
     setTriggerOpen(false);
     $('.inspector').classList.remove('show');
   }
+  if (!opts.keepSim) resetSimilarity(smp);
+  else updateSimilarityUI();
   drawUniverse();
   renderFileList();
 }
@@ -269,7 +284,8 @@ function resizeCanvas() {
   canvas.style.height = canvasH + 'px';
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  plot = { x: 12, y: 12, w: Math.max(20, canvasW - 24), h: Math.max(20, canvasH - 24) };
+  const bleed = 36;
+  plot = { x: -bleed, y: -bleed, w: canvasW + bleed * 2, h: canvasH + bleed * 2 };
   drawUniverse();
 }
 
@@ -355,15 +371,41 @@ function drawUniverse() {
     }
     ctx.globalAlpha = 1;
   }
-  ctx.restore();
 
-  ctx.strokeStyle = 'rgba(255,255,255,.045)';
-  ctx.strokeRect(px + .5, py + .5, pw - 1, ph - 1);
-
-  if (state.viewMode === 'universe') {
-    $('#count').innerHTML = `<b>${vis}</b> of ${state.samples.length} (${Math.round(vis / state.samples.length * 100)}%)`;
+  if (state.travel) {
+    const { from, to, progress } = state.travel;
+    const a = toPx(from), b = toPx(to);
+    const ex = lerp(a.x, b.x, progress), ey = lerp(a.y, b.y, progress);
+    const color = CAT[to.category].color;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.setLineDash([3, 6]);
+    ctx.strokeStyle = 'rgba(255,255,255,.24)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.setLineDash([]);
+    const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+    grad.addColorStop(0, 'rgba(45,226,197,0)');
+    grad.addColorStop(1, color);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(ex, ey); ctx.stroke();
+    for (let i = 1; i <= 4; i++) {
+      const t = Math.max(0, progress - i * .05);
+      const tx = lerp(a.x, b.x, t), ty = lerp(a.y, b.y, t);
+      ctx.globalAlpha = Math.max(.08, .48 - i * .1);
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(tx, ty, Math.max(1, 3.6 - i * .6), 0, 6.2832); ctx.fill();
+    }
+    ctx.fillStyle = color;
+    ctx.globalAlpha = .45;
+    ctx.beginPath(); ctx.arc(ex, ey, 8, 0, 6.2832); ctx.fill();
+    ctx.globalAlpha = .95;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(ex, ey, 2.4, 0, 6.2832); ctx.fill();
+    ctx.restore();
   }
-  updateSimDots();
+  ctx.restore();
 }
 
 function pickSample(mx, my) {
@@ -392,9 +434,166 @@ function showTooltip(s, e) {
   tooltip.classList.add('show');
 }
 
-function updateSimDots() {
-  const list = visible().slice(0, 52);
-  $('#simDots').innerHTML = list.map(s => `<i style="background:${CAT[s.category].color}"></i>`).join('');
+// ---------- similarity ----------
+function sampleDistance(a, b) {
+  const cat = a.category === b.category ? 0 : 2.4;
+  const dur = Math.abs(Math.log(a.dur) - Math.log(b.dur)) * 1.15;
+  const bright = Math.abs(Math.log(a.bright) - Math.log(b.bright)) * .75;
+  const drum = Math.abs(a.drum - b.drum) * 1.8;
+  return cat + dur + bright + drum;
+}
+
+function similarSamples(smp, limit = 24) {
+  const ranked = state.samples
+    .filter(s => s.id !== smp.id)
+    .map(s => ({ s, d: sampleDistance(smp, s) }))
+    .sort((a, b) => a.d - b.d)
+    .map(x => x.s);
+  // Keep the closest timbres, but enforce a minimum visual spread so the
+  // arrows move through the cloud instead of landing on near-duplicates.
+  const picked = [];
+  const anchors = [smp];
+  const minD = .05;
+  for (const s of ranked) {
+    if (anchors.every(a => Math.hypot(a.x - s.x, a.y - s.y) >= minD)) {
+      picked.push(s);
+      anchors.push(s);
+      if (picked.length >= limit) break;
+    }
+  }
+  if (picked.length < limit) {
+    for (const s of ranked) {
+      if (!picked.includes(s)) picked.push(s);
+      if (picked.length >= limit) break;
+    }
+  }
+  return picked.slice(0, limit);
+}
+
+function resetSimilarity(smp) {
+  if (!smp) {
+    state.sim = { baseId: null, list: [], index: 0 };
+    updateSimilarityUI();
+    return;
+  }
+  const near = similarSamples(smp, 24);
+  state.sim = { baseId: smp.id, list: [smp.id, ...near.map(s => s.id)], index: 0 };
+  updateSimilarityUI();
+}
+
+function updateSimilarityUI() {
+  const sel = state.selectedSample;
+  const dots = $('#simDots');
+  const count = $('#count');
+  const prev = $('#simPrev'), next = $('#simNext');
+  const target = $('#simTarget');
+  const fav = $('#simFav');
+  if (!sel || !state.sim.list.length) {
+    dots.innerHTML = '';
+    count.textContent = sel ? sel.name : 'Select a sample';
+    if (prev) prev.disabled = true;
+    if (next) next.disabled = true;
+    if (target) { target.style.background = 'var(--muted-2)'; target.style.color = 'var(--muted-2)'; }
+    if (fav) fav.classList.remove('on');
+    return;
+  }
+  const curId = state.sim.list[state.sim.index];
+  const cur = state.samples.find(s => s.id === curId) || sel;
+  dots.innerHTML = state.sim.list.map((id, i) => {
+    const s = state.samples.find(x => x.id === id);
+    if (!s) return '';
+    const color = CAT[s.category].color;
+    return `<i class="${i === state.sim.index ? 'active' : ''}" data-id="${id}" data-index="${i}" style="background:${color};color:${color}" title="${s.name}"></i>`;
+  }).join('');
+  count.textContent = `${state.sim.index + 1} / ${state.sim.list.length} · ${cur.name}`;
+  if (prev) prev.disabled = state.sim.list.length < 2;
+  if (next) next.disabled = state.sim.list.length < 2;
+  const c = CAT[cur.category];
+  if (target) { target.style.background = c.color; target.style.color = c.color; }
+  if (fav) {
+    const on = state.favorites.has(cur.id);
+    fav.classList.toggle('on', on);
+    fav.title = on ? 'Remove favorite' : 'Add favorite';
+  }
+}
+
+function toggleFavorite(id) {
+  const smp = state.samples.find(s => s.id === id);
+  if (!smp) return;
+  if (state.favorites.has(id)) state.favorites.delete(id);
+  else state.favorites.add(id);
+  saveFavorites();
+  updateSimilarityUI();
+  renderFolderTree();
+  if (state.viewMode === 'files') renderFileList();
+  toast(state.favorites.has(id) ? `♥ ${smp.name}` : `Removed ${smp.name}`);
+}
+
+function navigateSimilar(dir) {
+  const list = state.sim.list;
+  if (list.length < 2) return;
+  const from = state.selectedSample;
+  const idx = (state.sim.index + dir + list.length) % list.length;
+  const smp = state.samples.find(s => s.id === list[idx]);
+  if (!smp) return;
+  state.sim.index = idx;
+  selectSample(smp, true, { keepSim: true });
+  travelTo(smp, from);
+}
+
+// ---------- universe focus / travel ----------
+let viewAnimRAF = null;
+
+function centerPanFor(s) {
+  const depth = s.z ?? .5;
+  const scale = .84 + depth * .32;
+  return {
+    x: -(s.x - .5) * plot.w * state.view.zoom * scale,
+    y: (s.y - .5) * plot.h * state.view.zoom * scale,
+  };
+}
+
+function animateViewTo(to, from = null, duration = 520) {
+  cancelAnimationFrame(viewAnimRAF);
+  const startPan = { x: state.view.panX, y: state.view.panY };
+  const targetPan = centerPanFor(to);
+  const t0 = performance.now();
+  state.travel = from ? { from, to, progress: 0 } : null;
+  const step = now => {
+    const k = clamp((now - t0) / duration, 0, 1);
+    const e = 1 - Math.pow(1 - k, 3);
+    state.view.panX = lerp(startPan.x, targetPan.x, e);
+    state.view.panY = lerp(startPan.y, targetPan.y, e);
+    if (state.travel) state.travel.progress = e;
+    drawUniverse();
+    if (k < 1) viewAnimRAF = requestAnimationFrame(step);
+    else { state.travel = null; drawUniverse(); }
+  };
+  viewAnimRAF = requestAnimationFrame(step);
+}
+
+function travelTo(to, from) {
+  if (!to) return;
+  if (!from || from.id === to.id) { focusSample(to, true); return; }
+  animateViewTo(to, from, 620);
+}
+
+function focusSample(smp, animate = true) {
+  if (!smp) {
+    cancelAnimationFrame(viewAnimRAF);
+    state.travel = null;
+    state.view.panX = 0;
+    state.view.panY = 0;
+    drawUniverse();
+    return;
+  }
+  if (animate) animateViewTo(smp, null, 420);
+  else {
+    const p = centerPanFor(smp);
+    state.view.panX = p.x;
+    state.view.panY = p.y;
+    drawUniverse();
+  }
 }
 
 // ---------- drag & drop ----------
@@ -839,9 +1038,10 @@ function renderTreeNode(node, depth) {
   const hasChildren = node.children.size > 0;
   const expanded = state.expanded.has(node.path);
   const active = state.fileFolder === node.path ? ' active' : '';
-  const pad = 4 + depth * 9;
+  const pad = 8 + depth * 12;
   let html = `<div class="tree-node${active}" data-path="${node.path}" style="padding-left:${pad}px">
     <span class="tree-toggle">${hasChildren ? (expanded ? '▾' : '▸') : ''}</span>
+    <span class="tree-icon"></span>
     <span class="tree-label">${node.name}</span>
     <span class="tree-count">${node.count}</span>
   </div>`;
@@ -854,7 +1054,15 @@ function renderTreeNode(node, depth) {
 
 function renderFolderTree() {
   const tree = buildTree();
-  $('#folderTree').innerHTML = renderTreeNode(tree, 0);
+  const favCount = state.samples.filter(s => state.favorites.has(s.id)).length;
+  const favActive = state.fileFolder === 'FAV' ? ' active' : '';
+  const fav = `<div class="tree-node fav-node${favActive}" data-path="FAV" style="padding-left:8px">
+    <span class="tree-toggle"></span>
+    <span class="tree-icon heart">♥</span>
+    <span class="tree-label">FAVORITES</span>
+    <span class="tree-count">${favCount}</span>
+  </div>`;
+  $('#folderTree').innerHTML = fav + renderTreeNode(tree, 0);
 }
 $('#folderTree').addEventListener('click', e => {
   const node = e.target.closest('.tree-node');
@@ -872,8 +1080,11 @@ $('#addFolder').onclick = () => {
 };
 
 function fileList() {
+  const favMode = state.fileFolder === 'FAV';
   let list = state.samples.filter(s => {
-    if (state.fileFolder !== 'ALL') {
+    if (favMode) {
+      if (!state.favorites.has(s.id)) return false;
+    } else if (state.fileFolder !== 'ALL') {
       if (!(s.path === state.fileFolder || s.path.startsWith(state.fileFolder + '/'))) return false;
     }
     if (state.filters.search) {
@@ -886,32 +1097,88 @@ function fileList() {
   return list;
 }
 
+function syncFilePreview() {
+  const sel = state.selectedSample;
+  const inList = sel && fileList().some(s => s.id === sel.id);
+  const name = $('#filePreviewName');
+  const dot = $('#filePreviewDot');
+  if (!inList) {
+    if (name) name.textContent = 'Select a file';
+    if (dot) { dot.style.background = 'var(--muted-2)'; dot.style.color = 'var(--muted-2)'; }
+    return;
+  }
+  const cat = CAT[sel.category];
+  if (name) name.textContent = `${sel.name} · ${cat.short} · ${fmtMs(sel.dur)}`;
+  if (dot) { dot.style.background = cat.color; dot.style.color = cat.color; }
+}
+
 function renderFileList() {
   const list = fileList();
   const max = 1200;
   const shown = list.slice(0, max);
   $('#fileList').innerHTML = shown.map(s => {
     const sel = state.selectedSample && state.selectedSample.id === s.id ? ' selected' : '';
+    const color = CAT[s.category].color;
+    const fav = state.favorites.has(s.id);
     return `<div class="file-row${sel}" data-id="${s.id}">
-      <span class="fn">${s.name}</span>
-      <span class="cat" style="color:${CAT[s.category].color}">${CAT[s.category].short}</span>
-      <span class="num">${Math.round(s.dur)}ms</span>
-      <span class="num">${fmtHz(s.bright)}</span>
+      <span class="fn"><i class="fdot" style="background:${color};color:${color}"></i><span>${s.name}</span></span>
+      <span class="num">${fmtMs(s.dur)}</span>
+      <button class="fav-btn${fav ? ' on' : ''}" data-id="${s.id}" title="${fav ? 'Remove favorite' : 'Add favorite'}">♥</button>
     </div>`;
   }).join('') + (list.length > max ? `<div class="file-row"><span class="fn">showing ${max} of ${list.length}…</span></div>` : '');
-  const path = state.fileFolder === 'ALL' ? 'ALL SAMPLES' : state.fileFolder.split('/').join('  ›  ');
-  $('#filePath').textContent = `${path}  ·  ${list.length} files`;
-  if (state.viewMode === 'files') {
-    $('#count').innerHTML = `<b>${list.length}</b> files`;
-    $('#bottomMode').textContent = 'FILES';
+  if (!list.length) {
+    const msg = state.fileFolder === 'FAV'
+      ? 'No favorites yet. Tap ♥ on a sample.'
+      : 'No samples match this search.';
+    $('#fileList').innerHTML = `<div class="file-row"><span class="fn">${msg}</span></div>`;
   }
+  const path = state.fileFolder === 'FAV' ? 'FAVORITES'
+    : state.fileFolder === 'ALL' ? 'ALL SAMPLES'
+    : state.fileFolder.split('/').join('  ›  ');
+  $('#filePath').textContent = path;
+  $('#fileCount').textContent = `${list.length} file${list.length === 1 ? '' : 's'}`;
+  syncFilePreview();
 }
 
 $('#fileList').addEventListener('mousedown', e => {
+  if (e.target.closest('.fav-btn')) return;
   const row = e.target.closest('.file-row[data-id]');
   if (!row) return;
   const smp = state.samples.find(s => s.id === +row.dataset.id);
   if (smp) beginDrag(smp, e);
+});
+$('#fileList').addEventListener('click', e => {
+  const btn = e.target.closest('.fav-btn[data-id]');
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  toggleFavorite(+btn.dataset.id);
+});
+
+$('#simPrev').onclick = () => navigateSimilar(-1);
+$('#simNext').onclick = () => navigateSimilar(1);
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (state.viewMode !== 'universe') return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); navigateSimilar(-1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); navigateSimilar(1); }
+});
+$('#simFav').onclick = () => {
+  if (state.selectedSample) toggleFavorite(state.selectedSample.id);
+};
+$('#simDots').addEventListener('click', e => {
+  const dot = e.target.closest('i[data-index]');
+  if (!dot) return;
+  const idx = +dot.dataset.index;
+  const id = state.sim.list[idx];
+  const smp = state.samples.find(s => s.id === id);
+  if (!smp) return;
+  const from = state.selectedSample;
+  state.sim.index = idx;
+  selectSample(smp, true, { keepSim: true });
+  travelTo(smp, from);
 });
 $('#fileAudition').onclick = () => {
   const smp = state.selectedSample;
@@ -940,12 +1207,16 @@ function setView(mode) {
   $('#universeView').classList.toggle('active', isUni);
   $('#fileView').classList.toggle('active', !isUni);
   $('#universePanel').classList.toggle('files-mode', !isUni);
-  $('#viewToggleLabel').textContent = isUni ? 'FILE SEARCH' : 'UNIVERSE';
+  const vt = $('#viewToggle');
+  vt.title = isUni ? 'File search' : 'Back to universe';
+  vt.setAttribute('aria-label', vt.title);
   if (isUni) {
-    $('#bottomMode').textContent = 'HISTORY';
-    requestAnimationFrame(() => { resizeCanvas(); drawUniverse(); });
+    requestAnimationFrame(() => {
+      resizeCanvas();
+      if (state.selectedSample) focusSample(state.selectedSample, true);
+      else focusSample(null, false);
+    });
   } else {
-    $('#bottomMode').textContent = 'FILES';
     renderFolderTree(); renderFileList();
   }
 }
@@ -1519,42 +1790,6 @@ document.addEventListener('mousedown', e => {
   menu.classList.remove('show');
 });
 
-$('#exportBtn').onclick = () => toast('Export: AU / VST3 (demo)');
-
-// One-click smoke test: resume audio and fire the real snare through the 8 layers.
-function updateAudioLed() {
-  const led = $('#audioLed');
-  if (led) led.classList.toggle('on', !!audioCtx && audioCtx.state === 'running');
-}
-function waitForInput(ms = 5000) {
-  if (realInputBuffer) return Promise.resolve(true);
-  return new Promise(resolve => {
-    const t0 = performance.now();
-    const poll = () => {
-      if (realInputBuffer) return resolve(true);
-      if (performance.now() - t0 > ms) return resolve(false);
-      setTimeout(poll, 80);
-    };
-    poll();
-  });
-}
-$('#demoBtn').onclick = () => {
-  const ctx = ensureAudio();
-  if (!ctx) { toast('Web Audio not available'); return; }
-  const go = async () => {
-    updateAudioLed();
-    if (!realInputBuffer) {
-      toast('Loading SNARE.cm…');
-      const ready = await waitForInput();
-      if (!ready) { toast('SNARE.cm not available'); return; }
-    }
-    if (inputPlaying) stopInput();
-    playInput();
-    toast('AUDIO TEST · SNARE.cm → 8 layers');
-  };
-  if (ctx.state === 'suspended') ctx.resume().then(go); else go();
-};
-
 // ---------- toast ----------
 let toastTimer = null;
 function toast(msg) {
@@ -1571,13 +1806,11 @@ const dbToAmp = db => Math.pow(10, db / 20);
 function ensureAudio() {
   if (audioCtx) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    updateAudioLed();
     return audioCtx;
   }
   const Ctx = window.AudioContext || window.webkitAudioContext;
   if (!Ctx) return null;
   audioCtx = new Ctx();
-  audioCtx.onstatechange = updateAudioLed;
   masterGain = audioCtx.createGain();
   masterGain.gain.value = dbToAmp(masterOut);
   masterAnalyser = audioCtx.createAnalyser();
@@ -1600,7 +1833,6 @@ function ensureAudio() {
   });
   syncAllSlotAudio();
   startMeters();
-  updateAudioLed();
   return audioCtx;
 }
 
@@ -1763,6 +1995,7 @@ function startMeters() {
       for (const v of mb) { const x = (v - 128) / 128; sum += x * x; }
       const rms = Math.sqrt(sum / mb.length);
       const mm = $('#masterMeter'); if (mm) mm.style.width = clamp(rms * 420, 0, 100) + '%';
+      const ov = $('#outVuBar'); if (ov) ov.style.height = clamp(rms * 420, 0, 100) + '%';
     }
     meterRAF = requestAnimationFrame(loop);
   };

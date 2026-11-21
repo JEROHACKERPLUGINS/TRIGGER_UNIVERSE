@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
 <div class="app">
@@ -28,30 +28,19 @@
             </svg>
             <div class="brand-text"><b>TRIGGER</b><span>UNIVERSE</span></div>
           </div>
-          <div class="project">
-            <span class="project-name">INIT — Untitled Kit</span>
-            <span class="pill">UI PROTOTYPE</span>
-          </div>
           <div class="top-actions">
-            <button class="view-toggle" id="viewToggle" title="Toggle Universe / File Search">
-              <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg>
-              <span id="viewToggleLabel">FILE SEARCH</span>
-            </button>
+            <button class="btn ghost" id="settingsBtn">Settings</button>
             <div class="top-master">
               <div class="top-knob" id="masterOutKnob" title="Master output"><div class="knob-ind"></div></div>
               <span>OUTPUT<b id="masterOutVal">+0.0 dB</b></span>
+              <div class="out-vu" id="outVu" title="Output level"><i id="outVuBar"></i></div>
             </div>
-            <span class="audio-led" id="audioLed" title="Audio engine"></span>
-            <button class="btn ghost" id="demoBtn">▶ AUDIO TEST</button>
-            <button class="btn ghost" id="settingsBtn">Settings</button>
-            <button class="btn primary" id="exportBtn">Export</button>
           </div>
         </div>
         <div class="view active" id="universeView">
           <div class="canvas-wrap">
             <canvas id="universe"></canvas>
             <div class="tooltip" id="tooltip"></div>
-            <div class="canvas-caption">SAMPLE UNIVERSE</div>
             <div class="map-tools">
               <button class="icon-btn" id="zoomOut">−</button>
               <button class="icon-btn" id="zoomIn">+</button>
@@ -67,13 +56,16 @@
               <div class="folder-tree" id="folderTree"></div>
             </div>
             <div class="file-main">
-              <div class="file-path" id="filePath">ALL SAMPLES</div>
-              <div class="file-head"><span>NAME</span><span>CAT</span><span>LEN</span><span>BRIGHT</span></div>
+              <div class="file-path">
+                <span id="filePath">ALL SAMPLES</span>
+                <b id="fileCount">0 files</b>
+              </div>
               <div class="file-list" id="fileList"></div>
               <div class="file-preview">
+                <span class="fp-dot" id="filePreviewDot"></span>
                 <span class="fp-name" id="filePreviewName">Select a file</span>
+                <span class="fp-hint">drag to TRIGGER ↓</span>
                 <button class="chip" id="fileAudition">▶ Audition</button>
-                <span class="fp-hint">drag row to TRIGGER ↓</span>
               </div>
             </div>
           </div>
@@ -83,19 +75,21 @@
           <div class="search-box">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
             <input id="search" placeholder="Search" autocomplete="off" spellcheck="false">
-            <kbd>⌘K</kbd>
+            <button class="search-view-toggle" id="viewToggle" title="File search" aria-label="File search">
+              <svg class="ico-folder" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg>
+              <svg class="ico-universe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="11" ry="4.5" transform="rotate(-24 12 12)"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
+            </button>
           </div>
         </div>
 
         <div class="similar-bar">
           <span class="lbl">SIMILARITY</span>
-          <span class="sim-arrows">◂ ▸</span>
-          <span class="sim-target"></span>
+          <button class="sim-arrow" id="simPrev" title="Previous similar">◂</button>
+          <button class="sim-arrow" id="simNext" title="Next similar">▸</button>
+          <span class="sim-target" id="simTarget"></span>
           <div class="sim-dots" id="simDots"></div>
-          <span class="count" id="count">0 of 0 samples</span>
-          <span class="lbl" id="bottomMode">HISTORY</span>
-          <span class="sim-arrows">▴ ▾</span>
-          <span class="sim-heart">♥</span>
+          <span class="count" id="count">Select a sample</span>
+          <button class="sim-heart" id="simFav" title="Favorite">♥</button>
         </div>
       </div>
     </section>
@@ -240,6 +234,6 @@
 
 <div class="toast" id="toast"></div>
 <div class="drag-ghost" id="dragGhost"></div>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

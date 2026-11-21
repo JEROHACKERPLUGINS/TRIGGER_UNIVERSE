@@ -43,7 +43,7 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 - Árbol con root `LOCATION` (carpeta elegida) y subcarpetas reales.
 - En el prototipo los paths son sintéticos (`SAMPLES FOLDER/Kicks/...`); en el plugin se construirán desde la carpeta real elegida con selector nativo.
-- Columnas: NAME, CAT, LEN, BRIGHT. Preview + Audition + drag a TRIGGER.
+- **Rediseño 20/11:** árbol con iconos de carpeta, filas de 24 px y tipografía 10.5 px; lista con filas altas (11.5 px) y solo **nombre + duración + punto de categoría** (sin columnas CAT/BRIGHT). Path con contador a la derecha; preview footer con categoría, duración y Audition. El search sigue flotante arriba y la lista arranca debajo para no tapar la cabecera.
 
 ## Estética
 
@@ -59,15 +59,43 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 ## Actualización 20/11 — audio real y ajustes finales
 
-- **La app es el Universe**: logo, nombre de sesión, FILE SEARCH, OUTPUT, Settings y Export flotan dentro del mapa. No hay topbar separado.
+- **La app es el Universe**: logo y título centrados, search con toggle folder/universo, Settings y OUTPUT + VU vertical a la derecha. No hay topbar separado.
 - **Search centrado** arriba, sin contorno de panel; **Similarity** flotante abajo.
 - **TRIGGER** es una pestaña mínima (`TRIGGER ▲`). Se abre al **arrastrar un sample** o al clickear la pestaña, y **queda abierto**. Se cierra al clickear el Universe, al seleccionar un sample, o desde la cabecera.
 - **Editor de sample**: tabs **SAMPLE → ENVELOPE → TONE → SLOT**. El tab SLOT quedó solo con **AUTO PHASE** (REF, re-analizar, TIMING, resultado, OFFSET, SHIFT); se quitaron Level/Pan/Tune/Mute/Solo/Pol de esa ventana.
 - **Fase**: 0/90/180/260; **180 = Ø**. El badge del fader muestra `90°`, `180°` o `260°` y se mantiene recíproco con la ventana.
 - **Faders**: solo números 01–08.
 - **Audio real**: `prototype/samples/SNARE.cm.wav` se decodifica con Web Audio. El primer golpe (0.51 s) queda como sample del fader 01; el archivo completo es el **INPUT** del trigger. El botón **▶ INPUT** dispara las 8 capas en cada transiente detectado.
-- **AUDIO TEST**: botón arriba a la derecha que reanuda el `AudioContext`, reproduce el snare y dispara las 8 capas. El **LED verde** al lado indica que el audio está `running`. Es la forma rápida de verificar que el motor suena. Si el WAV todavía está cargando, espera hasta 5 s y arranca solo.
+- **AUDIO TEST eliminado** de la barra: el audio se inicia con **▶ INPUT** o con Audition.
 - **Medidores reales**: master y faders usan analizadores Web Audio.
 - **Polaridad 180** verificada offline (correlación −1.0). 90/260 quedan como UI hasta el DSP C++.
-- **Cache busting**: `index.html` carga `style.css?v=3` y `app.js?v=3`. Subir la versión al editar assets para evitar que Chromium sirva la versión vieja.
+- **Cache busting**: `index.html` carga `style.css?v=N` y `app.js?v=N`. Subir la versión al editar assets para evitar que Chromium sirva la versión vieja.
 - Detalles y mediciones en `docs/audio_tests.md`.
+
+## Actualización 20/11 — Universe full-bleed
+
+- El Universe ocupa **el 100% de la ventana**: `.app` sin padding, `.workspace` sin margen inferior y `.canvas-wrap` en `inset:0`.
+- Sin borde, radio, fondo de panel ni sombra interna: el canvas es transparente y deja ver el fondo aurora del `body`. No se percibe dónde termina el mapa.
+- La proyección usa un **overscan de 36 px** fuera de los cuatro lados, así los puntos sangran fuera del viewport y no quedan cortados justo en el borde.
+- Se eliminó la leyenda `SAMPLE UNIVERSE`, que quedaba pisada por el logo.
+- La UI sigue flotando arriba y abajo (brand, search, acciones, similarity, TRIGGER); el reacomodo de esos bloques queda como paso siguiente.
+
+## Actualización 20/11 — barra superior
+
+- Se eliminó el nombre de sesión (`INIT — Untitled Kit`) y el pill `UI PROTOTYPE`.
+- El logo + **TRIGGER UNIVERSE** quedó centrado como masthead del plugin.
+- **FILE SEARCH** dejó de ser un botón de texto: ahora es un ícono dentro del buscador. En Universe muestra una carpeta; en File Search muestra una órbita para volver.
+- **Settings** quedó a la derecha. **OUTPUT** pasó al extremo derecho, con un **mini VU vertical** de salida. **Export se eliminó** de la UI.
+- Se eliminaron **AUDIO TEST**, el LED de estado y **Export**. El audio se inicia con **▶ INPUT** o Audition.
+- El toggle folder/universo ahora tiene **contorno circular** (hover/foco).
+
+## Actualización 20/11 — similitud y favoritos
+
+- Al seleccionar un sample se arma una lista de **25 vecinos** ordenada por categoría + duración (log) + brightness (log) + druminess.
+- Para evitar casi-duplicados, cada vecino debe estar a una **distancia visual mínima** del sample base y de los anteriores. Así las flechas recorren la nube.
+- **◂ ▸** o **← →** navegan la lista. El índice se muestra como `3 / 25 · Nombre`.
+- Al navegar, el Universe **se centra** en el sample nuevo y dibuja una **línea con estela** desde el anterior.
+- Al volver desde FILE SEARCH, el Universe se centra en el sample seleccionado.
+- **♥** en la barra de similitud y en cada fila de FILE SEARCH agrega/quita favoritos.
+- Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
+- **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
