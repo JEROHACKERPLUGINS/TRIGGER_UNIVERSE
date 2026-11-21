@@ -1,0 +1,22 @@
+prototype/index.html
+  s_aa8f4edfcf593f::t_d03a9f0dcbab99 7,245
+prototype/style.css
+  s_aa8f4edfcf593f::t_ab444923a60337 147,149-150,152-153
+  s_aa8f4edfcf593f::t_60518335b3e14c 151,223,247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a36a98f3bd6f316d27578cf4913a6e397a0c2ee9",
+  "prompts": {},
+  "sessions": {
+    "s_aa8f4edfcf593f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b3604d4-9568-4964-8786-a55a7f32dba2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "micaela-balza <micaela.balza@waterplan.com>"
+    }
+  }
+}
