@@ -788,3 +788,91 @@ body{
 
 .top-actions .btn.ghost{min-width:82px;text-align:center}
 .sf-dot{width:4px;height:4px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor}
+
+/* ---------- expressive TRIGGER workspace ---------- */
+/* Hide the old page strip: input/hits/master stats and the title row.
+   The active TRIGGER top button identifies the page. */
+.trigger-view .trigger-page-head{display:none}
+.trigger-page{padding-top:58px}
+
+/* Wider detector, more room for the editor. */
+.trigger-page-grid{grid-template-columns:minmax(330px,400px) minmax(0,1fr)}
+
+/* Editor: no head/tabs, four panes visible at once. */
+.trigger-view .inspector{grid-template-rows:1fr}
+.trigger-view .inspector-head,.trigger-view .inspector-tabs{display:none}
+.trigger-view .inspector-body{display:grid;grid-template-columns:0.42fr 0.58fr;
+  grid-template-rows:1.45fr 0.85fr;gap:8px;min-height:0}
+.trigger-view .panel{position:relative;inset:auto;display:flex;min-height:0;
+  padding:5px 7px 0;overflow:hidden}
+.trigger-view .panel::before{content:"";font-size:9px;font-weight:650;letter-spacing:.18em;
+  color:var(--mint);opacity:.8;margin-bottom:3px;flex:none}
+.trigger-view .panel[data-panel="sample"]{grid-area:1/1/2/2}
+.trigger-view .panel[data-panel="env"]{grid-area:1/2/2/3}
+.trigger-view .panel[data-panel="tone"]{grid-area:2/1/3/2}
+.trigger-view .panel[data-panel="slot"]{grid-area:2/2/3/3}
+.trigger-view .panel[data-panel="sample"]::before{content:"SAMPLE"}
+.trigger-view .panel[data-panel="env"]::before{content:"ENVELOPE · ADSR"}
+.trigger-view .panel[data-panel="tone"]::before{content:"TONE"}
+.trigger-view .panel[data-panel="slot"]::before{content:"SLOT · AUTO PHASE"}
+.trigger-view .panel .drag-note{display:none}
+.trigger-view .wave-wrap{min-height:64px}
+.trigger-view #adsr{min-height:64px}
+.trigger-view .sample-meta{font-size:10.5px;margin-bottom:2px}
+.trigger-view .env-note{font-size:9.5px;margin-bottom:2px}
+.trigger-view .wave-readout,.trigger-view .env-readout{gap:2px;margin-top:2px}
+.trigger-view .wave-readout span,.trigger-view .env-readout span{font-size:9.5px}
+.trigger-view .wave-readout b,.trigger-view .env-readout b{font-size:9.5px;margin-top:0}
+.trigger-view .row-btns{gap:3px;margin-top:4px}
+.trigger-view .row-btns .chip{font-size:10px;padding:3px 7px}
+
+/* Compact bottom panes so all four fit. */
+.trigger-view .panel[data-panel="tone"] .tone-grid{gap:5px 9px;margin-top:2px}
+.trigger-view .panel[data-panel="tone"] .tone-grid label{font-size:9.5px;gap:2px}
+.trigger-view .panel[data-panel="tone"] .tone-grid b{font-size:9.5px}
+.trigger-view .panel[data-panel="tone"] .playback-row{margin-top:5px;gap:5px}
+.trigger-view .panel[data-panel="tone"] .pb-label{font-size:9px}
+.trigger-view .panel[data-panel="tone"] .seg button{font-size:9px;padding:3px 5px}
+
+.trigger-view .panel[data-panel="slot"] .sp-phase-head{font-size:9.5px}
+.trigger-view .panel[data-panel="slot"] .sp-phase-head select{font-size:9px;padding:1px 3px}
+.trigger-view .panel[data-panel="slot"] .sp-auto-row{margin-top:3px;gap:4px}
+.trigger-view .panel[data-panel="slot"] .sp-auto{padding:4px;font-size:9.5px}
+.trigger-view .panel[data-panel="slot"] .sp-timing{font-size:9.5px;padding:0 5px}
+.trigger-view .panel[data-panel="slot"] .sp-result{margin-top:2px;font-size:9px;min-height:9px}
+.trigger-view .panel[data-panel="slot"] .sp-row{font-size:9px;gap:1px}
+.trigger-view .panel[data-panel="slot"] .sp-phase-row{margin-top:3px;gap:4px}
+.trigger-view .panel[data-panel="slot"] .sp-phase-row .lbl{font-size:9px}
+.trigger-view .panel[data-panel="slot"] .seg button{font-size:9px;padding:2px 5px}
+
+/* Longer faders: more track, compact footer. */
+.fader-bank{height:clamp(176px,24vh,206px)}
+.slot-fader{padding:5px 5px 4px}
+.sf-body{padding:3px 0 1px}
+.sf-range{width:clamp(104px,16vh,140px);height:20px}
+.sf-foot{display:flex;align-items:baseline;justify-content:space-between;gap:3px;
+  font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.2;white-space:nowrap}
+.sf-level{font-size:9.5px;color:var(--muted)}
+.sf-phase{font-size:8.5px;color:var(--muted-2);overflow:hidden;text-overflow:ellipsis;max-width:52%}
+
+/* detector: compact single-row knobs, bigger waveform */
+.trigger-view .inspector-body{grid-template-rows:1.4fr .9fr}
+.trigger-view .dp-title{font-size:14px}
+.trigger-view .dp-sub{font-size:10px}
+.trigger-view .det-knobs{grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:auto;gap:3px}
+.trigger-view .det-knobs .knob{gap:2px}
+.trigger-view .det-knobs .knob-dial{width:26px;height:26px}
+.trigger-view .det-knobs .knob-label{font-size:8.5px;letter-spacing:.02em}
+.trigger-view .det-knobs .knob-val{font-size:8px}
+.trigger-view .detector{grid-template-rows:minmax(100px,1fr) auto auto;gap:9px}
+
+/* give the ADSR graph the whole envelope pane */
+.trigger-view .panel[data-panel="env"] .env-note,
+.trigger-view .panel[data-panel="env"] .row-btns{display:none}
+
+/* shave a few px from the SLOT pane so it fits without scrolling */
+.trigger-view .panel[data-panel="slot"] .sp-auto-row{margin-top:2px}
+.trigger-view .panel[data-panel="slot"] .sp-phase-row{margin-top:2px}
+
+/* keep the universe as a dimmed backdrop behind the full TRIGGER page */
+.universe.trigger-mode #universeView{filter:blur(9px) saturate(120%);opacity:.38;transform:scale(1.03);pointer-events:none}

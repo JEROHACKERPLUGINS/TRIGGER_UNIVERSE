@@ -5,7 +5,7 @@ Fecha: 20/11/2026. Prototipo navegable en `prototype/` (`index.html`, `style.css
 ## Layout elegido (Opción A)
 
 - **Universe / File Search / TRIGGER full-bleed**: tres páginas que ocupan toda el área principal.
-- **Página TRIGGER**: INPUT DETECTOR + editor de sample/ADSR + banco de 8 faders en una sola vista, abierta desde el botón TRIGGER (arriba, junto a Settings).
+- **Página TRIGGER**: INPUT DETECTOR grande + los 4 paneles del editor a la vez + banco de 8 faders largos, sin fila de título/INPUT/HITS/MASTER. Se abre desde el botón TRIGGER (arriba, junto a Settings).
 - **Dock fijo de 8 slots cuadrados** abajo, centrado y visible en todas las vistas: recuadros de glass vacíos donde se arrastran los samples.
 - **Search flotante** arriba del Universe, centrado, estilo XO.
 - **Similarity bar** flotante arriba del dock, estilo XO.
@@ -38,7 +38,7 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - Ocho recuadros de glass **01 … 08** cuadrados en un dock fijo abajo, centrados y con separación.
 - Arrancan **vacíos**: muestran `+` / `DROP`.
 - Al llenarse muestran dot de categoría, nombre y duración; el × los vacía.
-- En la página TRIGGER, arriba de cada slot hay un **fader vertical** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna.
+- En la página TRIGGER, arriba de cada slot hay un **fader vertical largo** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna. Los 4 paneles del editor (SAMPLE, ENVELOPE/ADSR, TONE, SLOT) se ven al mismo tiempo.
 
 ## FILE SEARCH
 
@@ -62,8 +62,8 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 - **La app es el Universe**: logo y título centrados, search con toggle folder/universo, Settings y OUTPUT + VU vertical a la derecha. No hay topbar separado.
 - **Search centrado** arriba, sin contorno de panel; **Similarity** flotante abajo.
-- **TRIGGER** está arriba junto a Settings, mismo tamaño. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/ADSR + banco de faders; se vuelve con **← BACK** o el mismo botón.
-- **Editor de sample**: tabs **SAMPLE → ENVELOPE → TONE → SLOT**. El tab SLOT quedó solo con **AUTO PHASE** (REF, re-analizar, TIMING, resultado, OFFSET, SHIFT); se quitaron Level/Pan/Tune/Mute/Solo/Pol de esa ventana.
+- **TRIGGER** está arriba junto a Settings, mismo tamaño. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/ADSR + banco de faders; se vuelve con el mismo botón o **Esc**.
+- **Editor de sample**: en la página TRIGGER se ven los 4 paneles a la vez (**SAMPLE / ENVELOPE / TONE / SLOT**); la barra de tabs quedó oculta. El panel SLOT conserva **AUTO PHASE** (REF, re-analizar, TIMING, resultado, OFFSET, SHIFT).
 - **Fase**: 0/90/180/260; **180 = Ø**. Los badges se mantienen en el editor.
 - **Slots**: solo números 01–08, sin faders.
 - **Audio real**: `prototype/samples/SNARE.cm.wav` se decodifica con Web Audio y el archivo completo es el **INPUT** del trigger. El botón **▶ INPUT** dispara los slots cargados en cada transiente detectado. Los slots arrancan vacíos; se llenan con ALT + drag.
@@ -101,6 +101,14 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - **♥** en la barra de similitud y en cada fila de FILE SEARCH agrega/quita favoritos.
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
+
+## Actualización 21/11 — TRIGGER expandido
+
+- Se eliminó la fila de título/INPUT/HITS/MASTER; el contenido sube hasta el borde superior y el botón TRIGGER activo identifica la página.
+- El **INPUT DETECTOR** pasó a 400 px de ancho, con waveform de ≈205 px de alto en una ventana de 717 px y los 8 knobs en una sola fila compacta.
+- El **ADSR** creció a ≈158 px de alto y 327 px de ancho.
+- Los **4 paneles del editor** se muestran juntos: SAMPLE y ENVELOPE/ADSR arriba, TONE y SLOT abajo.
+- Los **faders** del banco pasaron a ≈116 px de recorrido, manteniendo meter, M/S/Ø y nivel.
 
 ## Actualización 21/11 — layout Slate Trigger
 

@@ -951,6 +951,7 @@ function renderFaders() {
     const sel = i === state.selectedSlot ? ' selected' : '';
     const dim = (anySolo && !s.solo) || s.mute ? ' dim' : '';
     const empty = smp ? '' : ' empty';
+    const ph = phaseBadge(s);
     return `
       <div class="slot-fader${sel}${dim}${empty}" data-slot="${i}">
         <div class="sf-head">
@@ -962,8 +963,7 @@ function renderFaders() {
           <div class="sf-meter"><i id="meter-${i}" style="height:0%"></i></div>
           <div class="sf-track"><input class="sf-range" id="fader-${i}" data-slot="${i}" type="range" min="-60" max="6" step="0.1" value="${s.level}" aria-label="Slot ${i + 1} level"></div>
         </div>
-        <div class="sf-level" id="slotLevel-${i}">${fmtDb(s.level)}</div>
-        <div class="sf-phase">${phaseBadge(s)}</div>
+        <div class="sf-foot"><span class="sf-level" id="slotLevel-${i}">${fmtDb(s.level)}</span>${ph === '—' ? '' : `<span class="sf-phase">${ph}</span>`}</div>
         <div class="sf-btns">
           <button data-act="m" data-slot="${i}" class="${s.mute ? 'on' : ''}" title="Mute">M</button>
           <button data-act="s" data-slot="${i}" class="${s.solo ? 'on solo' : ''}" title="Solo">S</button>
@@ -1473,6 +1473,9 @@ function setView(mode) {
   }
 }
 $('#triggerBack').onclick = closeTriggerPage;
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && state.viewMode === 'trigger') closeTriggerPage();
+});
 $('#viewToggle').onclick = () => setView(state.viewMode === 'universe' ? 'files' : 'universe');
 
 $('#search').addEventListener('focus', hideSimilarity);

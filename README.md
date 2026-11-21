@@ -24,8 +24,8 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá **TRIGGER** (arriba, junt
 Controles principales:
 
 - Click en un slot **01–08** del dock para abrir la página **TRIGGER** con ese slot en el editor.
-- **TRIGGER** (arriba, junto a Settings) abre una página completa con **INPUT DETECTOR + editor de sample / ADSR + banco de 8 faders**.
-- Los 8 slots arrancan **vacíos**, son cuadrados y quedan centrados abajo. Arrastrá samples desde el Universe o FILE SEARCH para llenarlos; el **×** de cada slot lo vacía. En la página TRIGGER, arriba de cada slot aparece su fader con meter, M/S/Ø y nivel.
+- **TRIGGER** (arriba, junto a Settings) abre una página completa con **INPUT DETECTOR grande + los 4 paneles del editor visibles a la vez + banco de 8 faders largos**. No hay fila de título/INPUT/HITS/MASTER: el contenido arranca arriba y el botón TRIGGER activo indica la página.
+- Los 8 slots arrancan **vacíos**, son cuadrados y quedan centrados abajo. Arrastrá samples desde el Universe o FILE SEARCH para llenarlos; el **×** de cada slot lo vacía. En la página TRIGGER, arriba de cada slot aparece su fader largo con meter, M/S/Ø y nivel.
 - Mantené el click y movete por el Universe: se escucha un preview inmediato de cada sample (snap dentro de un aura de ~20 px) y queda una **estela de colores** entre los puntos visitados. Al soltar, la estela se desvanece.
 - Click en un sample: lo selecciona y permite hacer hover por el mapa. **ALT + arrastrar** desde el Universe o FILE SEARCH a uno de los **8 slots** del dock para asignarlo; si se suelta fuera, se muestra el toast de export a Finder (demo).
 - Rueda del mouse: zoom anclado al cursor. Click derecho + arrastrar o **Ctrl + click izquierdo + arrastrar**: pan. Click izquierdo en vacío: solo cierra paneles, sin mover la cámara.
