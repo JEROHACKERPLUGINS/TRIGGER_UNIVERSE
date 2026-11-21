@@ -20,6 +20,133 @@ const panLabel = v => v === 0 ? 'C' : (v < 0 ? 'L ' + Math.abs(v) : 'R ' + v);
 const normLog = (v, a, b) => (Math.log(v) - Math.log(a)) / (Math.log(b) - Math.log(a));
 const denormLog = (t, a, b) => a * Math.pow(b / a, t);
 
+// ---------- inline numeric editing (double click a value) ----------
+let numericEditor = null;
+
+function parseNumericText(raw, unit) {
+  let t = String(raw).trim().toLowerCase()
+    .replace(/[\u2212\u2013]/g, '-')
+    .replace(',', '.')
+    .replace(/\s+/g, '');
+  if (!t) return NaN;
+  let mul = 1;
+  if (unit === 'Hz') {
+    if (/(khz|k)$/.test(t)) { mul = 1000; t = t.replace(/(khz|k)$/, ''); }
+    else t = t.replace(/hz$/, '');
+  } else if (unit === 'ms') {
+    if (/ms$/.test(t)) t = t.replace(/ms$/, '');
+    else if (/s$/.test(t)) { mul = 1000; t = t.replace(/s$/, ''); }
+  } else if (unit === 'dB') t = t.replace(/db$/, '');
+  else if (unit === '%') t = t.replace(/%$/, '');
+  else if (unit === 'st') t = t.replace(/st$/, '');
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(t)) return NaN;
+  return parseFloat(t) * mul;
+}
+
+function snapNumeric(v, step, min, max) {
+  let x = clamp(v, min, max);
+  if (step) {
+    const decimals = Math.max(0, Math.ceil(-Math.log10(step) - 1e-9));
+    x = +(Math.round(x / step) * step).toFixed(decimals);
+    x = clamp(x, min, max);
+  }
+  return x;
+}
+
+function openNumericEditor(anchor, opts) {
+  if (numericEditor) numericEditor.commitOrCancel();
+  const read = key => typeof opts[key] === 'function' ? opts[key]() : opts[key];
+  const min = read('min'), max = read('max');
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+  const current = Number(opts.get());
+  let value = Number.isFinite(current) ? clamp(current, min, max) : min;
+  const rawValue = opts.inputValue ? opts.inputValue(value) :
+    (opts.decimals != null ? value.toFixed(opts.decimals) : String(+value.toFixed(3)));
+
+  const wrap = document.createElement('div');
+  wrap.className = 'num-edit';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'decimal';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.value = rawValue;
+  const unit = document.createElement('span');
+  unit.textContent = opts.unit || '';
+  wrap.appendChild(input);
+  if (opts.unit) wrap.appendChild(unit);
+  document.body.appendChild(wrap);
+
+  const width = Math.max(84, Math.min(190, 62 + (opts.unit ? 32 : 0)));
+  wrap.style.width = width + 'px';
+  const r = anchor.getBoundingClientRect();
+  const left = clamp(r.left + r.width / 2 - width / 2, 6, innerWidth - width - 6);
+  let top = r.top - 30;
+  if (top < 6) top = r.bottom + 6;
+  if (top + 26 > innerHeight) top = innerHeight - 30;
+  wrap.style.left = Math.round(left) + 'px';
+  wrap.style.top = Math.round(top) + 'px';
+
+  let alive = true;
+  const cleanup = () => {
+    alive = false;
+    input.removeEventListener('blur', onBlur);
+    window.removeEventListener('resize', cancel);
+    wrap.remove();
+    numericEditor = null;
+  };
+  const apply = n => {
+    if (!alive) return;
+    cleanup();
+    opts.set(snapNumeric(n, opts.step, min, max));
+  };
+  const commit = () => {
+    const n = parseNumericText(input.value, opts.unit);
+    if (!Number.isFinite(n)) {
+      wrap.classList.add('invalid');
+      input.focus();
+      input.setSelectionRange(0, input.value.length);
+      return;
+    }
+    apply(n);
+  };
+  const cancel = () => { if (alive) cleanup(); };
+  const commitOrCancel = () => {
+    const n = parseNumericText(input.value, opts.unit);
+    if (Number.isFinite(n)) apply(n); else cancel();
+  };
+  const onBlur = () => {
+    const n = parseNumericText(input.value, opts.unit);
+    if (Number.isFinite(n)) apply(n); else cancel();
+  };
+  input.addEventListener('blur', onBlur);
+  window.addEventListener('resize', cancel);
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  wrap.addEventListener('mousedown', e => e.stopPropagation());
+  numericEditor = { cancel, commitOrCancel };
+  input.focus();
+  input.select();
+}
+
+function bindNumericEdit(el, opts) {
+  if (!el) return;
+  el.classList.add('num-editable');
+  if (!el.title && !el.dataset.tip) el.title = 'Double-click to edit';
+  el.addEventListener('dblclick', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (opts.enabled && !opts.enabled()) {
+      if (opts.disabledMsg) toast(opts.disabledMsg);
+      return;
+    }
+    openNumericEditor(el, opts);
+  });
+}
+
 function mulberry32(seed) {
   return function () {
     seed |= 0; seed = seed + 0x6D2B79F5 | 0;
@@ -1289,6 +1416,19 @@ function renderFaders() {
         </div>
       </div>`;
   }).join('');
+  $$('.sf-level', host).forEach(el => {
+    const i = +el.id.replace('slotLevel-', '');
+    bindNumericEdit(el, {
+      get: () => state.slots[i].level,
+      set: v => {
+        state.slots[i].level = v;
+        const r = $(`#fader-${i}`); if (r) r.value = v;
+        const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(v);
+        syncSlotAudio(i);
+      },
+      min: -60, max: 6, step: .1, unit: 'dB', decimals: 1,
+    });
+  });
 }
 
 function selectSlot(i) {
@@ -1578,6 +1718,52 @@ function openSlotPopover(i, anchor, keepPosition) {
     renderSlots();
     openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true);
   };
+
+  bindNumericEdit($('#spLevelVal'), {
+    get: () => s.level,
+    set: v => {
+      s.level = v;
+      const r = $('#spLevel'); if (r) r.value = v;
+      const lab = $('#spLevelVal'); if (lab) lab.textContent = fmtDb(v);
+      const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(v);
+      const mt = $(`#meter-${i}`); if (mt) mt.style.height = meterW(v) + '%';
+      syncSlotAudio(i);
+    },
+    min: -60, max: 6, step: .1, unit: 'dB', decimals: 1,
+  });
+  bindNumericEdit($('#spPanVal'), {
+    get: () => s.pan,
+    set: v => {
+      s.pan = v;
+      const r = $('#spPan'); if (r) r.value = v;
+      const lab = $('#spPanVal'); if (lab) lab.textContent = panLabel(v);
+      const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(v)} · ${s.tune.toFixed(2)}`;
+      syncSlotAudio(i);
+    },
+    min: -100, max: 100, step: 1, decimals: 0,
+  });
+  bindNumericEdit($('#spTuneVal'), {
+    get: () => s.tune,
+    set: v => {
+      s.tune = v;
+      const r = $('#spTune'); if (r) r.value = v;
+      const lab = $('#spTuneVal'); if (lab) lab.textContent = `${v.toFixed(2)} st`;
+      const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(s.pan)} · ${v.toFixed(2)}`;
+      syncSlotAudio(i);
+    },
+    min: -24, max: 24, step: .01, unit: 'st', decimals: 2,
+  });
+  bindNumericEdit($('#spOffsetVal'), {
+    get: () => s.offset,
+    set: v => {
+      s.offset = v;
+      s.autoPhase = true;
+      const r = $('#spOffset'); if (r) r.value = v;
+      const lab = $('#spOffsetVal'); if (lab) lab.textContent = `${v.toFixed(1)} ms`;
+      renderSlots();
+    },
+    min: -5, max: 50, step: .1, unit: 'ms', decimals: 1,
+  });
 }
 
 document.addEventListener('mousedown', e => {
@@ -2002,6 +2188,54 @@ function updateWaveReadout() {
   $('#fadeInVal').textContent = fmtMs(slot.fadeIn);
   $('#fadeOutVal').textContent = fmtMs(slot.fadeOut);
 }
+const waveDur = () => { const smp = currentSlotSample(); return smp ? smp.dur : 0; };
+const waveEditEnabled = () => !!currentSlotSample();
+const waveEditDisabled = 'Drop a sample in this slot first';
+const waveEditOpts = { step: .1, unit: 'ms', decimals: 1, enabled: waveEditEnabled, disabledMsg: waveEditDisabled };
+
+bindNumericEdit($('#startVal'), Object.assign({
+  get: () => currentSlot().start * waveDur(),
+  set: v => {
+    const smp = currentSlotSample(); if (!smp) return;
+    const slot = currentSlot();
+    slot.start = clamp(v / smp.dur, 0, slot.end - .02);
+    renderWaveform();
+  },
+  min: 0, max: () => currentSlot().end * waveDur(),
+}, waveEditOpts));
+
+bindNumericEdit($('#endVal'), Object.assign({
+  get: () => currentSlot().end * waveDur(),
+  set: v => {
+    const smp = currentSlotSample(); if (!smp) return;
+    const slot = currentSlot();
+    slot.end = clamp(v / smp.dur, slot.start + .02, 1);
+    renderWaveform();
+  },
+  min: () => currentSlot().start * waveDur(), max: () => waveDur(),
+}, waveEditOpts));
+
+bindNumericEdit($('#fadeInVal'), Object.assign({
+  get: () => currentSlot().fadeIn,
+  set: v => {
+    const smp = currentSlotSample(); if (!smp) return;
+    const slot = currentSlot();
+    slot.fadeIn = clamp(v, 0, (slot.end - slot.start) * smp.dur);
+    renderWaveform();
+  },
+  min: 0, max: () => { const slot = currentSlot(); return (slot.end - slot.start) * waveDur(); },
+}, waveEditOpts));
+
+bindNumericEdit($('#fadeOutVal'), Object.assign({
+  get: () => currentSlot().fadeOut,
+  set: v => {
+    const smp = currentSlotSample(); if (!smp) return;
+    const slot = currentSlot();
+    slot.fadeOut = clamp(v, 0, (slot.end - slot.start) * smp.dur);
+    renderWaveform();
+  },
+  min: 0, max: () => { const slot = currentSlot(); return (slot.end - slot.start) * waveDur(); },
+}, waveEditOpts));
 
 $('#wave').addEventListener('pointerdown', e => {
   const h = e.target.closest('[data-handle]');
@@ -2072,6 +2306,27 @@ function renderADSR() {
   $('#rVal').textContent = fmtMs(r);
 }
 
+bindNumericEdit($('#aVal'), {
+  get: () => currentSlot().adsr.a,
+  set: v => { currentSlot().adsr.a = v; renderADSR(); },
+  min: 0, max: 2000, step: 1, unit: 'ms', decimals: 0,
+});
+bindNumericEdit($('#dVal'), {
+  get: () => currentSlot().adsr.d,
+  set: v => { currentSlot().adsr.d = v; renderADSR(); },
+  min: 0, max: 2000, step: 1, unit: 'ms', decimals: 0,
+});
+bindNumericEdit($('#sVal'), {
+  get: () => currentSlot().adsr.s * 100,
+  set: v => { currentSlot().adsr.s = v / 100; renderADSR(); },
+  min: 0, max: 100, step: 1, unit: '%', decimals: 0,
+});
+bindNumericEdit($('#rVal'), {
+  get: () => currentSlot().adsr.r,
+  set: v => { currentSlot().adsr.r = v; renderADSR(); },
+  min: 0, max: 5000, step: 1, unit: 'ms', decimals: 0,
+});
+
 $('#adsr').addEventListener('pointerdown', e => {
   const h = e.target.closest('[data-h]');
   if (!h) return;
@@ -2128,13 +2383,20 @@ $('#slotAuto').onclick = () => {
     btn.textContent = 'RE-ANALYZE & ALIGN';
   }, 550);
 };
-$('#slotOffset').addEventListener('input', e => {
+function setSlotOffset(v) {
   const s = currentSlot();
-  s.offset = +e.target.value;
+  s.offset = clamp(v, -5, 50);
   s.autoPhase = true;
+  $('#slotOffset').value = s.offset;
   $('#slotOffsetVal').textContent = `${s.offset.toFixed(1)} ms`;
   renderSlots();
   $('#slotResult').innerHTML = `corr <b>${s.corr.toFixed(2)}</b> · ${s.polarity ? '180° inverted' : 'polarity OK'} · offset <b>${s.offset >= 0 ? '+' : ''}${s.offset.toFixed(1)} ms</b>`;
+}
+$('#slotOffset').addEventListener('input', e => setSlotOffset(+e.target.value));
+bindNumericEdit($('#slotOffsetVal'), {
+  get: () => currentSlot().offset,
+  set: setSlotOffset,
+  min: -5, max: 50, step: .1, unit: 'ms', decimals: 1,
 });
 $('#slotShift').addEventListener('click', e => {
   const b = e.target.closest('button[data-shift]');
@@ -2158,6 +2420,22 @@ bindSlotTone('#tone', 'tone', v => (v > 0 ? '+' : '') + v);
 bindSlotTone('#cut', 'cut', v => v + '%');
 bindSlotTone('#velSens', 'velSens', v => v + '%');
 bindSlotTone('#gain', 'gain', v => fmtDb(v));
+
+function bindToneNumeric(id, key, fmt, opts) {
+  bindNumericEdit($(id + 'Val'), Object.assign({
+    get: () => currentSlot()[key],
+    set: v => {
+      currentSlot()[key] = v;
+      const r = $(id); if (r) r.value = v;
+      $(id + 'Val').textContent = fmt(v);
+      syncAllSlotAudio();
+    },
+  }, opts));
+}
+bindToneNumeric('#tone', 'tone', v => (v > 0 ? '+' : '') + v, { min: -100, max: 100, step: 1, decimals: 0 });
+bindToneNumeric('#cut', 'cut', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0 });
+bindToneNumeric('#velSens', 'velSens', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0 });
+bindToneNumeric('#gain', 'gain', v => fmtDb(v), { min: -24, max: 24, step: .1, unit: 'dB', decimals: 1 });
 
 $('#playbackSeg').addEventListener('click', e => {
   const b = e.target.closest('button[data-pb]');
@@ -2228,14 +2506,14 @@ $('#audition').onclick = auditionSample;
 
 // ---------- detector ----------
 const DET = [
-  { key: 'sens',   label: 'SENS',     min: 0,   max: 100,   val: 45,    fmt: v => Math.round(v) + '%' },
-  { key: 'retrig', label: 'RETRIG',   min: 0,   max: 1000,  val: 50,    fmt: v => Math.round(v) + 'ms' },
-  { key: 'detail', label: 'DETAIL',   min: 0,   max: 100,   val: 50,    fmt: v => Math.round(v) + '%' },
-  { key: 'low',    label: 'LOW CUT',  min: 20,  max: 20000, val: 30,    log: true, fmt: v => fmtHz(v) },
-  { key: 'high',   label: 'HIGH CUT', min: 20,  max: 20000, val: 15000, log: true, fmt: v => fmtHz(v) },
-  { key: 'supp',   label: 'SUPPRESS', min: 0,   max: 100,   val: 50,    fmt: v => Math.round(v) + '%' },
-  { key: 'input',  label: 'INPUT',    min: -24, max: 24,    val: 0,     fmt: v => fmtDb(v) },
-  { key: 'output', label: 'OUTPUT',   min: -24, max: 24,    val: 0,     fmt: v => fmtDb(v) },
+  { key: 'sens',   label: 'SENS',     min: 0,   max: 100,   val: 45,    unit: '%',  fmt: v => Math.round(v) + '%' },
+  { key: 'retrig', label: 'RETRIG',   min: 0,   max: 1000,  val: 50,    unit: 'ms', fmt: v => Math.round(v) + 'ms' },
+  { key: 'detail', label: 'DETAIL',   min: 0,   max: 100,   val: 50,    unit: '%',  fmt: v => Math.round(v) + '%' },
+  { key: 'low',    label: 'LOW CUT',  min: 20,  max: 20000, val: 30,    log: true, unit: 'Hz', fmt: v => fmtHz(v) },
+  { key: 'high',   label: 'HIGH CUT', min: 20,  max: 20000, val: 15000, log: true, unit: 'Hz', fmt: v => fmtHz(v) },
+  { key: 'supp',   label: 'SUPPRESS', min: 0,   max: 100,   val: 50,    unit: '%',  fmt: v => Math.round(v) + '%' },
+  { key: 'input',  label: 'INPUT',    min: -24, max: 24,    val: 0,     unit: 'dB', fmt: v => fmtDb(v) },
+  { key: 'output', label: 'OUTPUT',   min: -24, max: 24,    val: 0,     unit: 'dB', fmt: v => fmtDb(v) },
 ];
 
 function makeKnob(cfg) {
@@ -2257,6 +2535,14 @@ function makeKnob(cfg) {
     if (audioReady && ['sens', 'retrig', 'detail', 'supp'].includes(cfg.key)) detectInputHits();
   };
   render();
+  bindNumericEdit(val, {
+    get: () => v,
+    set: nv => { v = nv; render(); },
+    min: cfg.min, max: cfg.max,
+    step: (cfg.unit === 'dB') ? .1 : 1,
+    unit: cfg.unit,
+    decimals: (cfg.unit === 'dB') ? 1 : 0,
+  });
   let sy = 0, sn = 0;
   dial.addEventListener('pointerdown', e => {
     e.preventDefault(); sy = e.clientY; sn = toNorm(v);
@@ -2278,6 +2564,15 @@ $('#gateBtn').onclick = () => {
 $('#mix').addEventListener('input', e => {
   state.detector.mix = +e.target.value;
   $('#mixVal').textContent = Math.round(state.detector.mix) + '%';
+});
+bindNumericEdit($('#mixVal'), {
+  get: () => state.detector.mix,
+  set: v => {
+    state.detector.mix = v;
+    $('#mix').value = v;
+    $('#mixVal').textContent = Math.round(v) + '%';
+  },
+  min: 0, max: 100, step: 1, unit: '%', decimals: 0,
 });
 
 // ---------- input waveform (animated) ----------
@@ -2412,6 +2707,11 @@ let masterOut = 0;
   knob.addEventListener('pointermove', e => {
     if (!knob.hasPointerCapture(e.pointerId)) return;
     set(sv + (sy - e.clientY) / 3);
+  });
+  bindNumericEdit(val, {
+    get: () => masterOut,
+    set: v => set(v),
+    min: -24, max: 6, step: .1, unit: 'dB', decimals: 1,
   });
 })();
 
