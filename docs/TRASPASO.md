@@ -214,7 +214,7 @@ Estética: glassmorphism, fondo aurora, puntos saturados con halo aditivo y bril
 
 - 1000 samples sintéticos + 1 real (`SNARE.cm`, id 9001).
 - Posición: X = duración en log, Y = brightness en log. La nube tiene sensación 3D, sin ejes visibles.
-- Hover: tooltip con nombre, categoría, path, duración, brightness, druminess.
+- Hover: el nombre del sample aparece en una **barra sutil abajo** (estilo XO), centrada y sin tooltip flotante. Al salir, vuelve al sample seleccionado.
 - Click en un punto: lo selecciona y habilita hover por el mapa (sin arrastrar). **ALT + drag** convierte el sample en una **partícula arrastrable** del mismo tamaño que su punto en el Universe, con glow y estela, que sigue al cursor y se imanta a los 8 slots del dock; al soltar vuela al slot y hace burst/impact. Si se suelta fuera de un slot, toast de Finder (demo). El click/hover hace snap al sample más cercano dentro de un aura de 20 px.
 - **Rueda:** zoom anclado al cursor (0.7×–6×).
 - **Click derecho + arrastrar o Ctrl + click izquierdo + arrastrar:** pan con cursor de mano. Sin auto-pan en bordes.
@@ -585,12 +585,13 @@ AAX **no** se necesita.
 10. **FILE SEARCH rediseñado**: menos datos por fila, tipografía mayor y jerarquía tipo Finder. Ver 7.3.
 11. **Barra superior rediseñada**: título centrado, search con toggle folder/universo, OUTPUT + mini VU al extremo derecho y AUDIO TEST eliminado. Ver 7.1 y 7.6.
 12. **SIMILARITY funcional + FAVORITES**: navegación por 33 vecinos, seguimiento suave y línea animada, teclas ← →, favoritos persistentes y nodo FAVORITES en FILE SEARCH. Ver 7.2 y 7.3.
-13. **Performance del prototipo**: el waveform del INPUT solo se dibuja con la página TRIGGER abierta; meters a ~25 fps con escrituras cacheadas; redraw del Universe coalescido por frame; tooltip con caché de HTML. El renderer de OpenCode bajó de ~99 % a ~12 % de CPU en reposo.
+13. **Performance del prototipo**: el waveform del INPUT solo se dibuja con la página TRIGGER abierta; meters a ~25 fps con escrituras cacheadas; redraw del Universe coalescido por frame; barra de nombre inferior sin tooltip flotante. El renderer de OpenCode bajó de ~99 % a ~12 % de CPU en reposo.
 14. **File browser**: click en una fila reproduce el audio al instante y se eliminó el botón Audition del pie. En esa iteración, al cambiar a FILE SEARCH se cerraban TRIGGER, INPUT DETECTOR y el editor con animación de salida.
 15. **TRIGGER como página + dock de slots**: TRIGGER, INPUT DETECTOR y el editor/ADSR pasaron a una tercera vista full-screen. El drawer y los faders se reemplazaron por un dock fijo de 8 slots de glass vacíos, siempre visible para arrastrar samples desde Universe/FILE SEARCH. Ver 7.1, 7.4 y 7.5.
 16. **Layout Slate-style**: TRIGGER pasó arriba junto a Settings, con el mismo tamaño. Los slots ahora son cuadrados, centrados y con más separación. En la página TRIGGER se recuperó el banco de 8 faders verticales con meter, M/S/Ø y nivel, alineado sobre los slots. Ver 7.1 y 7.5.
 17. **TRIGGER expandido**: se quitó la fila de título/INPUT/HITS/MASTER para subir todo; el detector pasó a 400 px de ancho con waveform de ≈205 px y knobs en una fila; el ADSR creció a ≈158 px; los 4 paneles del editor se muestran juntos (SAMPLE/ENVELOPE arriba, TONE/SLOT abajo) y los faders se alargaron a ≈116 px. Ver 7.5.
 18. **Drag de partículas**: ALT + drag ya no usa un pill de texto; el sample se convierte en una partícula del mismo tamaño que su dot del Universe, con glow y una estela con los mismos anchos/puntos que la del scrub, sin orbe, anillo ni tether; el nombre aparece como caption sutil. Los slots tienen magnetismo con radio de captura y el drop hace fly-in + burst + impact en el slot y en el fader. Todo el FX vive dentro de la app (canvas fijo), nunca sobre el Finder. Ver 7.2.
+19. **Barra de nombre XO**: se eliminó el tooltip flotante del Universe. El nombre del sample hovereado (o de la fila de FILE SEARCH) aparece centrado en una barra fina sobre el dock; al salir vuelve al seleccionado. En la página TRIGGER la barra se oculta. Ver 7.2.
 
 ---
 

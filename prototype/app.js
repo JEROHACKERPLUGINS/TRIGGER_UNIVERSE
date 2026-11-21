@@ -226,6 +226,7 @@ const slotSample = slot => state.samples.find(s => s.id === slot.sampleId) || nu
 function selectSample(smp, closeTrigger = true, opts = {}) {
   if (!smp) return;
   state.selectedSample = smp;
+  setNameBar(smp);
   if (!opts.keepSim) resetSimilarity(smp);
   else updateSimilarityUI();
   drawUniverse();
@@ -254,7 +255,8 @@ const visible = () => state.samples.filter(passes);
 
 const canvas = $('#universe');
 const wrap = $('.canvas-wrap');
-const tooltip = $('#tooltip');
+const nameBar = $('#nameBar');
+const nameBarText = $('#nameBarText');
 const dragFxCanvas = $('#dragFx');
 const dragFxCtx = dragFxCanvas.getContext('2d');
 let dragFxW = window.innerWidth, dragFxH = window.innerHeight, dragFxDpr = 1;
@@ -542,24 +544,11 @@ function pickSample(mx, my) {
 }
 
 
-let tooltipId = null;
-
-function showTooltip(s, e) {
-  if (!s) { tooltip.classList.remove('show'); tooltipId = null; return; }
-  const c = CAT[s.category];
-  if (tooltipId !== s.id) {
-    tooltipId = s.id;
-    tooltip.innerHTML = `
-    <div class="tt-name">${s.name}</div>
-    <div class="tt-cat" style="color:${c.color}">${c.short} · ${s.path}</div>
-    <div class="tt-row"><span>Duration</span><b>${fmtMs(s.dur)}</b></div>
-    <div class="tt-row"><span>Brightness</span><b>${fmtHz(s.bright)}</b></div>
-    <div class="tt-row"><span>Druminess</span><b>${Math.round(s.drum * 100)}%</b></div>`;
-  }
-  const r = wrap.getBoundingClientRect();
-  tooltip.style.left = clamp(e.clientX - r.left, 80, r.width - 80) + 'px';
-  tooltip.style.top = clamp(e.clientY - r.top, 60, r.height - 10) + 'px';
-  tooltip.classList.add('show');
+function setNameBar(smp) {
+  if (!nameBar || !nameBarText) return;
+  const s = smp || state.selectedSample;
+  nameBarText.textContent = s ? s.name : '';
+  nameBar.classList.toggle('show', !!s);
 }
 
 // ---------- similarity ----------
@@ -1018,7 +1007,6 @@ function beginDrag(smp, e, opts) {
   if (opts && opts.fromUniverse) showSimilarity();
   else hideSimilarity();
   state.drag = smp;
-  tooltip.classList.remove('show');
   dragStarted = false;
   dragStart = { x: e.clientX, y: e.clientY };
   dragOrigin = { x: e.clientX, y: e.clientY };
@@ -1130,7 +1118,7 @@ canvas.addEventListener('mousemove', e => {
 
   const s = pickSample(mx, my);
   state.hover = s;
-  showTooltip(s, e);
+  setNameBar(s);
   if (state.scanning) {
     scheduleHoverPreview(s);
     appendScrubTrail(s);
@@ -1142,7 +1130,7 @@ canvas.addEventListener('mouseleave', () => {
   if (state.scanning) stopHoverPreview();
   state.pointer = null;
   state.hover = null;
-  tooltip.classList.remove('show'); drawUniverse();
+  setNameBar(null); drawUniverse();
 });
 
 canvas.addEventListener('mousedown', e => {
@@ -1679,6 +1667,13 @@ $('#fileList').addEventListener('mousedown', e => {
     playHoverPreview(smp);
   }
 });
+$('#fileList').addEventListener('mouseover', e => {
+  const row = e.target.closest('.file-row[data-id]');
+  if (!row) return;
+  const smp = state.samples.find(s => s.id === +row.dataset.id);
+  if (smp) setNameBar(smp);
+});
+$('#fileList').addEventListener('mouseleave', () => setNameBar(null));
 $('#fileList').addEventListener('click', e => {
   const btn = e.target.closest('.fav-btn[data-id]');
   if (!btn) return;
@@ -1743,6 +1738,7 @@ function setView(mode) {
   $('#universePanel').classList.toggle('trigger-mode', isTrigger);
   $('#triggerTab').classList.toggle('active', isTrigger);
   $('#triggerTab').title = isTrigger ? 'Back to browser' : 'Open TRIGGER page';
+  nameBar.classList.toggle('hide', isTrigger);
   const vt = $('#viewToggle');
   vt.title = isFiles ? 'Back to universe' : 'File search';
   vt.setAttribute('aria-label', vt.title);
@@ -1761,6 +1757,7 @@ function setView(mode) {
     });
   } else {
     stopInputLoop();
+    setNameBar(state.selectedSample);
     if (isUni) {
       requestAnimationFrame(() => {
         resizeCanvas();

@@ -102,6 +102,14 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
 
+## Actualización 21/11 — barra de nombre XO
+
+- Se eliminó el **tooltip flotante** del Universe.
+- El nombre del sample hovereado aparece centrado en una **barra fina y sutil sobre el dock**, con fondo oscuro translúcido y texto al 72%.
+- También actualiza al hoverear filas de FILE SEARCH; al salir vuelve al sample seleccionado.
+- En la página TRIGGER la barra se oculta para no chocar con los faders.
+- La similarity bar, el file browser y las herramientas de zoom se corrieron hacia arriba para dejarle lugar.
+
 ## Actualización 21/11 — drag de partículas
 
 - **ALT + drag** convierte el sample en una **partícula del mismo tamaño que su punto en el Universe**, con glow y estela aditiva; sin orbe, anillo ni tether.
@@ -144,12 +152,12 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - El waveform del **INPUT** solo se redibuja con la página TRIGGER abierta.
 - Los meters corren a ~25 fps y solo escriben el DOM cuando el valor cambia. El VU de OUTPUT sigue siempre.
 - `drawUniverse` se coalesce por `requestAnimationFrame` en mousemove/wheel.
-- El tooltip solo rehace su HTML cuando cambia el sample; la posición se actualiza aparte.
+- El nombre del hover se muestra en una barra fija sutil sobre el dock; no hay tooltip flotante.
 - Resultado: el renderer de OpenCode pasó de ~99 % a ~12 % de CPU en reposo.
 
 ## Actualización 21/11 — scrub y estela
 
-- Mantener el **click izquierdo** y moverse por el Universe activa un modo scrub: cada sample bajo el cursor dispara un **preview de 0,8 s** en el momento y queda seleccionado para hover/tooltip. El preview anterior hace un fade de 20 ms.
+- Mantener el **click izquierdo** y moverse por el Universe activa un modo scrub: cada sample bajo el cursor dispara un **preview de 0,8 s** en el momento y queda seleccionado para el nombre de la barra inferior. El preview anterior hace un fade de 20 ms.
 - El scrub va dejando una **estela** que conecta los samples visitados. Cada segmento usa el color de la categoría del destino, con glow aditivo, núcleo brillante, nodos y cabeza viva mientras el botón está apretado.
 - Al soltar, la estela se desvanece en ~2,4 s. Un nuevo click la reinicia.
 - El click/hover hace **snap** al sample más cercano dentro de un **aura de 20 px**. El click en vacío solo cierra paneles: no busca ni centra nada.
