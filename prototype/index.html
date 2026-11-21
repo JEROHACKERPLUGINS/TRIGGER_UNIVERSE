@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=35">
+<link rel="stylesheet" href="style.css?v=37">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
 <div class="app">
 
   <main class="workspace">
@@ -72,7 +73,7 @@
         </div>
 
         <div class="universe-top">
-          <div class="search-box">
+          <div class="search-box liquid-glass">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
             <input id="search" placeholder="Search" autocomplete="off" spellcheck="false">
             <button class="search-view-toggle" id="viewToggle" title="File search" aria-label="File search">
@@ -94,7 +95,26 @@
       </div>
     </section>
 
-    <aside class="inspector">
+    <aside class="detector-panel liquid-glass" id="detectorPanel">
+      <div class="dp-head">
+        <span class="dp-title">INPUT DETECTOR</span>
+        <span class="dp-sub">one input hit → 8 layers</span>
+      </div>
+      <div class="detector">
+        <div class="det-wave">
+          <canvas id="inputWave"></canvas>
+          <span class="det-wave-label">INPUT</span>
+        </div>
+        <div class="det-knobs" id="detKnobs"></div>
+        <div class="det-row">
+          <button class="chip toggle" id="gateBtn">GATE</button>
+          <button class="chip" id="inputPlay">▶ INPUT</button>
+          <label class="det-mix">MIX <input type="range" id="mix" min="0" max="100" value="100"><b id="mixVal">100%</b></label>
+        </div>
+      </div>
+    </aside>
+
+    <aside class="inspector liquid-glass">
       <div class="inspector-head">
         <span class="slot-badge" id="selSlotBadge">TRIGGER 01</span>
         <span class="sel-name" id="selSampleTitle">—</span>
@@ -188,7 +208,7 @@
     </aside>
   </main>
 
-  <section class="trigger" id="triggerDrawer">
+  <section class="trigger liquid-glass" id="triggerDrawer">
     <div class="trigger-head" id="triggerToggle">
       <div class="trigger-title">TRIGGER <span>8 layers · one input hit</span></div>
       <div class="trigger-status">
@@ -204,24 +224,11 @@
     </div>
 
     <div class="trigger-body">
-      <div class="detector">
-        <div class="det-wave">
-          <canvas id="inputWave"></canvas>
-          <span class="det-wave-label">INPUT</span>
-        </div>
-        <div class="det-knobs" id="detKnobs"></div>
-        <div class="det-row">
-          <button class="chip toggle" id="gateBtn">GATE</button>
-          <button class="chip" id="inputPlay">▶ INPUT</button>
-          <label class="det-mix">MIX <input type="range" id="mix" min="0" max="100" value="100"><b id="mixVal">100%</b></label>
-        </div>
-      </div>
-
       <div class="channels" id="channels"></div>
     </div>
   </section>
 
-  <button class="trigger-tab" id="triggerTab"><span>TRIGGER</span><i>▲</i></button>
+  <button class="trigger-tab liquid-glass" id="triggerTab"><span>TRIGGER</span><i>▲</i></button>
 </div>
 
 <div class="settings-menu" id="settingsMenu">
@@ -234,6 +241,7 @@
 
 <div class="toast" id="toast"></div>
 <div class="drag-ghost" id="dragGhost"></div>
-<script src="app.js?v=35"></script>
+<div class="ui-tip" id="uiTip" role="tooltip"></div>
+<script src="app.js?v=37"></script>
 </body>
 </html>

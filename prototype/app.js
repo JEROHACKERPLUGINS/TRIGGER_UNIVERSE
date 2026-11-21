@@ -2480,4 +2480,101 @@ function init() {
   });
   loadRealAudio();
 }
+// ---------- ui tooltip: replaces native title attributes with a styled tip ----------
+(function uiTips() {
+  const tip = $('#uiTip');
+  let target = null, timer = 0;
+  const textOf = el => {
+    const t = el.getAttribute('title');
+    if (t) { el.dataset.tip = t; el.removeAttribute('title'); }
+    return el.dataset.tip || '';
+  };
+  const place = () => {
+    if (!target) return;
+    const r = target.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight, gap = 10;
+    const below = r.bottom + gap + h < innerHeight;
+    const cx = r.left + r.width / 2;
+    const x = Math.min(Math.max(cx - w / 2, 8), innerWidth - w - 8);
+    tip.dataset.side = below ? 'bottom' : 'top';
+    tip.style.left = x + 'px';
+    tip.style.top = (below ? r.bottom + gap : r.top - gap - h) + 'px';
+    tip.style.setProperty('--arrow-x', Math.min(Math.max(cx - x, 12), w - 12) + 'px');
+  };
+  const show = el => {
+    const text = textOf(el);
+    if (!text) return hide();
+    target = el; tip.textContent = text; place();
+    clearTimeout(timer); timer = setTimeout(() => tip.classList.add('show'), 250);
+  };
+  const hide = () => { target = null; clearTimeout(timer); tip.classList.remove('show'); };
+  document.addEventListener('mouseover', e => {
+    const el = e.target.closest('[title],[data-tip]');
+    if (el !== target) el ? show(el) : hide();
+  });
+  document.addEventListener('focusin', e => {
+    const el = e.target.closest('[title],[data-tip]');
+    el ? show(el) : hide();
+  });
+  document.addEventListener('focusout', hide);
+  document.addEventListener('mousedown', hide);
+  // Text can change on click (e.g. File search <-> Back to universe): refresh it.
+  document.addEventListener('click', () => requestAnimationFrame(() => {
+    const el = document.querySelector('[data-tip]:hover');
+    if (el && el.getAttribute('title')) show(el);
+  }));
+  addEventListener('scroll', hide, true);
+})();
+
+// ---------- liquid glass: per-element displacement map that bends the backdrop near the edge ----------
+(function liquidGlass() {
+  // backdrop-filter:url() only works in Chromium; others keep the plain glass look.
+  if (!navigator.userAgentData) return;
+  const defs = $('#lgDefs'), NS = 'http://www.w3.org/2000/svg';
+  const opts = { bandMax: 16, scalePill: 12, scalePanel: 18 };
+  document.querySelectorAll('.liquid-glass').forEach((el, n) => {
+    const id = 'lgRefract' + n;
+    const filter = document.createElementNS(NS, 'filter');
+    filter.setAttribute('id', id);
+    ['x', 'y'].forEach(k => filter.setAttribute(k, '0'));
+    ['width', 'height'].forEach(k => filter.setAttribute(k, '100%'));
+    filter.setAttribute('color-interpolation-filters', 'sRGB');
+    const img = document.createElementNS(NS, 'feImage');
+    img.setAttribute('preserveAspectRatio', 'none'); img.setAttribute('result', 'map');
+    const disp = document.createElementNS(NS, 'feDisplacementMap');
+    disp.setAttribute('in', 'SourceGraphic'); disp.setAttribute('in2', 'map');
+    disp.setAttribute('xChannelSelector', 'R'); disp.setAttribute('yChannelSelector', 'G');
+    filter.append(img, disp); defs.append(filter);
+
+    const build = () => {
+      const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
+      if (!w || !h) return;
+      const R = Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0, w / 2, h / 2);
+      const band = Math.min(opts.bandMax, R || opts.bandMax, h / 5 + 4);
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const ctx = c.getContext('2d'), data = ctx.createImageData(w, h), px = data.data;
+      const hx = w / 2 - R, hy = h / 2 - R;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        // rounded-rect SDF: distance to edge (d) and outward normal (nx, ny)
+        const ox = x + .5 - w / 2, oy = y + .5 - h / 2;
+        const qx = Math.abs(ox) - hx, qy = Math.abs(oy) - hy;
+        let d, nx, ny;
+        if (qx > 0 && qy > 0) { const l = Math.hypot(qx, qy); d = R - l; nx = qx / l; ny = qy / l; }
+        else if (qx > qy) { d = R - qx; nx = 1; ny = 0; } else { d = R - qy; nx = 0; ny = 1; }
+        nx *= Math.sign(ox) || 1; ny *= Math.sign(oy) || 1;
+        const t = d < band ? Math.pow(1 - Math.max(d, 0) / band, 2) : 0;
+        const i = (y * w + x) * 4;
+        px[i] = 128 - nx * t * 127; px[i + 1] = 128 - ny * t * 127; px[i + 2] = 128; px[i + 3] = 255;
+      }
+      ctx.putImageData(data, 0, 0);
+      img.setAttribute('href', c.toDataURL());
+      img.setAttribute('width', w); img.setAttribute('height', h);
+      disp.setAttribute('scale', h < 80 ? opts.scalePill : opts.scalePanel);
+      el.style.setProperty('--lg-filter', `url(#${id})`);
+      el.classList.add('lg-refract');
+    };
+    build();
+    new ResizeObserver(build).observe(el);
+  });
+})();
+
 init();
