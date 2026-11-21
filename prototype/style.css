@@ -928,3 +928,61 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
   border-color:rgba(45,226,197,.62);
   box-shadow:0 0 0 2px rgba(45,226,197,.22),0 0 30px rgba(45,226,197,.30),
     0 14px 34px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.2)}
+
+/* ---------- shared glass texture: search, Trigger Slots, TRIGGER, settings, output ---------- */
+:root{
+  --glass-fill:linear-gradient(180deg,rgba(180,232,222,.13),rgba(95,200,182,.04) 55%,rgba(95,200,182,.085));
+  --glass-line:rgba(215,245,239,.18);
+  --glass-hi:rgba(215,245,239,.55);
+  --glass-lo:rgba(95,200,182,.30);
+  --glass-glow:rgba(95,200,182,.10);
+}
+/* Trigger Slots */
+.slot{
+  background:var(--glass-fill),rgba(14,30,32,.42);
+  border-color:var(--glass-line);
+  box-shadow:0 12px 30px rgba(0,0,0,.28),0 0 18px var(--glass-glow),
+    inset 1px 1px 0 -.5px var(--glass-hi),
+    inset -1px -1px 0 -.5px var(--glass-lo),
+    inset 0 0 14px rgba(95,200,182,.08)}
+.slot::after{background:linear-gradient(180deg,rgba(210,242,236,.16),transparent)}
+/* fader strips inside the TRIGGER window */
+.slot-fader{
+  background:var(--glass-fill),rgba(10,22,26,.48);
+  border-color:var(--glass-line);
+  box-shadow:0 10px 26px rgba(0,0,0,.28),0 0 18px var(--glass-glow),
+    inset 1px 1px 0 -.5px rgba(215,245,239,.45),
+    inset -1px -1px 0 -.5px var(--glass-lo)}
+/* settings window */
+.settings-menu{
+  background:linear-gradient(180deg,rgba(180,232,222,.14),rgba(95,200,182,.04) 55%,rgba(95,200,182,.09)),rgba(10,22,26,.72);
+  border-color:rgba(215,245,239,.20);
+  box-shadow:0 30px 70px rgba(0,0,0,.60),0 0 30px var(--glass-glow),
+    inset 1px 1px 0 -.5px rgba(215,245,239,.50),
+    inset -1px -1px 0 -.5px rgba(95,200,182,.30),
+    inset 0 0 24px rgba(95,200,182,.08);
+  backdrop-filter:blur(24px) saturate(145%) brightness(1.05)}
+/* output cluster becomes a glass pill */
+.top-master{
+  border:1px solid var(--glass-line);border-left:1px solid var(--glass-line);
+  border-radius:999px;padding:5px 8px 5px 10px;margin-left:4px;
+  background:var(--glass-fill),rgba(14,30,32,.36);
+  box-shadow:0 8px 22px rgba(0,0,0,.26),0 0 16px var(--glass-glow),
+    inset 1px 1px 0 -.5px var(--glass-hi),
+    inset -1px -1px 0 -.5px var(--glass-lo);
+  backdrop-filter:blur(10px) saturate(135%) brightness(1.05)}
+.top-knob{
+  background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.20),rgba(10,22,26,.50));
+  border-color:rgba(215,245,239,.26);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.20),0 0 12px rgba(95,200,182,.10)}
+/* top TRIGGER / Settings buttons share the same glass */
+.top-actions .btn.ghost:not(.active){
+  background:var(--glass-fill),rgba(14,30,32,.34);
+  border-color:var(--glass-line);
+  box-shadow:0 6px 18px rgba(0,0,0,.22),0 0 14px var(--glass-glow),
+    inset 1px 1px 0 -.5px var(--glass-hi),
+    inset -1px -1px 0 -.5px var(--glass-lo);
+  backdrop-filter:blur(8px) saturate(130%) brightness(1.04)}
+.top-actions .btn.ghost:not(.active):hover{
+  background:linear-gradient(180deg,rgba(180,232,222,.20),rgba(95,200,182,.06) 55%,rgba(95,200,182,.12)),rgba(14,30,32,.40);
+  border-color:rgba(215,245,239,.30)}

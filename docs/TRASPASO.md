@@ -198,7 +198,7 @@ TRIGGER_UNIVERSE/
 ## 7. Prototipo UI — comportamiento actual
 
 Archivos: `prototype/index.html`, `prototype/style.css`, `prototype/app.js`.
-Estética: glassmorphism, fondo aurora, puntos saturados con halo aditivo y brillo especular.
+Estética: glassmorphism unificado (search, Trigger Slots, TRIGGER, Settings y OUTPUT comparten gradiente mint, borde e insets), fondo aurora, puntos saturados con halo aditivo y brillo especular.
 
 ### 7.1 Layout
 
@@ -592,7 +592,8 @@ AAX **no** se necesita.
 17. **TRIGGER expandido**: se quitó la fila de título/INPUT/HITS/MASTER para subir todo; el detector pasó a 400 px de ancho con waveform de ≈205 px y knobs en una fila; el ADSR creció a ≈158 px; los 4 paneles del editor se muestran juntos (SAMPLE/ENVELOPE arriba, TONE/SLOT abajo) y los faders se alargaron a ≈116 px. Ver 7.5.
 18. **Drag de partículas**: ALT + drag ya no usa un pill de texto; el sample se convierte en una partícula del mismo tamaño que su dot del Universe, con glow y una estela con los mismos anchos/puntos que la del scrub, sin orbe, anillo ni tether; el nombre aparece como caption sutil. Los slots tienen magnetismo con radio de captura y el drop hace fly-in + burst + impact en el slot y en el fader. Todo el FX vive dentro de la app (canvas fijo), nunca sobre el Finder. Ver 7.2.
 19. **Barra de nombre XO**: se eliminó el tooltip flotante del Universe. El nombre del sample hovereado (o de la fila de FILE SEARCH) aparece centrado en una barra fina **debajo de los slots**; al salir vuelve al seleccionado. En la página TRIGGER muestra el slot seleccionado o `TRIGGER SLOT 0X · EMPTY`.
-20. **Trigger Slots + invitación al drag**: los 8 cuadrados pasan a llamarse **Trigger Slots**. Al comenzar un arrastre, todos se encienden con un glow mint más brillante y se magnifican con caída por proximidad, estilo Dock de macOS; no hay contorno general. El slot magnetizado mantiene su glow más fuerte. Ver 7.2.
+20. **Trigger Slots + invitación al drag**: los 8 cuadrados pasan a llamarse **Trigger Slots**. Al comenzar un arrastre, todos se encienden con un glow mint más brillante y se magnifican con caída por proximidad, estilo Dock de macOS; no hay contorno general. El slot magnetizado mantiene su glow más fuerte.
+21. **Glass unificado**: search, Trigger Slots, fader strips, página TRIGGER, Settings y OUTPUT comparten la misma textura: gradiente mint, borde claro, insets de luz, glow suave y blur donde conviene. Ver 7.2.
 
 ---
 

@@ -35,6 +35,7 @@ Controles principales:
 - **SIMILARITY** (abajo): al seleccionar un sample se arma una lista de 33 parecidos. Las flechas `◂ ▸` o las teclas `← →` recorren esa lista; el Universe hace un paneo suave solo si el sample queda cerca del borde y dibuja una línea animada entre ambos.
 - **♥** en la barra de similitud o en cada fila de FILE SEARCH: agrega/quita favoritos persistentes. **FAVORITES** aparece arriba del árbol de carpetas.
 - **Settings** contiene AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS y AUDIO/MIDI.
+- La textura **glass** es la misma familia en el search, los Trigger Slots, la página TRIGGER, Settings y el bloque OUTPUT.
 
 ## Documentación
 

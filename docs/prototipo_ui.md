@@ -49,7 +49,7 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 ## Estética
 
-- Glassmorphism: paneles translúcidos, blur, bordes de luz, fondo aurora.
+- Glassmorphism unificado: search, Trigger Slots, fader strips, página TRIGGER, Settings y OUTPUT comparten gradiente mint, borde claro, insets de luz y blur donde conviene; fondo aurora.
 - Puntos del Universe más saturados, con halo aditivo, núcleo vivo y brillo especular para sensación 3D.
 - Sin BPM, sin secuenciador, sin preset browser.
 
@@ -102,6 +102,13 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - **♥** en la barra de similitud y en cada fila de FILE SEARCH agrega/quita favoritos.
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
+
+## Actualización 21/11 — textura glass unificada
+
+- Search, **Trigger Slots**, fader strips del banco, paneles de la página TRIGGER, **Settings** y el bloque **OUTPUT** ahora comparten la misma textura glass: gradiente mint, borde claro, insets de luz y glow suave.
+- OUTPUT pasó a ser una **cápsula glass** redondeada, a juego con el search.
+- Settings dejó el azul plano y usa el mismo vidrio mint, más oscuro para legibilidad.
+- Los Trigger Slots mantienen su tint translúcido y sus estados de invitación/magnetismo.
 
 ## Actualización 21/11 — Trigger Slots invitan al drag
 
