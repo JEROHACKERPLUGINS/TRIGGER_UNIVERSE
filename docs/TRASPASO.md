@@ -1,0 +1,589 @@
+# TRASPASO — TRIGGER UNIVERSE
+
+**Fecha:** 20/11/2026
+**Propósito:** dejar todo el contexto necesario para retomar el proyecto en un chat nuevo sin perder decisiones, estado ni próximos pasos.
+**Documento principal:** este archivo. **Prompt listo para pegar:** [`PROMPT_REINICIO.md`](PROMPT_REINICIO.md).
+
+---
+
+## 1. Qué es
+
+**TRIGGER UNIVERSE** es un plugin de audio que combina tres cosas:
+
+1. El **motor de drum triggering** existente (DrumReplacer / iPlug2).
+2. Un **universo visual de samples** estilo XO: nube de puntos, búsqueda, similitud, exploración.
+3. Un **mixer de 8 slots** con edición no destructiva por capa.
+
+El usuario busca un sample en el Universo o en FILE SEARCH, lo arrastra a uno de los 8 faders, lo edita (sample, ADSR, tone, phase) y el INPUT del trigger dispara las 8 capas.
+
+**No es un beatmaker.** Quedan fuera de alcance: step sequencer, patrones, groove, swing, BPM sync y preset browser.
+
+---
+
+## 2. Estado en una línea
+
+**Fase 0 aprobada. Motor auditado y testeado. Prototipo UI navegable con audio real funcionando. Build del plugin bloqueado por entorno (faltan Xcode completo, CMake, Node y SDK VST3).**
+
+---
+
+## 3. Cómo retomar ahora mismo
+
+### 3.1 Abrir el prototipo
+
+```bash
+cd /Users/dante/Desktop/TRIGGER_UNIVERSE/prototype
+python3 -m http.server 8765 --bind 127.0.0.1
+```
+
+Abrir: <http://127.0.0.1:8765/>
+
+Si el servidor no está corriendo, levantarlo con el comando de arriba. Verificar:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8765/
+# 200
+```
+
+### 3.2 Probar el audio en 10 segundos
+
+1. Click en **▶ AUDIO TEST** (arriba a la derecha).
+2. El LED verde junto al botón se enciende.
+3. Se escucha `SNARE.cm.wav` y se disparan las 8 capas.
+4. El meter MASTER del drawer TRIGGER se mueve.
+5. Para verlo: click en la pestaña **TRIGGER ▲** (abajo).
+
+Si no se escucha nada:
+
+- Verificar que el LED esté verde.
+- Hacer click dentro de la página (política de autoplay de Chromium).
+- Revisar la consola del browser (`tools.browser.console`).
+- Confirmar que `prototype/samples/SNARE.cm.wav` existe.
+- El `AudioContext` debe estar en `running` (`window.__audio.context.state`).
+
+### 3.3 Handles de debug
+
+En la consola del prototipo:
+
+```js
+window.__TU          // estado completo (slots, samples, filtros)
+window.__audio       // contexto, hits, buffer, playInput, stopInput, playSlot
+window.__audio.hits  // 22 hits detectados por el detector JS
+window.__selectSample(sampleObj)
+window.__setTriggerOpen(true)
+```
+
+---
+
+## 4. Decisiones cerradas
+
+| # | Tema | Decisión |
+| --- | --- | --- |
+| 1 | Framework | **iPlug2**. Se conserva el motor existente; **no** se migra a JUCE |
+| 2 | Formatos | **AU + VST3**. **AAX fuera** por decisión del usuario |
+| 3 | UI final | **React + TypeScript** sobre el bridge WebView de iPlug2 |
+| 4 | Prototipo | HTML/CSS/JS sin build step, porque no hay Node instalado |
+| 5 | Envelope | **ADSR real** (agregar Decay al motor) + fade in/out + start/end/trim. **Sin time-stretch** |
+| 6 | Fase | **Ø = 180°** (polaridad). **Phase shift separado**: 0° / 90° / 180° / 260° |
+| 7 | Auto-phase | Corre automáticamente al cargar un sample. Por defecto **solo polaridad**; offset en 0 salvo que **TIMING** esté activo |
+| 8 | Faders | Solo números **01–08**, sin nombres de rol |
+| 9 | Editor | Pertenece al sample del fader seleccionado (default TRIGGER 01). Se abre al clickear el fader |
+| 10 | Tabs del editor | **SAMPLE → ENVELOPE → TONE → SLOT** |
+| 11 | Tab SLOT | Solo **Auto Phase** y sus controles. Sin Level/Pan/Tune/Mute/Solo/Pol |
+| 12 | TRIGGER | Pestaña chica abajo. Abre al arrastrar un sample o al clickearla; queda abierto. Cierra al clickear el Universe, al seleccionar un sample o desde la cabecera |
+| 13 | Universe | Full-bleed, nube de puntos 3D abstracta, sin ejes de frecuencia/ms. Search arriba, similitud abajo |
+| 14 | FILE SEARCH | Árbol tipo Finder con root en la carpeta elegida por el usuario. Subcarpetas reales. Samples reales primero |
+| 15 | OUTPUT | Knob arriba a la derecha. Settings funcional. AUTO PHASE ALL vive en Settings |
+| 16 | Export | Botón presente; en el prototipo es solo un toast demo |
+| 17 | XO | Solo se usó como referencia funcional/UX. **No se copió código, assets ni diseño propietario** |
+
+### 4.1 Hallazgos de XO (referencia funcional)
+
+El análisis de `sample.db` de XO 1.8.10 quedó documentado en [`referencias/XO_sample_db.md`](referencias/XO_sample_db.md). Resumen:
+
+- **8.746 samples**, todos WAV, 44.1 kHz (8.474 estéreo, 272 mono).
+- **9 categorías**: Kick 2.473, Snare 1.735, Perc 1.265, HHC 868, FX 573, Clap 562, HHO 527, Tom 380, Cymbal 363.
+- Esquema con features: `lengthMs`, `centroid`, `loudness`, `peak`, `druminess`, `lateTransient`.
+- **Coordenadas 4D** (`coord_x`, `coord_y`, `coord_z`, `coord_w`), no solo 2D.
+- `centroid` normalizado 0–1; `lengthMs` 11.4 ms–27.997 s; `druminess` 0.1–0.996.
+- Confirmación de que el Universe de XO se basa en features tímbricas + proyección, no en ejes de duración/frecuencia solamente.
+- **No se copió nada**: solo estructura y estadísticas para informar nuestro modelo de datos.
+
+---
+
+## 5. Arquitectura
+
+### 5.1 Motor actual (auditado, no reescrito)
+
+```
+Audio in 2ch
+  → Input Gain
+  → TransientDetector
+      → Hits (offset + velocity)
+      → MIDI Out
+      → 8 Slots × 8 voces
+  → Delay 5 ms
+  → HitGate sobre el seco
+  → Crossfade Dry/Wet
+  → Output Gain
+  → Audio out
+```
+
+Puntos clave:
+
+- El detector reporta el hit **5 ms antes** del pico; esa latencia se declara al host y se compensa en el seco.
+- `SlotEngine` ya soporta playback, offset, velocity, tune, release y voice stealing.
+- El audio thread no debe leer disco, decodificar, hacer FFT ni esperar a la UI.
+- Los samples se preparan fuera del audio thread y se entregan con swap atómico.
+
+### 5.2 Arquitectura objetivo
+
+```
+Host (AU / VST3)
+  → Plugin iPlug2
+      → Audio thread intacto: Detector → 8 Slots → Dry/Wet → Output
+      → Bridge iPlug2 (parámetros + mensajes JSON)
+      → UI WebView (React + TS): Universe, Browser, Inspector, Mixer, Trigger
+      → Background/UI thread:
+           Scanner multi-root → SQLite (paths, metadata, features)
+           Analyzer (duración, pitch, centroide, etc.)
+           Layout 2D + similitud
+           Loader de samples a slots
+```
+
+### 5.3 Reglas de oro
+
+- Cambios de polaridad/offset se preparan fuera del callback y se aplican sin clicks (crossfade 2–5 ms).
+- Medidores/eventos a la UI a ~20 ms, nunca por sample.
+- La edición es no destructiva: nunca modifica el WAV original.
+- Reemplazar un slot no afecta a los demás.
+
+---
+
+## 6. Estructura del repo
+
+```
+TRIGGER_UNIVERSE/
+├── README.md                     estado y cómo correr el prototipo
+├── docs/
+│   ├── TRASPASO.md               este documento
+│   ├── PROMPT_REINICIO.md        prompt para chat nuevo
+│   ├── Brief_Tecnico_...docx     brief v0.2
+│   ├── auditoria/
+│   │   ├── 00_entorno.md
+│   │   ├── 01_informe_auditoria.md
+│   │   └── 02_arquitectura_y_plan.md
+│   ├── fase1/modelo_datos.md     esquema SQLite / indexado
+│   ├── prototipo_ui.md           decisiones de UI
+│   ├── audio_tests.md            pruebas y mediciones
+│   ├── auto_phase.md             diseño GCC-PHAT + lookahead
+│   ├── pruebas_audio/            tests C++ con el snare real
+│   └── referencias/              specs, notas XO, capturas
+├── engine/
+│   ├── DrumReplacer/             motor iPlug2 original
+│   │   ├── DSP/                  TransientDetector, SlotEngine, Dynamics, WavFile
+│   │   ├── tests/                tests DSP existentes
+│   │   └── ...
+│   └── _iPlug2/                  framework
+└── prototype/
+    ├── index.html
+    ├── style.css
+    ├── app.js
+    └── samples/SNARE.cm.wav
+```
+
+**Tamaños aproximados:** `engine/` 185 MB, `prototype/` 2.4 MB, `docs/` 13 MB.
+**Git:** commit inicial creado en `main` con los 3.704 archivos del proyecto. Árbol limpio. `.git` ocupa ~122 MB (el contenido staged era ~201 MB). Identidad local usada: `Dante <dante@localhost>`.
+
+---
+
+## 7. Prototipo UI — comportamiento actual
+
+Archivos: `prototype/index.html`, `prototype/style.css`, `prototype/app.js`.
+Estética: glassmorphism, fondo aurora, puntos saturados con halo aditivo y brillo especular.
+
+### 7.1 Layout
+
+- **La app es el Universe**: logo, nombre de sesión, FILE SEARCH, OUTPUT, AUDIO TEST, Settings y Export flotan dentro del mapa.
+- **Search** centrado arriba, sin contorno de panel.
+- **Similarity bar** flotante abajo, estilo XO.
+- **TRIGGER** es una pestaña mínima abajo (`TRIGGER ▲`); al abrirse es un drawer inferior.
+- **Editor de sample** flotante a la derecha; no recorta el mapa.
+
+### 7.2 Universe
+
+- 1000 samples sintéticos + 1 real (`SNARE.cm`, id 9001).
+- Posición: X = duración en log, Y = brightness en log. La nube tiene sensación 3D, sin ejes visibles.
+- Hover: tooltip con nombre, categoría, path, duración, brightness, druminess.
+- Click en un punto: lo selecciona e inicia drag.
+- **Rueda:** zoom anclado al cursor (0.7×–6×).
+- **Click derecho + arrastrar:** pan con cursor de mano. Sin auto-pan en bordes.
+- **Click izquierdo en vacío:** pan.
+- Botones `−`, `+`, `⤢` para zoom/reset.
+- Click en el Universo cierra TRIGGER, editor y Settings.
+
+### 7.3 FILE SEARCH
+
+- Alterna Universe ↔ File Search con el botón superior.
+- Árbol tipo Finder con root `ALL SAMPLES` → `SAMPLES FOLDER` → subcarpetas (`Kicks`, `Snares`, `Hats`, `Percussion`, …).
+- En el prototipo los paths son sintéticos; el sample real aparece primero.
+- Columnas: **NAME, CAT, LEN, BRIGHT**.
+- Búsqueda global por texto (nombre, categoría, carpeta, path).
+- Preview inferior con **▶ Audition**.
+- Drag de una fila a un fader de TRIGGER.
+- Hasta 1200 filas visibles; contador real.
+- `CHANGE` muestra un toast demo: en el plugin abrirá selector nativo de carpeta.
+
+### 7.4 Editor de sample
+
+Se abre al clickear un fader. Corresponde al sample cargado en ese slot. Header con `TRIGGER 01`, nombre, metadata, grip de drag y botón ×.
+
+Tabs:
+
+1. **SAMPLE**
+   - Waveform real del sample del slot.
+   - Handles arrastrables de **start / end / fade in / fade out**.
+   - Readout en ms.
+   - **▶ Audition**, **Reverse** (real en Web Audio), **Normalize** (toast demo).
+   - Drag desde la waveform a otro fader.
+2. **ENVELOPE**
+   - ADSR editable con handles.
+   - Readout A/D/S/R y botón Reset.
+3. **TONE**
+   - TONE (−100…+100), CUT (0–100%), VEL SENS, GAIN.
+   - PLAYBACK: ONE SHOT / GATE; LOOP.
+4. **SLOT**
+   - Solo **AUTO PHASE**:
+     - REF: INPUT / SLOT 1.
+     - **RE-ANALYZE & ALIGN**.
+     - **TIMING** on/off.
+     - Resultado: `corr`, polaridad, offset o `suggested`.
+     - OFFSET manual (−5…+50 ms).
+     - SHIFT: 0° / 90° / 180° / 260°.
+
+**Fase y badges:** 180° = Ø. El botón Ø del fader y el segmento 180° son recíprocos. El badge del fader muestra `90°`, `180°` o `260°`, y el offset si existe.
+
+### 7.5 TRIGGER
+
+- Se abre al arrastrar un sample o al clickear la pestaña; queda abierto.
+- Se cierra al clickear el Universe, al seleccionar un sample o desde la cabecera.
+- Header: LED de hit, INPUT level, HITS, MASTER meter, chevron.
+- Detector: waveform del INPUT real, 8 knobs (Sens, Retrig, Detail, Low, High, Supp, Input, Output), GATE, **▶ INPUT**, MIX.
+- 8 canales:
+  - Número `01`–`08`, dot de categoría, nombre del sample.
+  - Fader vertical, meter real por analizador.
+  - M / S / Ø.
+  - Pan/Tune y badge de fase.
+- Click en un canal abre el editor de ese slot.
+- Drag & drop de samples a cualquier canal.
+
+### 7.6 Settings / OUTPUT / Export
+
+- **OUTPUT knob** arriba a la derecha: arrastrar verticalmente, −24…+6 dB, aplica al master gain real.
+- **Settings**: AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS…, AUDIO / MIDI…
+  - AUTO PHASE ALL re-analiza las 8 capas.
+  - FLIP ALL invierte polaridad en los 8 slots.
+  - Los otros dos son toasts demo.
+- **▶ AUDIO TEST**: reanuda el contexto y dispara el snare real por las 8 capas.
+- **LED de audio**: verde cuando el `AudioContext` está `running`.
+- **Export**: toast demo (`AU / VST3`).
+
+---
+
+## 8. Audio real en el prototipo
+
+### 8.1 Archivo
+
+`prototype/samples/SNARE.cm.wav` (copiado de `~/Desktop/SNARE.cm.wav`).
+
+| Dato | Valor |
+| --- | --- |
+| Duración | 8.1489 s |
+| Canales | 2 |
+| Sample rate | 48000 Hz |
+| Bit depth | 24-bit PCM |
+| Peak | 0.00 dBFS |
+| RMS | −21.34 dBFS |
+
+No es un solo hit: es una **secuencia de snare** con 11 golpes principales, ghosts/flams y un transiente final en ~8.14 s.
+
+### 8.2 Qué está cableado
+
+- `decodeAudioData` carga el WAV; el contexto lo remuestrea a 44.1 kHz.
+- **Primer golpe** recortado de 0.14 s a 0.65 s (0.51 s) → sample del **slot 01**.
+- **Archivo completo** → **INPUT** del trigger.
+- Waveform del editor: real. Waveform de INPUT: real, con marcas de los transientes detectados.
+- 8 capas Web Audio, cada una con:
+  - playbackRate (tune),
+  - start/end,
+  - fades in/out,
+  - ADSR (attack/decay/sustain/release),
+  - gain por slot,
+  - lowpass (cut) + high shelf (tone),
+  - pan,
+  - mute/solo,
+  - polaridad 180° como gain −1.
+- Meters master y por slot con `AnalyserNode`.
+- OUTPUT knob aplica al master gain.
+- **▶ INPUT** reproduce el archivo completo y dispara las 8 capas en cada hit detectado.
+
+### 8.3 Limitaciones del prototipo
+
+- **90° y 260° no se aplican al audio**: solo se guardan y se muestran. El DSP real va en C++ (all-pass / Hilbert).
+- **180° sí se aplica** como inversión de polaridad (gain −1).
+- El **auto-phase es simulado**: lag/polaridad/confianza determinísticos por `sample.id`. La UX es real; el análisis no.
+- **Offsets negativos no se aplican** en Web Audio: `scheduleSlot` usa `Math.max(0, s.offset)`. El rango de UI es −5…+50 ms.
+- **Velocity** no se usa en el preview.
+- **Normalize** y **Export** son toasts demo.
+- **ONE SHOT / GATE** se guarda pero el scheduler no distingue el modo gate.
+- El motor C++ no se puede compilar como plugin (faltan SDKs); los headers DSP sí se compilan y testean.
+
+---
+
+## 9. Pruebas ejecutadas
+
+### 9.1 Motor C++ — TransientDetector
+
+Compilado con `clang++ -std=c++17 -I engine/DrumReplacer` y CommandLineTools.
+
+| Configuración | Hits |
+| --- | --- |
+| Defaults (Sens 45, Retrig 50, Detail 50, Supp 50) | **23** |
+| Retrig 250 ms | **17** |
+| Detail 0 | **17** |
+| Sens 20 | **12** |
+| Sens 70 | **22** |
+
+Con defaults detecta los golpes principales y también ghosts/flams. Con **Sens 20 + Retrig 250 + Detail bajo** quedan los **12 principales**.
+
+### 9.2 Motor C++ — SlotEngine
+
+| Prueba | Resultado |
+| --- | --- |
+| Playback exacto ratio 1, gain 1, velocity 1 | **maxErr 0.000e+00**, peak 1.000 |
+| Offset 100 + velocity 0.5 | pre 0.000, err 0.000 |
+| Tune +12 st (ratio 2) | err 0.000 |
+| Release: sustain 2%, 10 ms | 0.155 s amp 0.7987 → 0.175 s 0.0000 → 0.25 s 0.0000 |
+| Voice stealing (9 triggers, 8 voces) | render sin crash, peak 0.033 |
+
+### 9.3 Web Audio
+
+| Prueba | Master | Slot 01 |
+| --- | --- | --- |
+| Audition normal (Level −3, ataque 0) @130 ms | 11.33% | 8.26% |
+| Level −60 dB | 2.35% | 3% (idle) |
+| Mute | 0% | 3% (idle) |
+| Ataque 400 ms @90 ms | 5.03% | 3.84% |
+| INPUT completo (8 capas) @700 ms | 16.68% | slot 07: 14.90% |
+
+**Polaridad 180°:** correlación offline con la señal original **−0.9999999999993**, peak 1.0. Verificado.
+
+**Detector JS:** 22 hits con defaults (el C++ detecta 23; difiere en el transiente final 8.141 s). Con Retrig 250: 16. Con Sens 20: 12.
+
+### 9.4 Cómo repetir los tests C++
+
+```bash
+cd engine/DrumReplacer
+clang++ -std=c++17 -I. ../../docs/pruebas_audio/snare_detector_test.cpp -o /tmp/snare_det_test
+/tmp/snare_det_test
+
+clang++ -std=c++17 -I. ../../docs/pruebas_audio/snare_slot_test.cpp -o /tmp/snare_slot_test
+/tmp/snare_slot_test
+```
+
+Requieren el WAV en `~/Desktop/SNARE.cm.wav`. Resultados completos en `docs/audio_tests.md`.
+
+### 9.5 Tests DSP originales
+
+Los 3 tests existentes en `engine/DrumReplacer/tests/` pasan:
+`detector_test.cpp`, `dynamics_test.cpp`, `slot_engine_test.cpp`.
+
+---
+
+## 10. Auto-phase — diseño
+
+Documento completo: `docs/auto_phase.md`.
+
+### 10.1 Algoritmo propuesto
+
+1. Tomar una ventana corta del sample (primeros 80–200 ms) y de la referencia.
+2. Sumar a mono y decimar (ej. 12 kHz).
+3. **GCC-PHAT** entre capa y referencia.
+4. Buscar el pico dentro del rango de lags permitido.
+5. **Polaridad** = signo del pico.
+6. **Lag** = posición del pico, refinada con interpolación parabólica.
+7. **Confianza** = altura del pico normalizada. Si es baja, no aplicar y avisar.
+8. Guardar `offset` y `polarity` por slot.
+
+### 10.2 Referencia
+
+- **INPUT**: transiente de entrada del trigger (default).
+- **SLOT 1** (o cualquier slot): alinear capas entre sí.
+
+### 10.3 Límite crítico: lookahead de 5 ms
+
+El motor reporta `TransientDetector::LatencySamples()` ≈ **5 ms**.
+
+- **Delays positivos:** seguros (línea de delay por slot).
+- **Adelantos negativos:** solo hasta ~5 ms, o agregando pre-roll/delay global.
+- Si el lag excede el rango: clampear y avisar, alinear al último transitorio, o agregar delay global.
+- **Regla de producto:** no prometer adelanto negativo que el motor no pueda conservar.
+
+### 10.4 Aplicación sin clicks
+
+- Análisis y preparación fuera del audio thread.
+- Offset/polaridad se aplican en el próximo bloque o entre eventos, con crossfade de 2–5 ms.
+- No se modifica el archivo original.
+- Se guarda en el estado del plugin y se expone a automatización.
+
+### 10.5 Comportamiento en la UI
+
+- Al cargar un sample, auto-phase corre automáticamente contra la referencia configurada.
+- Badge en el fader: `Ø +3.4ms`, `+1.2ms`, `—`.
+- El editor del slot muestra confianza, polaridad, offset y phase shift.
+- **AUTO PHASE ALL** re-analiza las 8 capas.
+
+---
+
+## 11. Limitaciones y deuda técnica
+
+### 11.1 Entorno
+
+| Faltante | Impacto |
+| --- | --- |
+| Xcode completo | No se puede compilar el plugin AU/VST3 |
+| CMake | No se puede generar el build |
+| Node.js | No se puede construir la UI React final |
+| SDK VST3 | No se puede linkear VST3 |
+| `scripts/build-mac.sh` | Falta; necesario para firmar recursos WebView del bundle |
+
+AAX **no** se necesita.
+
+### 11.2 Prototipo
+
+- Auto-phase simulado.
+- 90°/260° sin DSP.
+- Offsets negativos clampeados a 0.
+- Velocity no aplicada.
+- Gate/one-shot no diferenciados en el scheduler.
+- Normalize/Export/folder picker/Audio-MIDI son demos.
+- Datos sintéticos: 1000 samples; el árbol no refleja una carpeta real.
+- Cache busting manual (`?v=3` en `index.html`); si se edita CSS/JS y no se ve el cambio, subir la versión.
+
+### 11.3 Producto
+
+- Persistencia de biblioteca todavía no implementada.
+- Proyección 2D del Universe todavía no usa features tímbricas reales; usa duración y brightness.
+- Similitud todavía no es tímbrica.
+- No hay presets ni automatización.
+
+---
+
+## 12. Próximos pasos priorizados
+
+### Paso 0 — Desbloquear el build (primero)
+
+1. Instalar **Xcode completo** desde App Store.
+2. `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`
+3. Instalar **CMake** y **Node.js**.
+4. Descargar SDK VST3: `engine/_iPlug2/Scripts/download-iplug-sdks.sh` (sin AAX).
+5. Recuperar/crear `scripts/build-mac.sh`.
+6. Hacer el **build baseline** del VST3 actual y verificarlo en Ableton.
+7. Recién después integrar cambios.
+
+### Paso 1 — Biblioteca real (Fase 1)
+
+- Implementar scanner multi-root en background con SQLite.
+- Esquema definido en `docs/fase1/modelo_datos.md`.
+- Análisis offline: duración, pitch, centroide, rolloff, flatness, RMS/peak, ataque/decay, canales, sample rate.
+- Árbol Finder real + búsqueda + favoritos + missing files.
+- Audition sin cargar slot.
+
+### Paso 2 — Universe real (Fase 2)
+
+- Proyección 2D con features (no solo duración/brightness).
+- Similitud tímbrica.
+- Filtros por categoría, rango, fecha, carpeta.
+- Zoom/pan y selección ya resueltos en el prototipo.
+
+### Paso 3 — Editor y phase (Fase 3)
+
+- Extender `Slot` con Decay, Start/End, fades, Phase Shift y Align.
+- Implementar **GCC-PHAT** en C++ y tests con el snare real + una segunda capa.
+- Implementar **90°/260°** con all-pass/Hilbert por slot.
+- Validar offsets negativos contra el lookahead.
+
+### Paso 4 — Slots / mixer (Fase 4)
+
+- Drag & drop real desde Universe/Browser.
+- Estado único fader ↔ inspector.
+- Flip All / Restore.
+- Crossfade en cambios de polaridad/offset.
+
+### Paso 5 — Release (Fase 5)
+
+- Presets `.drp`, dirty flag, missing files, automatización.
+- AU + VST3, firma/notarización, validación en hosts.
+- Rendimiento con bibliotecas grandes.
+
+---
+
+## 13. Preguntas abiertas
+
+1. **Acceso a carpetas** en el sandbox del plugin: ¿security-scoped bookmarks en macOS? ¿Copiar índice a Application Support?
+2. **Persistencia**: ¿SQLite embebido o JSON binario? El modelo propone SQLite.
+3. **UI final**: ¿WebView de iPlug2 o vista nativa? La decisión aprobada es React + TS sobre WebView.
+4. **Nombres/IDs del plugin**: bundle ID, manufacturer code, plugin code, nombre comercial.
+5. **Licencia** del motor original y de iPlug2 para distribución.
+6. **Formato de preset** `.drp`: compatibilidad con el DrumReplacer original.
+7. **Phase shift**: ¿all-pass de primer orden por slot o Hilbert? Validar CPU y estabilidad.
+8. **Offset negativo**: ¿clampear a −5 ms o agregar delay global?
+9. **Biblioteca por defecto**: ¿escanea toda la carpeta del usuario o solo roots elegidos?
+10. **Idioma de la UI**: el prototipo está en inglés; el brief y los docs en español.
+
+---
+
+## 14. Archivos clave
+
+| Archivo | Para qué |
+| --- | --- |
+| `prototype/index.html` | Estructura del prototipo |
+| `prototype/style.css` | Glass UI, Universe, editor, trigger |
+| `prototype/app.js` | UI + Web Audio + detector JS |
+| `prototype/samples/SNARE.cm.wav` | Sample real |
+| `engine/DrumReplacer/DSP/TransientDetector.h` | Detector C++ testeado |
+| `engine/DrumReplacer/DSP/SlotEngine.h` | Motor de slots testeado |
+| `engine/DrumReplacer/DSP/WavFile.h` | Lectura WAV para tests |
+| `docs/audio_tests.md` | Mediciones completas |
+| `docs/auto_phase.md` | Diseño de auto-phase |
+| `docs/auditoria/02_arquitectura_y_plan.md` | Arquitectura y fases |
+| `docs/fase1/modelo_datos.md` | Esquema de biblioteca |
+| `docs/prototipo_ui.md` | Decisiones de UI |
+| `docs/referencias/XO_sample_db.md` | Esquema y estadísticas de la base de XO |
+| `docs/referencias/capturas_prototipo/` | Capturas del prototipo |
+| `docs/referencias/capturas_prototipo/11_audio_test_trigger.jpeg` | AUDIO TEST + TRIGGER abierto + meters |
+| `docs/referencias/capturas_xo/` | Capturas de referencia XO |
+
+---
+
+## 15. Historial de correcciones importantes
+
+1. **Settings no abría**: faltaba todo el CSS de `.settings-menu`.
+2. **`classList.toggle('on solo')` inválido**: cortaba `updateInspector`; separado en dos toggles.
+3. **TDZ de audio**: `detectInputHits` y el knob OUTPUT accedían a variables `let` antes de inicializarse. Se movieron las variables de audio al inicio y se agregó `audioReady`.
+4. **Archivo real fuera de FILE SEARCH**: quedaba después de los primeros 500; ahora se ordena primero y se muestran hasta 1200.
+5. **Pestaña TRIGGER no se ocultaba**: estaba fuera de `.app`; se movió adentro.
+6. **Hover con carreras**: reemplazado por apertura al arrastrar/tab y cierre al clickear el Universe.
+7. **Editor**: tabs reordenados; SLOT solo auto-phase; 180° recíproco con badge y Ø; badges 90°/180°/260°.
+8. **AUDIO TEST**: se agregó botón + LED de estado; el CSS/JS se sirve con `?v=3` para evitar cache viejo. Si se clickea antes de que termine la carga del WAV, espera hasta 5 s y arranca solo.
+
+---
+
+## 16. Prompt de reinicio
+
+Ver [`PROMPT_REINICIO.md`](PROMPT_REINICIO.md). Pegarlo en el chat nuevo y adjuntar/abrir este repositorio.
+
+---
+
+## 17. Nota final
+
+El prototipo es la referencia visual y de interacción, **no** la implementación final. El motor C++ ya está auditado y testeado; el próximo salto grande es **desbloquear el entorno de build** y llevar el prototipo a iPlug2 + React sin romper el audio thread.

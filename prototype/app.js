@@ -1,0 +1,1978 @@
+'use strict';
+
+/* =========================================================
+   TRIGGER UNIVERSE — UI prototype
+   - Inspector edits the SELECTED SAMPLE (audition via master).
+   - Drag the sample to one of the 8 TRIGGER faders.
+   - Click a fader -> slot popover with AUTO PHASE.
+   - FILE SEARCH = Finder-like tree of user folders.
+   Synthetic data only. No proprietary assets.
+   ========================================================= */
+
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const fmtMs = v => v < 10 ? v.toFixed(1) + ' ms' : Math.round(v) + ' ms';
+const fmtHz = v => v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 1 : 2) + ' kHz' : Math.round(v) + ' Hz';
+const fmtDb = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + ' dB';
+const panLabel = v => v === 0 ? 'C' : (v < 0 ? 'L ' + Math.abs(v) : 'R ' + v);
+const normLog = (v, a, b) => (Math.log(v) - Math.log(a)) / (Math.log(b) - Math.log(a));
+const denormLog = (t, a, b) => a * Math.pow(b / a, t);
+
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const rand = mulberry32(0x54A1F00D);
+let audioReady = false;
+let audioCtx = null;
+let masterGain = null;
+let masterAnalyser = null;
+let inputGain = null;
+let slotNodes = [];
+let meterRAF = null;
+let inputSource = null;
+let inputStartCtxTime = 0;
+let inputPlaying = false;
+let inputTimers = [];
+let activeSlotSources = [];
+let realInputBuffer = null;
+let realInputPeaks = null;
+let realHits = [];
+let realInputDuration = 0;
+
+// ---------- categories ----------
+const CATEGORIES = [
+  { id: 'Kick',   short: 'KICK',  color: '#FF3B5C' },
+  { id: 'Snare',  short: 'SNARE', color: '#2D8CFF' },
+  { id: 'Clap',   short: 'CLAP',  color: '#A855FF' },
+  { id: 'HHC',    short: 'CL HH', color: '#FFC400' },
+  { id: 'HHO',    short: 'OP HH', color: '#FF8A00' },
+  { id: 'Cymbal', short: 'CYMBAL',color: '#FFE94D' },
+  { id: 'Tom',    short: 'TOM',   color: '#00E0C6' },
+  { id: 'Perc',   short: 'PERC',  color: '#43E97B' },
+  { id: 'FX',     short: 'FX',    color: '#FF3DAE' },
+];
+const CAT = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+
+const WORDS = {
+  Kick:   ['Sub Anchor', 'Deep Orbit', 'Low Gravity', 'Concrete', 'Event Horizon', 'Pulse', 'Tectonic', 'Nebula', 'Basalt', 'Gravity Well'],
+  Snare:  ['Wire Frame', 'Bright Halo', 'Ghost Signal', 'Rim Echo', 'Static Bloom', 'Cracked Light', 'Solar Flare', 'Tin Ghost', 'Paper Sky'],
+  Clap:   ['Hand Cluster', 'Wide Signal', 'Paper Snap', 'Twin Palms', 'Crowd Echo', 'Flash Cluster', 'Room Hands'],
+  HHC:    ['Needle', 'Closed Orbit', 'Quartz Tick', 'Micro Spark', 'Tight Beam', 'Pin Point'],
+  HHO:    ['Open Orbit', 'Air Gate', 'Long Spark', 'Glass Wash', 'Open Field'],
+  Cymbal: ['Crash Field', 'Ride Wave', 'Metal Sky', 'Slow Shimmer', 'Bronze Halo', 'Thin Alloy'],
+  Tom:    ['Round Body', 'Deep Skin', 'Cave Tone', 'Low Bounce', 'Wood Ring'],
+  Perc:   ['Shaker Dust', 'Wood Block', 'Bell Fragment', 'Conga Step', 'Clave Light', 'Frame Drum', 'Cowbell'],
+  FX:     ['Reverse Swell', 'Dust Cloud', 'Radio Ghost', 'Tape Lift', 'Noise Bloom', 'Impact Wave', 'Grain Fall'],
+};
+
+const DUR = { min: 20, max: 8000 };
+const BRI = { min: 30, max: 16000 };
+const RANGES = {
+  Kick:   { dur: [55, 720],   bright: [32, 340],     drum: [.86, 1] },
+  Snare:  { dur: [85, 620],   bright: [700, 5400],   drum: [.80, 1] },
+  Clap:   { dur: [65, 480],   bright: [950, 6800],   drum: [.78, 1] },
+  HHC:    { dur: [22, 230],   bright: [3400, 13200], drum: [.84, 1] },
+  HHO:    { dur: [110, 950],  bright: [2400, 11500], drum: [.66, 1] },
+  Cymbal: { dur: [650, 6200], bright: [2400, 13500], drum: [.42, .96] },
+  Tom:    { dur: [170, 1700], bright: [65, 650],     drum: [.70, 1] },
+  Perc:   { dur: [45, 1200],  bright: [220, 8200],   drum: [.48, 1] },
+  FX:     { dur: [110, 5200], bright: [130, 11200],  drum: [.28, .96] },
+};
+const COUNTS = { Kick: 283, Snare: 198, Perc: 145, HHC: 99, FX: 66, Clap: 64, HHO: 61, Tom: 44, Cymbal: 40 };
+
+function samplePath(cat, bright, drum, root) {
+  let sub;
+  switch (cat) {
+    case 'Kick': sub = bright < 200 ? 'Kicks/Acoustic' : 'Kicks/Electronic'; break;
+    case 'Snare': sub = drum > .93 ? 'Snares/Acoustic' : 'Snares/Rim'; break;
+    case 'Perc': sub = drum > .82 ? 'Percussion/Shakers' : 'Percussion/Blocks'; break;
+    case 'HHC': sub = 'Hats/Closed'; break;
+    case 'HHO': sub = 'Hats/Open'; break;
+    case 'Clap': sub = 'Claps'; break;
+    case 'Cymbal': sub = 'Cymbals'; break;
+    case 'Tom': sub = 'Toms'; break;
+    case 'FX': sub = 'FX'; break;
+    default: sub = cat;
+  }
+  return `SAMPLES FOLDER/${sub}`;
+}
+
+function makeSample(uid, cat, i, root) {
+  const r = RANGES[cat.id];
+  const wordPool = WORDS[cat.id];
+  const dur = denormLog(rand(), r.dur[0], r.dur[1]);
+  const bright = denormLog(rand(), r.bright[0], r.bright[1]);
+  const drum = lerp(r.drum[0], r.drum[1], rand());
+  const x = clamp(normLog(dur, DUR.min, DUR.max) + (rand() - .5) * .026, .002, .998);
+  const y = clamp(normLog(bright, BRI.min, BRI.max) + (rand() - .5) * .026, .002, .998);
+  const folder = root === 'Splice' ? 'Splice' : root === 'User Samples' ? 'User Samples' : 'Core Library';
+  return {
+    id: uid,
+    name: `${wordPool[i % wordPool.length]} ${String(i + 1).padStart(2, '0')}`,
+    category: cat.id, dur, bright, drum, x, y, folder,
+    z: rand(),
+    path: samplePath(cat.id, bright, drum, root),
+    addedDays: Math.floor(rand() * 420),
+    favorite: rand() < .07,
+  };
+}
+
+function buildSamples() {
+  const out = [];
+  let uid = 1;
+  for (const cat of CATEGORIES) {
+    const n = COUNTS[cat.id] || 40;
+    for (let i = 0; i < n; i++) {
+      const fr = rand();
+      const root = fr < .70 ? 'Samples' : fr < .90 ? 'Splice' : 'User Samples';
+      out.push(makeSample(uid++, cat, i, root));
+    }
+  }
+  return out;
+}
+
+const samples = buildSamples();
+
+// ---------- state ----------
+const state = {
+  samples,
+  slots: [],
+  selectedSlot: 0,
+  hover: null,
+  selectedSample: null,
+  viewMode: 'universe',
+  fileFolder: 'ALL',
+  expanded: new Set(['ALL', 'SAMPLES FOLDER', 'SAMPLES FOLDER/Kicks', 'SAMPLES FOLDER/Snares', 'SAMPLES FOLDER/Hats', 'SAMPLES FOLDER/Percussion']),
+  filters: { search: '' },
+  view: { zoom: 1, panX: 0, panY: 0 },
+  drag: null,
+  dragOpen: false,
+  pan: null,
+  popoverSlot: null,
+  autoRef: 'INPUT',
+  autoTiming: false,
+  detector: { sens: 45, retrig: 50, detail: 50, low: 30, high: 15000, supp: 50, input: 0, output: 0, mix: 100, gate: false },
+};
+
+function pickByCategory(cat, offset = 0) {
+  const pool = samples.filter(s => s.category === cat);
+  return pool[offset % pool.length];
+}
+function buildSlots() {
+  const roles = [
+    ['KICK 1', 'Kick', -3.0], ['KICK 2', 'Kick', -4.5],
+    ['SNARE 3', 'Snare', -2.0], ['CLAP 4', 'Clap', -5.0],
+    ['CL HH 5', 'HHC', -6.0], ['OP HH 6', 'HHO', -7.0],
+    ['PERC 7', 'Perc', -4.0], ['TOM 8', 'Tom', -3.0],
+  ];
+  state.slots = roles.map(([label, cat, level], i) => ({
+    id: i, label,
+    sampleId: pickByCategory(cat, i).id,
+    level, pan: 0, tune: 0,
+    mute: false, solo: false,
+    polarity: false, shift: 0, offset: 0,
+    autoPhase: false, corr: 0, suggestedLag: 0,
+    adsr: { a: 0, d: 250, s: .8, r: 300 },
+    start: 0, end: 1, fadeIn: 0, fadeOut: 0,
+    reverse: false,
+    tone: 0, cut: 50, velSens: 50, gain: 0,
+    playback: 'one-shot', loop: false,
+  }));
+}
+buildSlots();
+
+// Real snare supplied by the user: first hit becomes the slot sample;
+// the full file is used as the trigger INPUT sequence.
+const realSample = {
+  id: 9001,
+  name: 'SNARE.cm',
+  category: 'Snare',
+  dur: 510,
+  bright: 2500,
+  drum: .95,
+  x: clamp(normLog(510, DUR.min, DUR.max), .002, .998),
+  y: clamp(normLog(2500, BRI.min, BRI.max), .002, .998),
+  folder: 'User Samples',
+  path: 'SAMPLES FOLDER',
+  addedDays: 0,
+  favorite: false,
+  isReal: true,
+  audioBuffer: null,
+};
+samples.push(realSample);
+{
+  const s0 = state.slots[0];
+  s0.sampleId = realSample.id;
+  s0.label = 'SNARE 1';
+  s0.start = 0;
+  s0.end = 1;
+  s0.fadeIn = 0;
+  s0.fadeOut = 15;
+}
+const slotSample = slot => state.samples.find(s => s.id === slot.sampleId) || null;
+
+// ---------- browser selection + slot editor ----------
+function selectSample(smp, closeTrigger = true) {
+  if (!smp) return;
+  state.selectedSample = smp;
+  $('#filePreviewName').textContent = `${smp.name} · ${CAT[smp.category].short} · ${fmtMs(smp.dur)}`;
+  if (closeTrigger) {
+    setTriggerOpen(false);
+    $('.inspector').classList.remove('show');
+  }
+  drawUniverse();
+  renderFileList();
+}
+
+function openSlotEditor(i) {
+  selectSlot(i);
+  $('.inspector').classList.add('show');
+  setInspectorTab('sample');
+  updateInspector();
+}
+
+function setInspectorTab(tab) {
+  $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  $$('.panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tab));
+}
+
+// ---------- search / universe ----------
+function passes(s) {
+  const q = state.filters.search;
+  if (!q) return true;
+  return `${s.name} ${s.category} ${s.folder} ${s.path}`.toLowerCase().includes(q.toLowerCase());
+}
+const visible = () => state.samples.filter(passes);
+
+const canvas = $('#universe');
+const wrap = $('.canvas-wrap');
+const tooltip = $('#tooltip');
+let plot = { x: 0, y: 0, w: 1, h: 1 };
+let canvasW = 1, canvasH = 1;
+
+function resizeCanvas() {
+  const r = wrap.getBoundingClientRect();
+  if (r.width < 10 || r.height < 10) return;
+  canvasW = Math.max(50, r.width);
+  canvasH = Math.max(50, r.height);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(canvasW * dpr);
+  canvas.height = Math.round(canvasH * dpr);
+  canvas.style.width = canvasW + 'px';
+  canvas.style.height = canvasH + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  plot = { x: 12, y: 12, w: Math.max(20, canvasW - 24), h: Math.max(20, canvasH - 24) };
+  drawUniverse();
+}
+
+function toPx(s) {
+  const cx = plot.x + plot.w / 2, cy = plot.y + plot.h / 2;
+  const depth = s.z ?? .5;
+  const scale = .84 + depth * .32;
+  return {
+    x: cx + (s.x - .5) * plot.w * state.view.zoom * scale + state.view.panX,
+    y: cy - (s.y - .5) * plot.h * state.view.zoom * scale + state.view.panY,
+  };
+}
+
+const starRand = mulberry32(0xC0FFEE);
+const STARS = Array.from({ length: 220 }, () => ({
+  x: starRand(), y: starRand(), z: starRand(), s: .3 + starRand() * 1.4,
+}));
+
+function drawUniverse() {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const { x: px, y: py, w: pw, h: ph } = plot;
+  ctx.clearRect(0, 0, canvasW, canvasH);
+
+  const g = ctx.createRadialGradient(px + pw * .55, py + ph * .45, 10, px + pw * .55, py + ph * .45, Math.max(pw, ph) * .75);
+  g.addColorStop(0, 'rgba(124,92,255,.05)');
+  g.addColorStop(.55, 'rgba(45,226,197,.016)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(px, py, pw, ph);
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
+
+  // abstract starfield
+  for (const st of STARS) {
+    const sx = px + st.x * pw, sy = py + st.y * ph;
+    ctx.globalAlpha = .05 + st.z * .20;
+    ctx.fillStyle = st.z > .82 ? 'rgba(45,226,197,.9)' : 'rgba(200,210,230,.9)';
+    ctx.fillRect(sx, sy, st.s, st.s);
+  }
+  ctx.globalAlpha = 1;
+
+  let vis = 0;
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of state.samples) {
+    const on = passes(s);
+    if (on) vis++;
+    const p = toPx(s);
+    if (p.x < px - 8 || p.x > px + pw + 8 || p.y < py - 8 || p.y > py + ph + 8) continue;
+    const depth = s.z ?? .5;
+    const color = CAT[s.category].color;
+    // 3D halo
+    ctx.globalAlpha = on ? (.045 + depth * .10) : .008;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3.4 + depth * 5.4, 0, 6.2832); ctx.fill();
+    // vivid core
+    ctx.globalAlpha = on ? (.40 + depth * .60) : .04;
+    ctx.beginPath(); ctx.arc(p.x, p.y, .9 + depth * 2.5, 0, 6.2832); ctx.fill();
+    // specular highlight for depth
+    if (on && depth > .55) {
+      ctx.globalAlpha = .55 * depth;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(p.x - .8, p.y - .8, .55 + depth * .55, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = color;
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+
+  for (const s of [state.hover, state.selectedSample]) {
+    if (!s) continue;
+    const p = toPx(s);
+    const depth = s.z ?? .5;
+    const rr = (s === state.hover ? 6.5 : 8.5) + depth * 3;
+    ctx.strokeStyle = CAT[s.category].color;
+    ctx.globalAlpha = .9;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, 6.2832); ctx.stroke();
+    if (s === state.hover) {
+      ctx.globalAlpha = .22;
+      ctx.beginPath(); ctx.arc(p.x, p.y, rr + 6, 0, 6.2832); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(255,255,255,.045)';
+  ctx.strokeRect(px + .5, py + .5, pw - 1, ph - 1);
+
+  if (state.viewMode === 'universe') {
+    $('#count').innerHTML = `<b>${vis}</b> of ${state.samples.length} (${Math.round(vis / state.samples.length * 100)}%)`;
+  }
+  updateSimDots();
+}
+
+function pickSample(mx, my) {
+  let best = null, bestD = 12;
+  for (const s of state.samples) {
+    const p = toPx(s);
+    let d = Math.hypot(p.x - mx, p.y - my);
+    if (!passes(s)) d += 5;
+    if (d < bestD) { bestD = d; best = s; }
+  }
+  return best;
+}
+
+function showTooltip(s, e) {
+  if (!s) { tooltip.classList.remove('show'); return; }
+  const c = CAT[s.category];
+  tooltip.innerHTML = `
+    <div class="tt-name">${s.name}</div>
+    <div class="tt-cat" style="color:${c.color}">${c.short} · ${s.path}</div>
+    <div class="tt-row"><span>Duration</span><b>${fmtMs(s.dur)}</b></div>
+    <div class="tt-row"><span>Brightness</span><b>${fmtHz(s.bright)}</b></div>
+    <div class="tt-row"><span>Druminess</span><b>${Math.round(s.drum * 100)}%</b></div>`;
+  const r = wrap.getBoundingClientRect();
+  tooltip.style.left = clamp(e.clientX - r.left, 80, r.width - 80) + 'px';
+  tooltip.style.top = clamp(e.clientY - r.top, 60, r.height - 10) + 'px';
+  tooltip.classList.add('show');
+}
+
+function updateSimDots() {
+  const list = visible().slice(0, 52);
+  $('#simDots').innerHTML = list.map(s => `<i style="background:${CAT[s.category].color}"></i>`).join('');
+}
+
+// ---------- drag & drop ----------
+let dragStarted = false;
+let dragStart = null;
+
+function beginDrag(smp, e, opts) {
+  if (!smp) return;
+  const keepTrigger = !!(opts && opts.keepTrigger);
+  selectSample(smp, !keepTrigger);
+  state.drag = smp;
+  state.dragOpen = true;
+  dragStarted = false;
+  dragStart = { x: e.clientX, y: e.clientY };
+  e.preventDefault();
+}
+
+function setTriggerOpen(open) {
+  $('#triggerDrawer').classList.toggle('open', open);
+  $('.app').classList.toggle('trigger-open', open);
+}
+
+function dismissWindows() {
+  setTriggerOpen(false);
+  $('.inspector').classList.remove('show');
+  $('#settingsMenu').classList.remove('show');
+}
+$('#triggerToggle').addEventListener('click', e => {
+  if (e.target.closest('button')) return;
+  setTriggerOpen(!$('#triggerDrawer').classList.contains('open'));
+});
+$('#triggerTab').onclick = () => setTriggerOpen(true);
+
+// Dock-like: the drawer opens when a sample is picked up or via the tab,
+// and stays open until the Universe is clicked or a sample is selected.
+$('#inspectorClose').onclick = () => $('.inspector').classList.remove('show');
+
+window.addEventListener('mousemove', e => {
+  if (!state.drag) return;
+  const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+  if (!dragStarted && Math.hypot(dx, dy) > 6) {
+    dragStarted = true;
+    if (state.dragOpen) setTriggerOpen(true);
+    const gh = $('#dragGhost');
+    gh.textContent = state.drag.name;
+    gh.style.borderColor = CAT[state.drag.category].color;
+    gh.classList.add('show');
+  }
+  if (dragStarted) {
+    const gh = $('#dragGhost');
+    gh.style.left = e.clientX + 'px';
+    gh.style.top = e.clientY + 'px';
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const ch = el && el.closest ? el.closest('.channel') : null;
+    $$('.channel').forEach(x => x.classList.toggle('drop-target', x === ch));
+  }
+});
+
+window.addEventListener('mouseup', e => {
+  if (state.drag) {
+    if (dragStarted) {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const ch = el && el.closest ? el.closest('.channel') : null;
+      if (ch) assignSample(+ch.dataset.slot, state.drag);
+    }
+    state.drag = null;
+    dragStarted = false;
+    state.dragOpen = false;
+    $('#dragGhost').classList.remove('show');
+    $$('.channel').forEach(x => x.classList.remove('drop-target'));
+  }
+  if (state.pan) {
+    state.pan = null;
+    canvas.style.cursor = 'crosshair';
+  }
+});
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  if (state.pan) {
+    state.view.panX = state.pan.px + (e.clientX - state.pan.x);
+    state.view.panY = state.pan.py + (e.clientY - state.pan.y);
+    drawUniverse(); return;
+  }
+  if (state.drag) return;
+
+  const s = pickSample(mx, my);
+  state.hover = s;
+  showTooltip(s, e);
+  drawUniverse();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  state.hover = null;
+  tooltip.classList.remove('show'); drawUniverse();
+});
+
+canvas.addEventListener('mousedown', e => {
+  dismissWindows();
+  if (e.button === 2) {
+    state.pan = { x: e.clientX, y: e.clientY, px: state.view.panX, py: state.view.panY };
+    canvas.style.cursor = 'grabbing';
+    e.preventDefault();
+    return;
+  }
+  if (e.button !== 0) return;
+  const r = canvas.getBoundingClientRect();
+  const s = pickSample(e.clientX - r.left, e.clientY - r.top);
+  if (s) beginDrag(s, e);
+  else {
+    state.pan = { x: e.clientX, y: e.clientY, px: state.view.panX, py: state.view.panY };
+    canvas.style.cursor = 'grabbing';
+  }
+});
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const f = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  const oldZoom = state.view.zoom;
+  const newZoom = clamp(oldZoom * f, .7, 6);
+  if (newZoom === oldZoom) return;
+  const cx = plot.x + plot.w / 2, cy = plot.y + plot.h / 2;
+  const wx = (mx - cx - state.view.panX) / (plot.w * oldZoom) + .5;
+  const wy = (cy + state.view.panY - my) / (plot.h * oldZoom) + .5;
+  state.view.zoom = newZoom;
+  state.view.panX = mx - cx - (wx - .5) * plot.w * newZoom;
+  state.view.panY = my - cy + (wy - .5) * plot.h * newZoom;
+  drawUniverse();
+}, { passive: false });
+
+$('#zoomIn').onclick = () => { state.view.zoom = clamp(state.view.zoom * 1.22, .7, 6); drawUniverse(); };
+$('#zoomOut').onclick = () => { state.view.zoom = clamp(state.view.zoom / 1.22, .7, 6); drawUniverse(); };
+$('#resetView').onclick = () => { state.view = { zoom: 1, panX: 0, panY: 0 }; drawUniverse(); };
+
+$('#editorGrip').addEventListener('mousedown', e => {
+  const smp = currentSlotSample();
+  if (smp) beginDrag(smp, e, { keepTrigger: true, openTrigger: true });
+});
+
+// ---------- channels / TRIGGER ----------
+function meterW(level) { return clamp((level + 60) / 66 * 100, 3, 100); }
+
+function phaseBadge(s) {
+  const off = s.offset ? `${s.offset > 0 ? '+' : ''}${s.offset.toFixed(1)}ms` : '';
+  const shift = s.shift || (s.polarity ? 180 : 0);
+  if (!shift && !s.polarity) return off || '—';
+  const label = `${shift}°`;
+  return off ? `${label} ${off}` : label;
+}
+
+function renderChannels() {
+  const anySolo = state.slots.some(s => s.solo);
+  $('#channels').innerHTML = state.slots.map((s, i) => {
+    const smp = slotSample(s);
+    const color = smp ? CAT[smp.category].color : '#3A4254';
+    const sel = i === state.selectedSlot ? ' selected' : '';
+    const dim = (anySolo && !s.solo) || s.mute ? ' dim' : '';
+    return `
+      <div class="channel${sel}${dim}" data-slot="${i}">
+        <div class="ch-head">
+          <span class="ch-num">${String(i + 1).padStart(2, '0')}</span>
+          <span class="ch-dot" style="background:${color};color:${color}"></span>
+        </div>
+        <div class="ch-sample">${smp ? smp.name : 'drop sample'}</div>
+        <div class="ch-fader-row">
+          <div class="ch-meter"><i id="meter-${i}" style="height:${meterW(s.level)}%"></i></div>
+          <div class="ch-fader"><input class="vfader" id="fader-${i}" data-slot="${i}" type="range" min="-60" max="6" step="0.1" value="${s.level}"></div>
+        </div>
+        <div class="ch-level" id="slotLevel-${i}">${fmtDb(s.level)}</div>
+        <div class="ch-btns">
+          <button data-act="m" data-slot="${i}" class="${s.mute ? 'on' : ''}" title="Mute">M</button>
+          <button data-act="s" data-slot="${i}" class="${s.solo ? 'on solo' : ''}" title="Solo">S</button>
+          <button data-act="o" data-slot="${i}" class="${s.polarity ? 'on phase' : ''}" title="Polarity">Ø</button>
+        </div>
+        <div class="ch-meta">
+          <span id="slotPt-${i}">${panLabel(s.pan)} · ${s.tune.toFixed(2)}</span>
+          <span class="ch-phase">${phaseBadge(s)}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function selectSlot(i) {
+  state.selectedSlot = i;
+  renderChannels();
+}
+
+$('#channels').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-act]');
+  if (btn) {
+    const i = +btn.dataset.slot, s = state.slots[i];
+    if (btn.dataset.act === 'm') s.mute = !s.mute;
+    if (btn.dataset.act === 's') s.solo = !s.solo;
+    if (btn.dataset.act === 'o') {
+      s.polarity = !s.polarity;
+      s.shift = s.polarity ? 180 : 0;
+    }
+    selectSlot(i);
+    syncAllSlotAudio();
+    if ($('.inspector').classList.contains('show')) updateInspector();
+    return;
+  }
+  const ch = e.target.closest('.channel');
+  if (ch) openSlotEditor(+ch.dataset.slot);
+});
+
+$('#channels').addEventListener('input', e => {
+  if (!e.target.classList.contains('vfader')) return;
+  const i = +e.target.dataset.slot, s = state.slots[i];
+  s.level = +e.target.value;
+  const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(s.level);
+  const mt = $(`#meter-${i}`); if (mt) mt.style.height = meterW(s.level) + '%';
+  syncSlotAudio(i);
+});
+
+function assignSample(i, smp) {
+  const s = state.slots[i];
+  s.sampleId = smp.id;
+  s.label = `${CAT[smp.category].short} ${i + 1}`;
+  s.tune = 0;
+  s.adsr = { a: 0, d: 250, s: .8, r: 300 };
+  s.start = 0; s.end = 1; s.fadeIn = 0; s.fadeOut = 0;
+  s.reverse = false;
+  s.tone = 0; s.cut = 50; s.velSens = 50; s.gain = 0;
+  s.playback = 'one-shot'; s.loop = false;
+  s.polarity = false; s.shift = 0; s.offset = 0;
+  s.autoPhase = false; s.corr = 0; s.suggestedLag = 0;
+  selectSlot(i);
+  applyAutoPhase(i, state.autoRef, true);
+  if (state.selectedSlot === i && $('.inspector').classList.contains('show')) updateInspector();
+  toast(`${smp.name} → TRIGGER ${String(i + 1).padStart(2, '0')} · auto phase ready`);
+}
+
+// ---------- AUTO PHASE ----------
+function applyAutoPhase(i, ref, silent) {
+  const s = state.slots[i];
+  const smp = slotSample(s);
+  if (!smp) { if (!silent) toast('Slot is empty'); return; }
+  const seed = smp.id * (ref === 'SLOT 1' ? 13 : 17);
+  const corr = 0.62 + ((seed * 7) % 34) / 100;
+  let lag = ((seed * 29) % 70) / 10 - 1.5;
+  if (ref === 'SLOT 1' && i !== 0) lag += 0.7;
+  const invert = (seed % 4 === 0);
+  s.polarity = invert;
+  s.shift = invert ? 180 : 0;
+  s.suggestedLag = +lag.toFixed(1);
+  s.offset = state.autoTiming ? +lag.toFixed(1) : 0;
+  s.autoPhase = true;
+  s.corr = +corr.toFixed(2);
+  s.autoRef = ref;
+  renderChannels();
+  syncAllSlotAudio();
+  if (state.selectedSlot === i && $('.inspector').classList.contains('show')) updateInspector();
+  if (!silent) {
+    const timing = state.autoTiming ? `${lag >= 0 ? '+' : ''}${lag.toFixed(1)} ms · ` : '';
+    toast(`AUTO PHASE ${invert ? '180° ' : ''}${timing}corr ${corr.toFixed(2)}`);
+  }
+}
+
+$('#autoPhaseAll').onclick = () => {
+  state.slots.forEach((s, i) => {
+    if (!slotSample(s)) return;
+    const smp = slotSample(s);
+    const seed = smp.id * 17;
+    s.polarity = (seed % 4 === 0);
+    s.shift = s.polarity ? 180 : 0;
+    s.suggestedLag = +((((seed * 29) % 70) / 10 - 1.5).toFixed(1));
+    s.offset = state.autoTiming ? s.suggestedLag : 0;
+    s.autoPhase = true;
+    s.corr = +(0.62 + ((seed * 7) % 34) / 100).toFixed(2);
+    s.autoRef = 'INPUT';
+  });
+  renderChannels();
+  syncAllSlotAudio();
+  if ($('.inspector').classList.contains('show')) updateInspector();
+  $('#settingsMenu').classList.remove('show');
+  toast(`AUTO PHASE applied to 8 layers · ${state.autoTiming ? 'polarity + timing' : 'polarity only'} · ref INPUT`);
+};
+
+// ---------- slot popover ----------
+function closeSlotPopover() {
+  const p = $('#slotPopover');
+  if (p) p.classList.remove('show');
+  state.popoverSlot = null;
+}
+
+function openSlotPopover(i, anchor, keepPosition) {
+  if (!$('#slotPopover')) return;
+  if (!keepPosition && state.popoverSlot === i && $('#slotPopover').classList.contains('show')) {
+    closeSlotPopover(); return;
+  }
+  const s = state.slots[i];
+  const smp = slotSample(s);
+  const pop = $('#slotPopover');
+  pop.innerHTML = `
+    <div class="sp-head">
+      <span class="sp-badge">TRIGGER ${String(i + 1).padStart(2, '0')}</span>
+      <span class="sp-name">${s.label}</span>
+      <button class="sp-close" id="spClose">×</button>
+    </div>
+    <div class="sp-sample">${smp ? smp.name + ' · ' + smp.path : 'empty slot'}</div>
+    <div class="sp-grid">
+      <label class="sp-row">LEVEL<input type="range" id="spLevel" min="-60" max="6" step="0.1" value="${s.level}"><b id="spLevelVal">${fmtDb(s.level)}</b></label>
+      <label class="sp-row">PAN<input type="range" id="spPan" min="-100" max="100" step="1" value="${s.pan}"><b id="spPanVal">${panLabel(s.pan)}</b></label>
+      <label class="sp-row">TUNE<input type="range" id="spTune" min="-24" max="24" step="0.01" value="${s.tune}"><b id="spTuneVal">${s.tune.toFixed(2)} st</b></label>
+    </div>
+    <div class="sp-btns">
+      <button id="spM" class="${s.mute ? 'on' : ''}">MUTE</button>
+      <button id="spS" class="${s.solo ? 'on solo' : ''}">SOLO</button>
+      <button id="spO" class="${s.polarity ? 'on phase' : ''}">Ø POL</button>
+    </div>
+    <div class="sp-phase">
+      <div class="sp-phase-head">
+        <span>AUTO PHASE</span>
+        <span>REF <select id="spRef">
+          <option${state.autoRef === 'INPUT' ? ' selected' : ''}>INPUT</option>
+          <option${state.autoRef === 'SLOT 1' ? ' selected' : ''}>SLOT 1</option>
+        </select></span>
+      </div>
+      <div class="sp-auto-row">
+        <button class="sp-auto" id="spAuto">RE-ANALYZE &amp; ALIGN</button>
+        <button class="sp-timing ${state.autoTiming ? 'on' : ''}" id="spTiming" title="Apply the measured timing offset">TIMING</button>
+      </div>
+      <div class="sp-result" id="spResult">${s.autoPhase
+        ? `corr <b>${s.corr.toFixed(2)}</b> · ${s.polarity ? 'Ø inverted' : 'polarity OK'} · ${s.offset !== 0
+            ? `offset <b>${s.offset >= 0 ? '+' : ''}${s.offset.toFixed(1)} ms</b>`
+            : `suggested <b>${(s.suggestedLag || 0) >= 0 ? '+' : ''}${(s.suggestedLag || 0).toFixed(1)} ms</b>`}`
+        : 'Analyze polarity + timing against the reference.'}</div>
+      <label class="sp-row" style="margin-top:6px">OFFSET<input type="range" id="spOffset" min="-5" max="50" step="0.1" value="${s.offset}"><b id="spOffsetVal">${s.offset.toFixed(1)} ms</b></label>
+      <div class="sp-phase-row">
+        <span class="lbl">SHIFT</span>
+        <div class="seg" id="spShift">
+          <button data-shift="0" class="${s.shift === 0 ? 'active' : ''}">0°</button>
+          <button data-shift="90" class="${s.shift === 90 ? 'active' : ''}">90°</button>
+          <button data-shift="180" class="${s.shift === 180 ? 'active' : ''}">180°</button>
+          <button data-shift="260" class="${s.shift === 260 ? 'active' : ''}">260°</button>
+        </div>
+      </div>
+    </div>`;
+  pop.classList.add('show');
+
+  if (!keepPosition || !pop.dataset.pos) {
+    const w = 300, h = pop.offsetHeight || 260;
+    pop.style.left = Math.round((innerWidth - w) / 2) + 'px';
+    pop.style.top = Math.round(Math.max(16, (innerHeight - h) / 2 - 24)) + 'px';
+    pop.dataset.pos = '1';
+  }
+  state.popoverSlot = i;
+
+  $('#spClose').onclick = closeSlotPopover;
+  $('#spLevel').oninput = e => {
+    s.level = +e.target.value;
+    $('#spLevelVal').textContent = fmtDb(s.level);
+    const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(s.level);
+    const mt = $(`#meter-${i}`); if (mt) mt.style.height = meterW(s.level) + '%';
+  };
+  $('#spPan').oninput = e => {
+    s.pan = +e.target.value;
+    $('#spPanVal').textContent = panLabel(s.pan);
+    const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(s.pan)} · ${s.tune.toFixed(2)}`;
+  };
+  $('#spTune').oninput = e => {
+    s.tune = +e.target.value;
+    $('#spTuneVal').textContent = `${s.tune.toFixed(2)} st`;
+    const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(s.pan)} · ${s.tune.toFixed(2)}`;
+  };
+  $('#spM').onclick = () => { s.mute = !s.mute; renderChannels(); openSlotPopover(i, $(`.channel[data-slot="${i}"]`), true); };
+  $('#spS').onclick = () => { s.solo = !s.solo; renderChannels(); openSlotPopover(i, $(`.channel[data-slot="${i}"]`), true); };
+  $('#spO').onclick = () => {
+    if (s.shift === 180) { s.shift = 0; s.polarity = false; }
+    else { s.shift = 180; s.polarity = true; }
+    renderChannels();
+    openSlotPopover(i, $(`.channel[data-slot="${i}"]`), true);
+  };
+  $('#spRef').onchange = e => { state.autoRef = e.target.value; };
+  $('#spTiming').onclick = () => {
+    state.autoTiming = !state.autoTiming;
+    if (!state.autoTiming) {
+      s.offset = 0;
+    }
+    renderChannels();
+    openSlotPopover(i, $(`.channel[data-slot="${i}"]`), true);
+    toast(state.autoTiming
+      ? 'Timing ON · re-analyze to apply the suggested offset'
+      : 'Timing OFF · offset reset to 0');
+  };
+  $('#spAuto').onclick = () => {
+    const btn = $('#spAuto');
+    btn.classList.add('running');
+    btn.textContent = 'ANALYZING…';
+    setTimeout(() => {
+      applyAutoPhase(i, $('#spRef') ? $('#spRef').value : 'INPUT');
+    }, 550);
+  };
+  $('#spOffset').oninput = e => {
+    s.offset = +e.target.value;
+    s.autoPhase = true;
+    $('#spOffsetVal').textContent = `${s.offset.toFixed(1)} ms`;
+    renderChannels();
+  };
+  $('#spShift').onclick = e => {
+    const b = e.target.closest('button[data-shift]');
+    if (!b) return;
+    s.shift = +b.dataset.shift;
+    s.polarity = (s.shift === 180);
+    renderChannels();
+    openSlotPopover(i, $(`.channel[data-slot="${i}"]`), true);
+  };
+}
+
+document.addEventListener('mousedown', e => {
+  const pop = $('#slotPopover');
+  if (!pop || !pop.classList.contains('show')) return;
+  if (pop.contains(e.target)) return;
+  if (e.target.closest('.channel')) return;
+  closeSlotPopover();
+});
+
+// ---------- FINDER-LIKE FILE TREE ----------
+function buildTree() {
+  const root = { name: 'ALL SAMPLES', path: 'ALL', children: new Map(), count: 0 };
+  for (const s of state.samples) {
+    const parts = s.path.split('/');
+    let node = root;
+    let acc = '';
+    root.count++;
+    for (const part of parts) {
+      acc = acc ? acc + '/' + part : part;
+      if (!node.children.has(part)) node.children.set(part, { name: part, path: acc, children: new Map(), count: 0 });
+      node = node.children.get(part);
+      node.count++;
+    }
+  }
+  return root;
+}
+
+function renderTreeNode(node, depth) {
+  const hasChildren = node.children.size > 0;
+  const expanded = state.expanded.has(node.path);
+  const active = state.fileFolder === node.path ? ' active' : '';
+  const pad = 4 + depth * 9;
+  let html = `<div class="tree-node${active}" data-path="${node.path}" style="padding-left:${pad}px">
+    <span class="tree-toggle">${hasChildren ? (expanded ? '▾' : '▸') : ''}</span>
+    <span class="tree-label">${node.name}</span>
+    <span class="tree-count">${node.count}</span>
+  </div>`;
+  if (hasChildren && expanded) {
+    const kids = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
+    for (const k of kids) html += renderTreeNode(k, depth + 1);
+  }
+  return html;
+}
+
+function renderFolderTree() {
+  const tree = buildTree();
+  $('#folderTree').innerHTML = renderTreeNode(tree, 0);
+}
+$('#folderTree').addEventListener('click', e => {
+  const node = e.target.closest('.tree-node');
+  if (!node) return;
+  const path = node.dataset.path;
+  state.fileFolder = path;
+  if (state.expanded.has(path)) state.expanded.delete(path);
+  else state.expanded.add(path);
+  renderFolderTree();
+  renderFileList();
+});
+
+$('#addFolder').onclick = () => {
+  toast('Choose the LOCATION SAMPLES FOLDER (demo) · tree mirrors its subfolders');
+};
+
+function fileList() {
+  let list = state.samples.filter(s => {
+    if (state.fileFolder !== 'ALL') {
+      if (!(s.path === state.fileFolder || s.path.startsWith(state.fileFolder + '/'))) return false;
+    }
+    if (state.filters.search) {
+      const q = state.filters.search.toLowerCase();
+      if (!(`${s.name} ${s.category} ${s.folder} ${s.path}`.toLowerCase().includes(q))) return false;
+    }
+    return true;
+  });
+  list.sort((a, b) => (b.isReal ? 1 : 0) - (a.isReal ? 1 : 0) || a.name.localeCompare(b.name));
+  return list;
+}
+
+function renderFileList() {
+  const list = fileList();
+  const max = 1200;
+  const shown = list.slice(0, max);
+  $('#fileList').innerHTML = shown.map(s => {
+    const sel = state.selectedSample && state.selectedSample.id === s.id ? ' selected' : '';
+    return `<div class="file-row${sel}" data-id="${s.id}">
+      <span class="fn">${s.name}</span>
+      <span class="cat" style="color:${CAT[s.category].color}">${CAT[s.category].short}</span>
+      <span class="num">${Math.round(s.dur)}ms</span>
+      <span class="num">${fmtHz(s.bright)}</span>
+    </div>`;
+  }).join('') + (list.length > max ? `<div class="file-row"><span class="fn">showing ${max} of ${list.length}…</span></div>` : '');
+  const path = state.fileFolder === 'ALL' ? 'ALL SAMPLES' : state.fileFolder.split('/').join('  ›  ');
+  $('#filePath').textContent = `${path}  ·  ${list.length} files`;
+  if (state.viewMode === 'files') {
+    $('#count').innerHTML = `<b>${list.length}</b> files`;
+    $('#bottomMode').textContent = 'FILES';
+  }
+}
+
+$('#fileList').addEventListener('mousedown', e => {
+  const row = e.target.closest('.file-row[data-id]');
+  if (!row) return;
+  const smp = state.samples.find(s => s.id === +row.dataset.id);
+  if (smp) beginDrag(smp, e);
+});
+$('#fileAudition').onclick = () => {
+  const smp = state.selectedSample;
+  if (!smp) { toast('Select a file first'); return; }
+  const ctx = ensureAudio();
+  const buf = getBuffer(smp);
+  if (!ctx || !buf) { toast('Audio loading…'); return; }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.value = dbToAmp(-3);
+  src.connect(g).connect(inputGain);
+  src.start();
+  toast(`Audition · ${smp.name}`);
+};
+
+$('#fileView').addEventListener('mousedown', e => {
+  if (e.target.closest('input, select, button')) return;
+  dismissWindows();
+});
+
+// single view toggle
+function setView(mode) {
+  state.viewMode = mode;
+  const isUni = mode === 'universe';
+  $('#universeView').classList.toggle('active', isUni);
+  $('#fileView').classList.toggle('active', !isUni);
+  $('#universePanel').classList.toggle('files-mode', !isUni);
+  $('#viewToggleLabel').textContent = isUni ? 'FILE SEARCH' : 'UNIVERSE';
+  if (isUni) {
+    $('#bottomMode').textContent = 'HISTORY';
+    requestAnimationFrame(() => { resizeCanvas(); drawUniverse(); });
+  } else {
+    $('#bottomMode').textContent = 'FILES';
+    renderFolderTree(); renderFileList();
+  }
+}
+$('#viewToggle').onclick = () => setView(state.viewMode === 'universe' ? 'files' : 'universe');
+
+$('#search').addEventListener('input', e => {
+  state.filters.search = e.target.value.trim();
+  drawUniverse();
+  if (state.viewMode === 'files') renderFileList();
+});
+
+// ---------- sample editor ----------
+function sampleWave(s) {
+  if (s.isReal && s.audioBuffer) {
+    const data = s.audioBuffer.getChannelData(0);
+    const n = 600;
+    const step = Math.max(1, Math.floor(data.length / n));
+    const arr = [];
+    let peak = 1e-6;
+    for (let i = 0; i < n; i++) {
+      let p = 0;
+      const end = Math.min(data.length, (i + 1) * step);
+      for (let j = i * step; j < end; j++) p = Math.max(p, Math.abs(data[j]));
+      arr.push(p);
+      peak = Math.max(peak, p);
+    }
+    return arr.map(v => clamp(v / peak, .03, 1));
+  }
+  const n = 132;
+  const r = mulberry32(s.id * 2654435761 % 2147483647 + 7);
+  const arr = [];
+  let v = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const env = Math.exp(-t / (0.10 + 0.5 * (1 - s.drum))) * (0.65 + 0.35 * Math.sin(t * Math.PI));
+    const noise = (r() - .5) * .55 + (r() - .5) * .35;
+    v = v * .55 + noise * .45;
+    arr.push(clamp(env * (.55 + Math.abs(v) * 1.1), .03, 1));
+  }
+  return arr;
+}
+
+function currentSlot() { return state.slots[state.selectedSlot]; }
+function currentSlotSample() { return slotSample(currentSlot()); }
+
+function updateInspector() {
+  const slot = currentSlot();
+  const smp = slotSample(slot);
+  $('#selSlotBadge').textContent = `TRIGGER ${String(state.selectedSlot + 1).padStart(2, '0')}`;
+  $('#selSampleTitle').textContent = smp ? smp.name : 'empty slot';
+  $('#selSampleMeta').textContent = smp
+    ? `${CAT[smp.category].short} · ${fmtMs(smp.dur)}`
+    : 'empty';
+
+  $('#slotRef').value = state.autoRef;
+  $('#slotTiming').classList.toggle('on', state.autoTiming);
+  $('#slotOffset').value = slot.offset;
+  $('#slotOffsetVal').textContent = `${slot.offset.toFixed(1)} ms`;
+  $$('#slotShift button').forEach(b => b.classList.toggle('active', +b.dataset.shift === slot.shift));
+  $('#slotResult').innerHTML = slot.autoPhase
+    ? `corr <b>${slot.corr.toFixed(2)}</b> · ${slot.polarity ? '180° inverted' : 'polarity OK'} · ${slot.offset !== 0
+        ? `offset <b>${slot.offset >= 0 ? '+' : ''}${slot.offset.toFixed(1)} ms</b>`
+        : `suggested <b>${(slot.suggestedLag || 0) >= 0 ? '+' : ''}${(slot.suggestedLag || 0).toFixed(1)} ms</b>`}`
+    : 'Select a sample in this slot.';
+
+  $('#sampleMeta').textContent = smp
+    ? `${CAT[smp.category].short} · ${fmtMs(smp.dur)} · ${fmtHz(smp.bright)} · ${smp.path}`
+    : 'Empty slot — drag a sample from the Universe or File Search.';
+
+  $('#tone').value = slot.tone;
+  $('#toneVal').textContent = (slot.tone > 0 ? '+' : '') + slot.tone;
+  $('#cut').value = slot.cut;
+  $('#cutVal').textContent = slot.cut + '%';
+  $('#velSens').value = slot.velSens;
+  $('#velSensVal').textContent = slot.velSens + '%';
+  $('#gain').value = slot.gain;
+  $('#gainVal').textContent = fmtDb(slot.gain);
+  $('#loopBtn').classList.toggle('on', slot.loop);
+  $$('#playbackSeg button').forEach(b => b.classList.toggle('active', b.dataset.pb === slot.playback));
+
+  renderWaveform();
+  renderADSR();
+}
+
+function waveGeom() {
+  const W = 600, H = 140, padX = 12, top = 16, bottom = 124;
+  return { W, H, padX, top, bottom, mid: (top + bottom) / 2, amp: (bottom - top) / 2 };
+}
+
+function renderWaveform() {
+  const svg = $('#wave');
+  const slot = currentSlot();
+  const smp = slotSample(slot);
+  if (!smp) { svg.innerHTML = ''; return; }
+  const { W, H, padX, top, bottom, mid, amp } = waveGeom();
+  let arr = sampleWave(smp);
+  if (slot.reverse) arr = arr.slice().reverse();
+  const color = CAT[smp.category].color;
+  const startX = padX + slot.start * (W - 2 * padX);
+  const endX = padX + slot.end * (W - 2 * padX);
+  const outside = W - 2 * padX;
+
+  const topPts = [], botPts = [];
+  for (let i = 0; i < arr.length; i++) {
+    const x = padX + (i / (arr.length - 1)) * outside;
+    const v = arr[i] * amp;
+    topPts.push([x, mid - v]);
+    botPts.push([x, mid + v]);
+  }
+  const d = `M ${topPts.map(p => p.join(' ')).join(' L ')} L ${botPts.reverse().map(p => p.join(' ')).join(' L ')} Z`;
+
+  const fadeInPx = smp.dur > 0 ? (slot.fadeIn / smp.dur) * (endX - startX) : 0;
+  const fadeOutPx = smp.dur > 0 ? (slot.fadeOut / smp.dur) * (endX - startX) : 0;
+  const fIn = clamp(fadeInPx, 0, endX - startX);
+  const fOut = clamp(fadeOutPx, 0, endX - startX);
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${color}" stop-opacity=".92"/>
+        <stop offset="1" stop-color="${color}" stop-opacity=".20"/>
+      </linearGradient>
+      <clipPath id="trim"><rect x="${startX}" y="0" width="${Math.max(0, endX - startX)}" height="${H}"/></clipPath>
+    </defs>
+    <line x1="${padX}" y1="${mid}" x2="${W - padX}" y2="${mid}" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
+    <path d="${d}" fill="rgba(255,255,255,.055)"/>
+    <path d="${d}" fill="url(#wg)" clip-path="url(#trim)"/>
+    <rect x="${padX}" y="0" width="${Math.max(0, startX - padX)}" height="${H}" fill="rgba(4,6,10,.66)"/>
+    <rect x="${endX}" y="0" width="${Math.max(0, W - padX - endX)}" height="${H}" fill="rgba(4,6,10,.66)"/>
+    <path d="M ${startX} ${bottom} L ${startX + fIn} ${top}" stroke="${color}" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>
+    <path d="M ${endX - fOut} ${top} L ${endX} ${bottom}" stroke="${color}" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>
+    <line x1="${startX}" y1="${top - 2}" x2="${startX}" y2="${bottom + 2}" stroke="${color}" stroke-width="1.4"/>
+    <line x1="${endX}" y1="${top - 2}" x2="${endX}" y2="${bottom + 2}" stroke="${color}" stroke-width="1.4"/>
+    <circle data-handle="start" cx="${startX}" cy="${top - 2}" r="5" fill="#fff" stroke="${color}" stroke-width="2" style="cursor:ew-resize"/>
+    <circle data-handle="end" cx="${endX}" cy="${top - 2}" r="5" fill="#fff" stroke="${color}" stroke-width="2" style="cursor:ew-resize"/>
+    <circle data-handle="fadeIn" cx="${startX + fIn}" cy="${top}" r="4" fill="${color}" stroke="#0B0E14" stroke-width="1.5" style="cursor:ew-resize"/>
+    <circle data-handle="fadeOut" cx="${endX - fOut}" cy="${top}" r="4" fill="${color}" stroke="#0B0E14" stroke-width="1.5" style="cursor:ew-resize"/>
+    <line id="playhead" x1="${startX}" y1="8" x2="${startX}" y2="${bottom + 8}" stroke="#fff" stroke-width="1" opacity="0"/>
+  `;
+  updateWaveReadout();
+}
+
+function updateWaveReadout() {
+  const slot = currentSlot();
+  const smp = slotSample(slot);
+  if (!smp) return;
+  $('#startVal').textContent = fmtMs(slot.start * smp.dur);
+  $('#endVal').textContent = fmtMs(slot.end * smp.dur);
+  $('#fadeInVal').textContent = fmtMs(slot.fadeIn);
+  $('#fadeOutVal').textContent = fmtMs(slot.fadeOut);
+}
+
+$('#wave').addEventListener('pointerdown', e => {
+  const h = e.target.closest('[data-handle]');
+  if (!h) {
+    const smp = currentSlotSample();
+    if (smp) beginDrag(smp, e, { keepTrigger: true, openTrigger: true });
+    return;
+  }
+  e.preventDefault();
+  const svg = $('#wave');
+  const rect = svg.getBoundingClientRect();
+  const slot = currentSlot();
+  const smp = slotSample(slot);
+  if (!smp) return;
+  const { W, padX } = waveGeom();
+  const move = ev => {
+    const sx = clamp((ev.clientX - rect.left) / rect.width, 0, 1) * W;
+    const tn = clamp((sx - padX) / (W - 2 * padX), 0, 1);
+    if (h.dataset.handle === 'start') slot.start = clamp(tn, 0, slot.end - .02);
+    if (h.dataset.handle === 'end') slot.end = clamp(tn, slot.start + .02, 1);
+    if (h.dataset.handle === 'fadeIn') slot.fadeIn = clamp((tn - slot.start) * smp.dur, 0, (slot.end - slot.start) * smp.dur);
+    if (h.dataset.handle === 'fadeOut') slot.fadeOut = clamp((slot.end - tn) * smp.dur, 0, (slot.end - slot.start) * smp.dur);
+    renderWaveform();
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+});
+
+// ---------- ADSR ----------
+function adsrGeom() { return { W: 360, H: 140, x0: 14, x1: 346, y0: 18, y1: 120 }; }
+
+function renderADSR() {
+  const slot = currentSlot();
+  if (!slot) return;
+  const { a, d, s, r } = slot.adsr;
+  const { x0, x1, y0, y1 } = adsrGeom();
+  const hold = Math.max(120, (a + d + r) * .16);
+  const total = Math.max(300, a + d + hold + r);
+  const X = t => x0 + (t / total) * (x1 - x0);
+  const Y = v => y1 - v * (y1 - y0);
+  const pts = [[X(0), Y(0)], [X(a), Y(1)], [X(a + d), Y(s)], [X(a + d + hold), Y(s)], [X(total), Y(0)]];
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const area = `${line} L ${X(total).toFixed(1)} ${y1} L ${x0} ${y1} Z`;
+  const c = '#2DE2C5';
+
+  $('#adsr').innerHTML = `
+    <defs>
+      <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${c}" stop-opacity=".35"/>
+        <stop offset="1" stop-color="${c}" stop-opacity=".02"/>
+      </linearGradient>
+    </defs>
+    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="rgba(255,255,255,.08)"/>
+    <line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="rgba(255,255,255,.08)"/>
+    <path d="${area}" fill="url(#ag)"/>
+    <path d="${line}" fill="none" stroke="${c}" stroke-width="1.8" stroke-linejoin="round"/>
+    <circle data-h="attack" cx="${X(a)}" cy="${Y(1)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:ew-resize"/>
+    <circle data-h="decay" cx="${X(a + d)}" cy="${Y(s)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:grab"/>
+    <circle data-h="release" cx="${X(a + d + hold + r)}" cy="${Y(0)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:ew-resize"/>
+  `;
+  $('#aVal').textContent = fmtMs(a);
+  $('#dVal').textContent = fmtMs(d);
+  $('#sVal').textContent = Math.round(s * 100) + '%';
+  $('#rVal').textContent = fmtMs(r);
+}
+
+$('#adsr').addEventListener('pointerdown', e => {
+  const h = e.target.closest('[data-h]');
+  if (!h) return;
+  e.preventDefault();
+  const slot = currentSlot();
+  if (!slot) return;
+  const rect = $('#adsr').getBoundingClientRect();
+  const { x0, x1, y0, y1 } = adsrGeom();
+  const move = ev => {
+    const nx = clamp((ev.clientX - rect.left) / rect.width, 0, 1);
+    const ny = clamp((ev.clientY - rect.top) / rect.height, 0, 1);
+    const sx = x0 + nx * (x1 - x0);
+    const sy = y0 + ny * (y1 - y0);
+    const { a, d, r } = slot.adsr;
+    const hold = Math.max(120, (a + d + r) * .16);
+    const total = Math.max(300, a + d + hold + r);
+    const t = ((sx - x0) / (x1 - x0)) * total;
+    if (h.dataset.h === 'attack') slot.adsr.a = clamp(t, 0, 2000);
+    if (h.dataset.h === 'decay') {
+      slot.adsr.d = clamp(t - slot.adsr.a, 0, 2000);
+      slot.adsr.s = clamp((y1 - sy) / (y1 - y0), 0, 1);
+    }
+    if (h.dataset.h === 'release') slot.adsr.r = clamp(t - (slot.adsr.a + slot.adsr.d + hold), 0, 5000);
+    renderADSR();
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+});
+
+$('#envReset').onclick = () => {
+  currentSlot().adsr = { a: 0, d: 250, s: .8, r: 300 };
+  renderADSR(); toast('ADSR reset');
+};
+
+// ---------- SLOT tab ----------
+$('#slotRef').onchange = e => { state.autoRef = e.target.value; };
+$('#slotTiming').onclick = () => {
+  state.autoTiming = !state.autoTiming;
+  if (!state.autoTiming) currentSlot().offset = 0;
+  renderChannels(); updateInspector();
+  toast(state.autoTiming ? 'Timing ON · re-analyze to apply the offset' : 'Timing OFF · offset reset to 0');
+};
+$('#slotAuto').onclick = () => {
+  const btn = $('#slotAuto');
+  btn.classList.add('running');
+  btn.textContent = 'ANALYZING…';
+  setTimeout(() => {
+    applyAutoPhase(state.selectedSlot, state.autoRef);
+    btn.classList.remove('running');
+    btn.textContent = 'RE-ANALYZE & ALIGN';
+  }, 550);
+};
+$('#slotOffset').addEventListener('input', e => {
+  const s = currentSlot();
+  s.offset = +e.target.value;
+  s.autoPhase = true;
+  $('#slotOffsetVal').textContent = `${s.offset.toFixed(1)} ms`;
+  renderChannels();
+  $('#slotResult').innerHTML = `corr <b>${s.corr.toFixed(2)}</b> · ${s.polarity ? '180° inverted' : 'polarity OK'} · offset <b>${s.offset >= 0 ? '+' : ''}${s.offset.toFixed(1)} ms</b>`;
+});
+$('#slotShift').addEventListener('click', e => {
+  const b = e.target.closest('button[data-shift]');
+  if (!b) return;
+  const s = currentSlot();
+  s.shift = +b.dataset.shift;
+  s.polarity = (s.shift === 180);
+  renderChannels(); syncAllSlotAudio(); updateInspector();
+});
+
+// ---------- tone / playback ----------
+function bindSlotTone(id, key, fmt) {
+  $(id).addEventListener('input', e => {
+    const slot = currentSlot();
+    slot[key] = +e.target.value;
+    $(id + 'Val').textContent = fmt(slot[key]);
+    syncAllSlotAudio();
+  });
+}
+bindSlotTone('#tone', 'tone', v => (v > 0 ? '+' : '') + v);
+bindSlotTone('#cut', 'cut', v => v + '%');
+bindSlotTone('#velSens', 'velSens', v => v + '%');
+bindSlotTone('#gain', 'gain', v => fmtDb(v));
+
+$('#playbackSeg').addEventListener('click', e => {
+  const b = e.target.closest('button[data-pb]');
+  if (!b) return;
+  currentSlot().playback = b.dataset.pb;
+  $$('#playbackSeg button').forEach(x => x.classList.toggle('active', x === b));
+});
+$('#loopBtn').onclick = () => {
+  const slot = currentSlot();
+  slot.loop = !slot.loop;
+  $('#loopBtn').classList.toggle('on', slot.loop);
+};
+
+// ---------- inspector tabs ----------
+$$('.tab').forEach(t => t.addEventListener('click', () => {
+  setInspectorTab(t.dataset.tab);
+  if (t.dataset.tab === 'sample') renderWaveform();
+  if (t.dataset.tab === 'env') renderADSR();
+}));
+
+// ---------- sample actions ----------
+$('#reverseBtn').onclick = () => {
+  const slot = currentSlot();
+  slot.reverse = !slot.reverse;
+  renderWaveform();
+  toast(slot.reverse ? 'Sample reversed' : 'Sample forward');
+};
+$('#normalizeBtn').onclick = () => toast('Normalize: −0.3 dB peak (demo)');
+
+function animateMaster() {
+  const m = $('#masterMeter');
+  if (!m) return;
+  const t0 = performance.now();
+  const step = now => {
+    const t = (now - t0) / 900;
+    if (t >= 1) { m.style.width = '0%'; return; }
+    m.style.width = clamp(18 + 78 * Math.abs(Math.sin(t * Math.PI * 3)) * (1 - t * .4), 0, 100) + '%';
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+let auditionRAF = null;
+function auditionSample() {
+  const slot = currentSlot();
+  const smp = slotSample(slot);
+  if (!smp) { toast('Empty slot'); return; }
+  ensureAudio();
+  playSlot(state.selectedSlot, 0.02);
+  const line = $('#playhead');
+  if (!line) return;
+  const { W, padX } = waveGeom();
+  const x0 = padX + slot.start * (W - 2 * padX);
+  const x1 = padX + slot.end * (W - 2 * padX);
+  const t0 = performance.now(), dur = 900;
+  cancelAnimationFrame(auditionRAF);
+  const step = now => {
+    const t = Math.min(1, (now - t0) / dur);
+    const x = x0 + (x1 - x0) * t;
+    line.setAttribute('x1', x); line.setAttribute('x2', x);
+    line.style.opacity = 1;
+    if (t < 1) auditionRAF = requestAnimationFrame(step);
+    else line.style.opacity = 0;
+  };
+  auditionRAF = requestAnimationFrame(step);
+}
+$('#audition').onclick = auditionSample;
+
+// ---------- detector ----------
+const DET = [
+  { key: 'sens',   label: 'SENS',     min: 0,   max: 100,   val: 45,    fmt: v => Math.round(v) + '%' },
+  { key: 'retrig', label: 'RETRIG',   min: 0,   max: 1000,  val: 50,    fmt: v => Math.round(v) + 'ms' },
+  { key: 'detail', label: 'DETAIL',   min: 0,   max: 100,   val: 50,    fmt: v => Math.round(v) + '%' },
+  { key: 'low',    label: 'LOW CUT',  min: 20,  max: 20000, val: 30,    log: true, fmt: v => fmtHz(v) },
+  { key: 'high',   label: 'HIGH CUT', min: 20,  max: 20000, val: 15000, log: true, fmt: v => fmtHz(v) },
+  { key: 'supp',   label: 'SUPPRESS', min: 0,   max: 100,   val: 50,    fmt: v => Math.round(v) + '%' },
+  { key: 'input',  label: 'INPUT',    min: -24, max: 24,    val: 0,     fmt: v => fmtDb(v) },
+  { key: 'output', label: 'OUTPUT',   min: -24, max: 24,    val: 0,     fmt: v => fmtDb(v) },
+];
+
+function makeKnob(cfg) {
+  const el = document.createElement('div');
+  el.className = 'knob';
+  el.innerHTML = `<div class="knob-dial"><div class="knob-ind"></div></div><div class="knob-label">${cfg.label}</div><div class="knob-val"></div>`;
+  const dial = $('.knob-dial', el), ind = $('.knob-ind', el), val = $('.knob-val', el);
+  const toNorm = v => cfg.log
+    ? (Math.log(v) - Math.log(cfg.min)) / (Math.log(cfg.max) - Math.log(cfg.min))
+    : (v - cfg.min) / (cfg.max - cfg.min);
+  const fromNorm = n => cfg.log
+    ? Math.exp(lerp(Math.log(cfg.min), Math.log(cfg.max), n))
+    : lerp(cfg.min, cfg.max, n);
+  let v = cfg.val;
+  const render = () => {
+    ind.style.transform = `translateX(-50%) rotate(${-135 + 270 * toNorm(v)}deg)`;
+    val.textContent = cfg.fmt(v);
+    state.detector[cfg.key] = v;
+    if (audioReady && ['sens', 'retrig', 'detail', 'supp'].includes(cfg.key)) detectInputHits();
+  };
+  render();
+  let sy = 0, sn = 0;
+  dial.addEventListener('pointerdown', e => {
+    e.preventDefault(); sy = e.clientY; sn = toNorm(v);
+    dial.setPointerCapture(e.pointerId);
+  });
+  dial.addEventListener('pointermove', e => {
+    if (!dial.hasPointerCapture(e.pointerId)) return;
+    const n = clamp(sn + (sy - e.clientY) / 110, 0, 1);
+    v = fromNorm(n); render();
+  });
+  return el;
+}
+DET.forEach(c => $('#detKnobs').appendChild(makeKnob(c)));
+
+$('#gateBtn').onclick = () => {
+  state.detector.gate = !state.detector.gate;
+  $('#gateBtn').classList.toggle('on', state.detector.gate);
+};
+$('#mix').addEventListener('input', e => {
+  state.detector.mix = +e.target.value;
+  $('#mixVal').textContent = Math.round(state.detector.mix) + '%';
+});
+
+// ---------- input waveform (animated) ----------
+const inputCanvas = $('#inputWave');
+let inW = 1, inH = 1, scan = 0, lastT = 0, hits = 0, lastScan = 0, flashT = 0;
+const transientAt = [.10, .27, .44, .62, .80, .93];
+const transientAmp = [1, .72, .9, .62, .84, .58];
+
+function resizeInput() {
+  const r = inputCanvas.parentElement.getBoundingClientRect();
+  inW = Math.max(10, r.width); inH = Math.max(10, r.height);
+  const dpr = window.devicePixelRatio || 1;
+  inputCanvas.width = Math.round(inW * dpr);
+  inputCanvas.height = Math.round(inH * dpr);
+  inputCanvas.style.width = inW + 'px'; inputCanvas.style.height = inH + 'px';
+  inputCanvas.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function drawInput(now) {
+  if (realInputBuffer) { drawRealInput(now); return; }
+  const dt = lastT ? Math.min(.05, (now - lastT) / 1000) : 0;
+  lastT = now;
+  scan = (scan + dt / 2.6) % 1;
+
+  const ctx = inputCanvas.getContext('2d');
+  ctx.clearRect(0, 0, inW, inH);
+  const mid = inH / 2, amp = inH * .34;
+
+  const envAt = t => {
+    let v = .05;
+    for (let k = 0; k < transientAt.length; k++) {
+      const d = t - transientAt[k];
+      if (d >= 0) v = Math.max(v, transientAmp[k] * Math.exp(-d / .035));
+    }
+    return v;
+  };
+
+  ctx.beginPath();
+  for (let x = 0; x <= inW; x++) {
+    const t = x / inW;
+    const v = envAt(t) * amp;
+    const y = mid - v;
+    x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  for (let x = inW; x >= 0; x--) {
+    const t = x / inW;
+    const v = envAt(t) * amp * .8;
+    ctx.lineTo(x, mid + v);
+  }
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255,255,255,.10)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.22)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const thrY = mid - amp * (0.18 + state.detector.sens / 100 * .45);
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = 'rgba(255,107,107,.45)';
+  ctx.beginPath(); ctx.moveTo(0, thrY); ctx.lineTo(inW, thrY); ctx.stroke();
+  ctx.setLineDash([]);
+
+  for (let k = 0; k < transientAt.length; k++) {
+    const x = transientAt[k] * inW;
+    ctx.strokeStyle = 'rgba(45,226,197,.28)';
+    ctx.beginPath(); ctx.moveTo(x, 3); ctx.lineTo(x, inH - 3); ctx.stroke();
+  }
+
+  const sx = scan * inW;
+  ctx.strokeStyle = 'rgba(45,226,197,.75)';
+  ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, inH); ctx.stroke();
+
+  for (let k = 0; k < transientAt.length; k++) {
+    const ti = transientAt[k];
+    if (lastScan < ti && scan >= ti) {
+      hits++;
+      flashT = now;
+      $('#triggerCount').textContent = String(hits);
+    }
+  }
+  lastScan = scan;
+
+  const led = $('#hitLed');
+  if (led) led.classList.toggle('on', now - flashT < 130);
+
+  const lvl = -30 + Math.round(envAt(scan) * 26);
+  const il = $('#inputLevel');
+  if (il) il.textContent = (lvl >= 0 ? '+' : '') + lvl + ' dB';
+}
+function inputLoop(now) { drawInput(now); requestAnimationFrame(inputLoop); }
+
+// ---------- top actions ----------
+$('#flipAll').onclick = () => {
+  state.slots.forEach(s => {
+    s.polarity = !s.polarity;
+    s.shift = s.polarity ? 180 : 0;
+  });
+  renderChannels();
+  syncAllSlotAudio();
+  $('#settingsMenu').classList.remove('show');
+  toast('Polarity flipped on all 8 slots (180°)');
+};
+
+// ---------- master output knob ----------
+let masterOut = 0;
+(function initMasterKnob() {
+  const knob = $('#masterOutKnob');
+  const ind = $('.knob-ind', knob);
+  const val = $('#masterOutVal');
+  const set = v => {
+    masterOut = clamp(v, -24, 6);
+    const n = (masterOut + 24) / 30;
+    ind.style.transform = `translateX(-50%) rotate(${-135 + 270 * n}deg)`;
+    val.textContent = fmtDb(masterOut);
+    if (masterGain) masterGain.gain.value = dbToAmp(masterOut);
+  };
+  set(0);
+  let sy = 0, sv = 0;
+  knob.addEventListener('pointerdown', e => {
+    e.preventDefault(); sy = e.clientY; sv = masterOut;
+    knob.setPointerCapture(e.pointerId);
+  });
+  knob.addEventListener('pointermove', e => {
+    if (!knob.hasPointerCapture(e.pointerId)) return;
+    set(sv + (sy - e.clientY) / 3);
+  });
+})();
+
+$('#settingsBtn').onclick = () => {
+  $('#settingsMenu').classList.toggle('show');
+};
+$('#menuFolders').onclick = () => {
+  $('#settingsMenu').classList.remove('show');
+  toast('Library folders: add/remove roots (demo)');
+};
+$('#menuAudio').onclick = () => {
+  $('#settingsMenu').classList.remove('show');
+  toast('Audio / MIDI settings (demo)');
+};
+document.addEventListener('mousedown', e => {
+  const menu = $('#settingsMenu');
+  if (!menu.classList.contains('show')) return;
+  if (menu.contains(e.target) || e.target.closest('#settingsBtn')) return;
+  menu.classList.remove('show');
+});
+
+$('#exportBtn').onclick = () => toast('Export: AU / VST3 (demo)');
+
+// One-click smoke test: resume audio and fire the real snare through the 8 layers.
+function updateAudioLed() {
+  const led = $('#audioLed');
+  if (led) led.classList.toggle('on', !!audioCtx && audioCtx.state === 'running');
+}
+function waitForInput(ms = 5000) {
+  if (realInputBuffer) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const t0 = performance.now();
+    const poll = () => {
+      if (realInputBuffer) return resolve(true);
+      if (performance.now() - t0 > ms) return resolve(false);
+      setTimeout(poll, 80);
+    };
+    poll();
+  });
+}
+$('#demoBtn').onclick = () => {
+  const ctx = ensureAudio();
+  if (!ctx) { toast('Web Audio not available'); return; }
+  const go = async () => {
+    updateAudioLed();
+    if (!realInputBuffer) {
+      toast('Loading SNARE.cm…');
+      const ready = await waitForInput();
+      if (!ready) { toast('SNARE.cm not available'); return; }
+    }
+    if (inputPlaying) stopInput();
+    playInput();
+    toast('AUDIO TEST · SNARE.cm → 8 layers');
+  };
+  if (ctx.state === 'suspended') ctx.resume().then(go); else go();
+};
+
+// ---------- toast ----------
+let toastTimer = null;
+function toast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1700);
+}
+
+// ---------- Web Audio: real snare + slot playback ----------
+const dbToAmp = db => Math.pow(10, db / 20);
+
+function ensureAudio() {
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    updateAudioLed();
+    return audioCtx;
+  }
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  audioCtx = new Ctx();
+  audioCtx.onstatechange = updateAudioLed;
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = dbToAmp(masterOut);
+  masterAnalyser = audioCtx.createAnalyser();
+  masterAnalyser.fftSize = 512;
+  masterGain.connect(masterAnalyser).connect(audioCtx.destination);
+  inputGain = audioCtx.createGain();
+  inputGain.gain.value = dbToAmp(-9);
+  inputGain.connect(masterGain);
+  slotNodes = state.slots.map(() => {
+    const cut = audioCtx.createBiquadFilter();
+    cut.type = 'lowpass'; cut.frequency.value = 20000; cut.Q.value = 0.7;
+    const tone = audioCtx.createBiquadFilter();
+    tone.type = 'highshelf'; tone.frequency.value = 4000; tone.gain.value = 0;
+    const level = audioCtx.createGain();
+    const pan = audioCtx.createStereoPanner();
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    cut.connect(tone).connect(level).connect(pan).connect(analyser).connect(masterGain);
+    return { cut, tone, level, pan, analyser, buf: new Uint8Array(analyser.fftSize) };
+  });
+  syncAllSlotAudio();
+  startMeters();
+  updateAudioLed();
+  return audioCtx;
+}
+
+function syncSlotAudio(i) {
+  if (!audioCtx || !slotNodes[i]) return;
+  const s = state.slots[i];
+  const anySolo = state.slots.some(x => x.solo);
+  const active = !s.mute && (!anySolo || s.solo);
+  const amp = active ? dbToAmp(s.level) : 0;
+  slotNodes[i].level.gain.value = s.polarity ? -amp : amp;
+  slotNodes[i].pan.pan.value = clamp(s.pan / 100, -1, 1);
+  slotNodes[i].tone.gain.value = (s.tone / 100) * 12;
+  slotNodes[i].cut.frequency.value = clamp(200 * Math.pow(100, s.cut / 100), 200, 20000);
+}
+function syncAllSlotAudio() { state.slots.forEach((_, i) => syncSlotAudio(i)); }
+
+function makeProceduralBuffer(smp) {
+  const ctx = ensureAudio();
+  if (!ctx) return null;
+  const sr = 48000;
+  const dur = clamp((smp.dur || 400) / 1000, 0.05, 4);
+  const buf = ctx.createBuffer(1, Math.ceil(dur * sr), sr);
+  const d = buf.getChannelData(0);
+  const r = mulberry32(smp.id * 2654435761 % 2147483647 + 11);
+  const cat = smp.category;
+  let phase = 0;
+  for (let i = 0; i < d.length; i++) {
+    const t = i / sr;
+    let v = 0;
+    if (cat === 'Kick') {
+      const f = 45 + 100 * Math.exp(-t / 0.03);
+      phase += 2 * Math.PI * f / sr;
+      v = Math.sin(phase) * Math.exp(-t / 0.13);
+      if (t < 0.012) v += (r() - .5) * 1.2 * Math.exp(-t / 0.004);
+    } else if (cat === 'Snare' || cat === 'Clap') {
+      const env = Math.exp(-t / (cat === 'Clap' ? 0.045 : 0.07));
+      v = (r() - .5) * 1.5 * env;
+      if (cat === 'Snare') v += 0.45 * Math.sin(2 * Math.PI * 185 * t) * Math.exp(-t / 0.09);
+      if (cat === 'Clap') v *= (0.55 + 0.45 * Math.sin(2 * Math.PI * 25 * t));
+    } else if (cat === 'HHC' || cat === 'HHO' || cat === 'Cymbal') {
+      const env = Math.exp(-t / (cat === 'HHC' ? 0.025 : cat === 'HHO' ? 0.16 : 0.35));
+      v = (r() - .5) * env * (cat === 'HHC' ? 0.9 : 1.2);
+    } else if (cat === 'Tom') {
+      phase += 2 * Math.PI * (85 + 30 * Math.exp(-t / 0.06)) / sr;
+      v = Math.sin(phase) * Math.exp(-t / 0.22);
+    } else if (cat === 'Perc') {
+      v = ((r() - .5) * 0.8 + 0.4 * Math.sin(2 * Math.PI * (400 + 600 * r()) * t)) * Math.exp(-t / 0.08);
+    } else {
+      v = (r() - .5) * Math.exp(-t / 0.2) * (0.5 + 0.5 * Math.sin(2 * Math.PI * 3 * t));
+    }
+    d[i] = clamp(v, -1, 1) * 0.9;
+  }
+  return buf;
+}
+
+function getBuffer(smp) {
+  if (!smp) return null;
+  if (smp.audioBuffer) return smp.audioBuffer;
+  if (smp.isReal) return null;
+  smp.audioBuffer = makeProceduralBuffer(smp);
+  return smp.audioBuffer;
+}
+
+function getReversedBuffer(smp) {
+  if (smp._rev) return smp._rev;
+  const src = getBuffer(smp);
+  if (!src || !audioCtx) return null;
+  const out = audioCtx.createBuffer(src.numberOfChannels, src.length, src.sampleRate);
+  for (let ch = 0; ch < src.numberOfChannels; ch++) {
+    const a = src.getChannelData(ch), b = out.getChannelData(ch);
+    for (let i = 0; i < a.length; i++) b[i] = a[a.length - 1 - i];
+  }
+  smp._rev = out;
+  return out;
+}
+
+function scheduleSlot(ctx, i, when) {
+  const s = state.slots[i];
+  const smp = slotSample(s);
+  if (!smp) return null;
+  const anySolo = state.slots.some(x => x.solo);
+  if (s.mute || (anySolo && !s.solo)) return null;
+  const buf = s.reverse ? getReversedBuffer(smp) : getBuffer(smp);
+  if (!buf) return null;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const rate = Math.pow(2, s.tune / 12);
+  src.playbackRate.value = rate;
+  src.loop = !!s.loop;
+  const durSec = smp.dur / 1000;
+  const startSec = (s.reverse ? (1 - s.end) : s.start) * durSec;
+  const endSec = (s.reverse ? (1 - s.start) : s.end) * durSec;
+  const len = Math.max(0.005, endSec - startSec);
+  if (s.loop) { src.loopStart = startSec; src.loopEnd = endSec; }
+  const env = ctx.createGain();
+  const fade = ctx.createGain();
+  src.connect(env).connect(fade);
+  const node = slotNodes[i];
+  if (node) fade.connect(node.cut); else fade.connect(masterGain);
+  const t0 = ctx.currentTime + 0.02 + (when || 0) + Math.max(0, s.offset) / 1000;
+  const total = len / rate;
+  const a = Math.max(0.001, s.adsr.a / 1000);
+  const d = Math.max(0.001, s.adsr.d / 1000);
+  const r = Math.max(0.001, s.adsr.r / 1000);
+  const peak = clamp(dbToAmp(s.gain), 0, 4);
+  const sus = peak * s.adsr.s;
+  const g = env.gain;
+  g.setValueAtTime(0, t0);
+  g.linearRampToValueAtTime(peak, t0 + Math.min(a, total * .9));
+  g.linearRampToValueAtTime(sus, t0 + Math.min(a + d, total * .95));
+  const relStart = Math.max(t0 + a + d, t0 + total - r);
+  g.setValueAtTime(sus, relStart);
+  g.linearRampToValueAtTime(0, relStart + Math.min(r, Math.max(0.005, total - (relStart - t0))));
+  const f = fade.gain;
+  const fi = Math.min(s.fadeIn / 1000, total * .9);
+  const fo = Math.min(s.fadeOut / 1000, total * .9);
+  f.setValueAtTime(fi > 0 ? 0 : 1, t0);
+  if (fi > 0) f.linearRampToValueAtTime(1, t0 + fi);
+  if (fo > 0) {
+    f.setValueAtTime(1, Math.max(t0 + fi, t0 + total - fo));
+    f.linearRampToValueAtTime(0, t0 + total);
+  }
+  const playLen = s.loop ? Math.min(2, total + 1) : len;
+  src.start(t0, startSec, playLen);
+  src.stop(t0 + (s.loop ? 2 : total) + 0.12);
+  src.onended = () => {
+    try { src.disconnect(); env.disconnect(); fade.disconnect(); } catch (e) {}
+    const idx = activeSlotSources.indexOf(src); if (idx >= 0) activeSlotSources.splice(idx, 1);
+  };
+  activeSlotSources.push(src);
+  return src;
+}
+
+function playSlot(i, when = 0) {
+  const ctx = ensureAudio();
+  if (!ctx) return null;
+  syncSlotAudio(i);
+  return scheduleSlot(ctx, i, when);
+}
+
+function startMeters() {
+  if (meterRAF) return;
+  const loop = () => {
+    if (audioCtx) {
+      const anySolo = state.slots.some(s => s.solo);
+      state.slots.forEach((s, i) => {
+        const node = slotNodes[i];
+        if (!node) return;
+        node.analyser.getByteTimeDomainData(node.buf);
+        let sum = 0;
+        for (const v of node.buf) { const x = (v - 128) / 128; sum += x * x; }
+        const rms = Math.sqrt(sum / node.buf.length);
+        const active = !s.mute && (!anySolo || s.solo);
+        const h = active ? clamp(rms * 380, 3, 100) : 3;
+        const mt = $(`#meter-${i}`); if (mt) mt.style.height = h + '%';
+      });
+      const mb = new Uint8Array(masterAnalyser.fftSize);
+      masterAnalyser.getByteTimeDomainData(mb);
+      let sum = 0;
+      for (const v of mb) { const x = (v - 128) / 128; sum += x * x; }
+      const rms = Math.sqrt(sum / mb.length);
+      const mm = $('#masterMeter'); if (mm) mm.style.width = clamp(rms * 420, 0, 100) + '%';
+    }
+    meterRAF = requestAnimationFrame(loop);
+  };
+  meterRAF = requestAnimationFrame(loop);
+}
+
+async function loadRealAudio() {
+  try {
+    const resp = await fetch('samples/SNARE.cm.wav');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const ab = await resp.arrayBuffer();
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const full = await ctx.decodeAudioData(ab);
+    realInputBuffer = full;
+    realInputDuration = full.duration;
+    // 1200 peak buckets for the input waveform
+    const n = 1200;
+    const data = full.getChannelData(0);
+    const step = Math.max(1, Math.floor(data.length / n));
+    realInputPeaks = new Float32Array(n);
+    let maxPeak = 1e-6;
+    for (let i = 0; i < n; i++) {
+      let p = 0;
+      const end = Math.min(data.length, (i + 1) * step);
+      for (let j = i * step; j < end; j++) p = Math.max(p, Math.abs(data[j]));
+      realInputPeaks[i] = p;
+      maxPeak = Math.max(maxPeak, p);
+    }
+    for (let i = 0; i < n; i++) realInputPeaks[i] /= maxPeak;
+    // first hit becomes the slot sample
+    const sr = full.sampleRate;
+    const start = Math.floor(0.14 * sr);
+    const end = Math.floor(0.65 * sr);
+    const slice = ctx.createBuffer(full.numberOfChannels, end - start, sr);
+    for (let ch = 0; ch < full.numberOfChannels; ch++) {
+      slice.getChannelData(ch).set(full.getChannelData(ch).subarray(start, end));
+    }
+    realSample.audioBuffer = slice;
+    realSample.dur = slice.duration * 1000;
+    realSample.x = clamp(normLog(realSample.dur, DUR.min, DUR.max), .002, .998);
+    realSample.y = clamp(normLog(2500, BRI.min, BRI.max), .002, .998);
+    detectInputHits();
+    const cur = currentSlotSample();
+    if (cur && cur.isReal && $('.inspector').classList.contains('show')) updateInspector();
+    drawUniverse();
+  } catch (e) {
+    console.warn('SNARE.cm load failed:', e);
+  }
+}
+
+function detectInputHits() {
+  if (!realInputBuffer) return realHits;
+  const data = realInputBuffer.getChannelData(0);
+  const sr = realInputBuffer.sampleRate;
+  const sens = state.detector.sens, detail = state.detector.detail, supp = state.detector.supp / 100;
+  const retrig = Math.round(state.detector.retrig * 0.001 * sr);
+  const thresh = Math.pow(10, (-6 - 0.54 * sens) / 20);
+  const k = 6 - 0.045 * detail;
+  const fastRel = Math.exp(-1 / (0.005 * sr));
+  const slowCoef = 1 - Math.exp(-1 / (0.05 * sr));
+  const win = Math.round(0.005 * sr);
+  let fast = 0, slow = 0, supTh = 0, hold = 0, capturing = false, peak = 0, cap = 0, armed = true;
+  const hits = [];
+  for (let i = 0; i < data.length; i++) {
+    const x = Math.abs(data[i]);
+    fast = Math.max(x, fast * fastRel);
+    slow += (x - slow) * slowCoef;
+    supTh *= Math.exp(-1 / (0.05 * sr));
+    const thr = Math.max(thresh, supTh);
+    if (armed && fast > thr && fast > slow * k) {
+      capturing = true; peak = 0; cap = 0;
+    }
+    if (capturing) {
+      peak = Math.max(peak, fast);
+      cap++;
+      if (cap >= win) {
+        hits.push({ time: Math.max(0, i / sr - 0.005), peak });
+        capturing = false;
+        armed = false;
+        supTh = peak * supp;
+        hold = win + retrig;
+      }
+    }
+    if (!armed) {
+      if (hold > 0) hold--;
+      if (hold <= 0 && fast < thresh * 0.5) armed = true;
+    }
+  }
+  realHits = hits;
+  const el = $('#triggerCount'); if (el) el.textContent = String(hits.length);
+  return hits;
+}
+
+function drawRealInput(now) {
+  if (!realInputPeaks) return;
+  const ctx = inputCanvas.getContext('2d');
+  ctx.clearRect(0, 0, inW, inH);
+  const mid = inH / 2, amp = inH * .38;
+  ctx.beginPath();
+  for (let x = 0; x < inW; x++) {
+    const idx = Math.min(realInputPeaks.length - 1, Math.floor(x / inW * realInputPeaks.length));
+    const v = realInputPeaks[idx] * amp;
+    const y = mid - v;
+    x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  for (let x = inW - 1; x >= 0; x--) {
+    const idx = Math.min(realInputPeaks.length - 1, Math.floor(x / inW * realInputPeaks.length));
+    ctx.lineTo(x, mid + realInputPeaks[idx] * amp * .65);
+  }
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255,255,255,.10)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.25)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // hit markers
+  for (const h of realHits) {
+    const x = (h.time / realInputDuration) * inW;
+    ctx.strokeStyle = 'rgba(45,226,197,.35)';
+    ctx.beginPath(); ctx.moveTo(x, 3); ctx.lineTo(x, inH - 3); ctx.stroke();
+  }
+  // scan
+  if (inputPlaying && audioCtx) {
+    const t = (audioCtx.currentTime - inputStartCtxTime) / realInputDuration;
+    if (t >= 0 && t <= 1) {
+      const sx = t * inW;
+      ctx.strokeStyle = 'rgba(45,226,197,.85)';
+      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, inH); ctx.stroke();
+      const led = $('#hitLed');
+      const near = realHits.some(h => Math.abs(h.time / realInputDuration - t) < 0.006);
+      if (led) led.classList.toggle('on', near);
+      const il = $('#inputLevel');
+      if (il) {
+        const idx = Math.min(realInputPeaks.length - 1, Math.floor(t * realInputPeaks.length));
+        const db = 20 * Math.log10(Math.max(realInputPeaks[idx], .001));
+        il.textContent = (db >= 0 ? '+' : '') + db.toFixed(0) + ' dB';
+      }
+    }
+  }
+}
+
+function stopInput() {
+  inputPlaying = false;
+  inputTimers.forEach(t => clearTimeout(t)); inputTimers = [];
+  if (inputSource) { try { inputSource.stop(); } catch (e) {} inputSource = null; }
+  activeSlotSources.slice().forEach(s => { try { s.stop(); } catch (e) {} });
+  activeSlotSources = [];
+  const btn = $('#inputPlay'); if (btn) btn.textContent = '▶ INPUT';
+  const led = $('#hitLed'); if (led) led.classList.remove('on');
+}
+
+function playInput() {
+  if (inputPlaying) { stopInput(); return; }
+  if (!realInputBuffer) { toast('SNARE.cm still loading…'); return; }
+  const ctx = ensureAudio();
+  if (!ctx) { toast('Audio not available'); return; }
+  stopInput();
+  if (!realHits.length) detectInputHits();
+  const src = ctx.createBufferSource();
+  src.buffer = realInputBuffer;
+  src.connect(inputGain);
+  const start = ctx.currentTime + 0.06;
+  inputSource = src;
+  inputStartCtxTime = start;
+  inputPlaying = true;
+  src.start(start);
+  src.onended = () => { if (inputPlaying) stopInput(); };
+  const btn = $('#inputPlay'); if (btn) btn.textContent = '■ STOP';
+  realHits.forEach(h => {
+    state.slots.forEach((_, i) => playSlot(i, 0.04 + h.time));
+  });
+  inputTimers.push(setTimeout(() => { if (inputPlaying) stopInput(); }, (realInputDuration + 0.5) * 1000));
+}
+
+$('#inputPlay').onclick = playInput;
+$('#inputWave').addEventListener('click', playInput);
+audioReady = true;
+
+// ---------- debug handles for the prototype ----------
+window.__TU = state;
+window.__audio = {
+  get hits() { return realHits; },
+  get inputDuration() { return realInputDuration; },
+  get sample() { return realSample; },
+  get context() { return audioCtx; },
+  detect: detectInputHits,
+  playInput,
+  stopInput,
+  playSlot,
+};
+window.__selectSample = selectSample;
+window.__setTriggerOpen = setTriggerOpen;
+window.__updateInspector = updateInspector;
+
+// ---------- init ----------
+function init() {
+  renderChannels();
+  state.slots.forEach((_, i) => applyAutoPhase(i, 'INPUT', true));
+  renderFolderTree();
+  renderFileList();
+  const first = samples.find(s => s.category === 'Kick') || samples[0];
+  selectSample(first);
+  requestAnimationFrame(() => {
+    resizeCanvas();
+    new ResizeObserver(resizeCanvas).observe(wrap);
+    resizeInput();
+    new ResizeObserver(resizeInput).observe(inputCanvas.parentElement);
+    requestAnimationFrame(inputLoop);
+  });
+  loadRealAudio();
+}
+init();

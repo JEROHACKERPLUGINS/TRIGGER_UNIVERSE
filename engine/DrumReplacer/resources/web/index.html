@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DrumReplacer</title>
+<link rel="stylesheet" href="style.css">
+<script src="script.js"></script>
+<script src="ui.js" defer></script>
+</head>
+<body>
+<div id="app">
+  <header>
+    <span class="logo">DRUM<b>REPLACER</b></span>
+    <span id="hit-led" class="led" title="Hit detected"></span>
+    <span id="pro-badge" class="badge" hidden>PRO</span>
+  </header>
+
+  <div class="panels">
+    <section class="panel" id="detector-panel">
+      <h3>DETECTOR</h3>
+      <div class="row" id="detector-knobs"></div>
+    </section>
+
+    <section class="panel" id="gate-panel">
+      <h3>GATE <span class="toggle-slot" id="gate-toggle"></span></h3>
+      <div class="row" id="gate-knobs"></div>
+    </section>
+
+    <section class="panel" id="gain-panel">
+      <h3>GAIN</h3>
+      <div class="row" id="gain-knobs"></div>
+    </section>
+
+    <section class="panel" id="midi-panel">
+      <h3>MIDI</h3>
+      <div class="midi-row"><span class="toggle-slot" id="midi-in-toggle"></span><div class="row" id="midi-in-knobs"></div></div>
+      <div class="midi-row"><span class="toggle-slot" id="midi-out-toggle"></span><div class="row" id="midi-out-knobs"></div></div>
+    </section>
+  </div>
+
+  <div id="slots"></div>
+</div>
+</body>
+</html>

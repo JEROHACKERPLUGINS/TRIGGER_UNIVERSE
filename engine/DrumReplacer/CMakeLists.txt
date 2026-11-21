@@ -1,0 +1,27 @@
+cmake_minimum_required(VERSION 3.14)
+project(DrumReplacer VERSION 1.0.0)
+
+if(NOT DEFINED IPLUG2_DIR)
+  set(IPLUG2_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../_iPlug2" CACHE PATH "iPlug2 root directory")
+endif()
+
+include(${IPLUG2_DIR}/iPlug2.cmake)
+find_package(iPlug2 REQUIRED)
+
+iplug_add_plugin(${PROJECT_NAME}
+  SOURCES
+    DrumReplacer.cpp
+    DrumReplacer.h
+    DSP/SlotEngine.h
+    DSP/TransientDetector.h
+    DSP/Dynamics.h
+    DSP/WavFile.h
+    resources/resource.h
+  WEB_RESOURCES
+    resources/web/index.html
+    resources/web/style.css
+    resources/web/script.js
+    resources/web/ui.js
+  UI WEBVIEW
+  FORMATS VST3
+)

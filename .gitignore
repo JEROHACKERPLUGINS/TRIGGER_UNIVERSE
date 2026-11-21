@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Build / tooling
+/build/
+/DerivedData/
+node_modules/
+dist/
+*.o
+*.dSYM/
+xcuserdata/
+**/xcuserdata/
+
+# Logs
+*.log
