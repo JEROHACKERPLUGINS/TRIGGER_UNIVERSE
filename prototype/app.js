@@ -1242,7 +1242,7 @@ function renderSlots() {
     const sel = i === state.selectedSlot ? ' selected' : '';
     const stateCls = smp ? ' filled' : ' empty';
     return `
-      <div class="slot${stateCls}${sel}" data-slot="${i}"${smp ? ` style="--slot-color:${color}"` : ''} title="${smp ? `${smp.name} · ${CAT[smp.category].short}` : 'Drop a sample here'}">
+      <div class="slot${stateCls}${sel}" data-slot="${i}"${smp ? ` style="--slot-color:${color}"` : ''} title="${smp ? `${smp.name} · click to audition · double-click to edit` : 'Drop a sample here · click to open TRIGGER'}">
         <div class="slot-head">
           <span class="slot-num">${String(i + 1).padStart(2, '0')}</span>
           ${smp ? `<span class="slot-dot" style="background:${color};color:${color}"></span>` : ''}
@@ -1326,7 +1326,31 @@ $('#slots').addEventListener('click', e => {
   if (!slot) return;
   const i = +slot.dataset.slot;
   selectSlot(i);
-  if (state.viewMode !== 'trigger') openTriggerPage();
+  const smp = slotSample(state.slots[i]);
+  if (!smp) {
+    if (state.viewMode !== 'trigger') openTriggerPage();
+    return;
+  }
+  // A filled Trigger Slot auditions its sample on click.
+  ensureAudio();
+  playSlot(i, .01);
+  const el = document.querySelector(`#slots .slot[data-slot="${i}"]`);
+  if (el) {
+    el.classList.remove('slot-audition');
+    void el.offsetWidth;
+    el.classList.add('slot-audition');
+    setTimeout(() => el.classList.remove('slot-audition'), 380);
+  }
+  if (state.viewMode !== 'trigger') setNameBar(smp, false);
+});
+
+// Double-click opens the selected slot in the TRIGGER editor.
+$('#slots').addEventListener('dblclick', e => {
+  if (e.target.closest('[data-clear]')) return;
+  const slot = e.target.closest('.slot[data-slot]');
+  if (!slot) return;
+  selectSlot(+slot.dataset.slot);
+  openTriggerPage();
 });
 
 $('#faderBank').addEventListener('input', e => {
@@ -1773,7 +1797,7 @@ function setView(mode) {
   $('#triggerTab').classList.toggle('active', isTrigger);
   $('#triggerTab').title = isTrigger ? 'Back to browser' : 'Open TRIGGER page';
   const vt = $('#viewToggle');
-  vt.title = isFiles ? 'Back to universe' : 'File search';
+  vt.title = isFiles ? 'Back to HOME' : 'File search';
   vt.setAttribute('aria-label', vt.title);
   if (isTrigger) {
     hideSimilarity();
@@ -1803,8 +1827,30 @@ function setView(mode) {
   }
 }
 $('#triggerBack').onclick = closeTriggerPage;
+
+function goHome() {
+  stopScrub();
+  hideSimilarity();
+  setSettingsOpen(false);
+  closeSlotPopover();
+  if (state.drag) {
+    state.drag = null;
+    state.dragAlt = false;
+    dragStarted = false;
+    endPlanetDrag();
+    ensureDragLoop();
+  }
+  if (state.viewMode !== 'universe') setView('universe');
+  else requestUniverseDraw();
+}
+
+// ESC always lands on HOME, from TRIGGER, FILE SEARCH or any open overlay.
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && state.viewMode === 'trigger') closeTriggerPage();
+  if (e.key !== 'Escape') return;
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') e.target.blur();
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  goHome();
 });
 $('#viewToggle').onclick = () => setView(state.viewMode === 'universe' ? 'files' : 'universe');
 
@@ -1872,7 +1918,7 @@ function updateInspector() {
 
   $('#sampleMeta').textContent = smp
     ? `${CAT[smp.category].short} · ${fmtMs(smp.dur)} · ${fmtHz(smp.bright)} · ${smp.path}`
-    : 'Empty slot — drag a sample from the Universe or File Search.';
+    : 'Empty slot — drag a sample from HOME or File Search.';
 
   $('#tone').value = slot.tone;
   $('#toneVal').textContent = (slot.tone > 0 ? '+' : '') + slot.tone;
@@ -2914,7 +2960,7 @@ function init() {
   });
   document.addEventListener('focusout', hide);
   document.addEventListener('mousedown', hide);
-  // Text can change on click (e.g. File search <-> Back to universe): refresh it.
+  // Text can change on click (e.g. File search <-> Back to HOME): refresh it.
   document.addEventListener('click', () => requestAnimationFrame(() => {
     const el = document.querySelector('[data-tip]:hover');
     if (el && el.getAttribute('title')) show(el);

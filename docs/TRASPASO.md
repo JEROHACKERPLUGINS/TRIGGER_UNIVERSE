@@ -14,7 +14,7 @@
 2. Un **universo visual de samples** estilo XO: nube de puntos, búsqueda, similitud, exploración.
 3. Un **mixer de 8 slots** con edición no destructiva por capa.
 
-El usuario busca un sample en el Universo o en FILE SEARCH, lo arrastra a uno de los 8 slots del dock, entra a la página TRIGGER para editarlo (sample, ADSR, tone, phase) y el INPUT dispara las capas cargadas.
+El usuario busca un sample en HOME o en FILE SEARCH, lo arrastra a uno de los 8 slots del dock, entra a la página TRIGGER para editarlo (sample, ADSR, tone, phase) y el INPUT dispara las capas cargadas.
 
 **No es un beatmaker.** Quedan fuera de alcance: step sequencer, patrones, groove, swing, BPM sync y preset browser.
 
@@ -50,7 +50,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8765/
 2. Click en **▶ INPUT** dentro de INPUT DETECTOR.
 3. Se escucha `SNARE.cm.wav` y se disparan los slots cargados.
 4. El meter MASTER de la página y el mini VU de OUTPUT se mueven.
-5. Para cargar capas, volvé al Universe o FILE SEARCH y hacé **ALT + drag** de un sample a un slot.
+5. Para cargar capas, volvé a HOME o FILE SEARCH y hacé **ALT + drag** de un sample a un slot.
 
 Si no se escucha nada:
 
@@ -85,11 +85,11 @@ window.__setTriggerOpen(true)
 | 6 | Fase | **Ø = 180°** (polaridad). **Phase shift separado**: 0° / 90° / 180° / 260° |
 | 7 | Auto-phase | Corre automáticamente al cargar un sample. Por defecto **solo polaridad**; offset en 0 salvo que **TIMING** esté activo |
 | 8 | Slots | Dock fijo de 8 recuadros de glass **01–08**, cuadrados y centrados, vacíos al inicio |
-| 9 | Editor | Vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre al clickear un slot |
+| 9 | Editor | Vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre con doble click en un slot (o click en uno vacío); el click en un slot lleno audiciona |
 | 10 | Paneles del editor | **SAMPLE / ENVELOPE / TONE / SLOT**, los 4 visibles a la vez en la página TRIGGER |
 | 11 | Tab SLOT | Solo **Auto Phase** y sus controles. Sin Level/Pan/Tune/Mute/Solo/Pol |
-| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR + editor/ADSR + banco de 8 faders. Se vuelve con el mismo corchete o Esc |
-| 13 | Universe | Full-bleed, nube de puntos 3D abstracta, sin ejes de frecuencia/ms. Search arriba, similitud abajo |
+| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR + editor/ADSR + banco de 8 faders. El corchete vuelve a la vista anterior; **Esc siempre vuelve a HOME** |
+| 13 | HOME | Vista principal (ex Universe). Full-bleed, nube de puntos 3D abstracta, sin ejes de frecuencia/ms. Search arriba, similitud abajo. **Esc vuelve acá desde cualquier vista** |
 | 14 | FILE SEARCH | Árbol tipo Finder con root en la carpeta elegida por el usuario. Subcarpetas reales. Samples reales primero |
 | 15 | OUTPUT | Knob arriba a la derecha. Settings funcional. AUTO PHASE ALL vive en Settings |
 | 16 | Export | **Eliminado de la UI** por decisión del usuario (20/11); el export real no está implementado |
@@ -202,31 +202,31 @@ Estética: glassmorphism unificado (search, Trigger Slots, TRIGGER, Settings y O
 
 ### 7.1 Layout
 
-- **La app es el Universe**: el canvas ocupa el 100% de la ventana, sin padding, borde, radio, fondo de panel ni sombra. El fondo aurora del `body` se ve a través del canvas y los puntos tienen un overscan de 36 px, así que sangran fuera del viewport. No se percibe el final del mapa.
+- **La app es HOME**: el canvas ocupa el 100% de la ventana, sin padding, borde, radio, fondo de panel ni sombra. El fondo aurora del `body` se ve a través del canvas y los puntos tienen un overscan de 36 px, así que sangran fuera del viewport. No se percibe el final del mapa.
 - **La UI flota** sobre ese mapa. Arriba: logo y título **TRIGGER UNIVERSE** centrados; search centrado con toggle folder/universo; **OUTPUT + mini VU vertical** al extremo derecho. En los bordes: **corchete TRIGGER a la izquierda** y **corchete SETTINGS a la derecha**. Abajo: similarity, Trigger Slots y zoom.
 - **Search** centrado arriba, sin contorno de panel.
 - **Similarity bar** flotante abajo, estilo XO.
-- **TRIGGER** es una tercera página full-screen (como Universe o FILE SEARCH). Se abre desde el corchete TRIGGER izquierdo y contiene el detector grande + los 4 paneles del editor a la vez + el banco de faders largos. No tiene fila de título/INPUT/HITS/MASTER.
+- **TRIGGER** es una tercera página full-screen (como HOME o FILE SEARCH). Se abre desde el corchete TRIGGER izquierdo y contiene el detector grande + los 4 paneles del editor a la vez + el banco de faders largos. No tiene fila de título/INPUT/HITS/MASTER.
 - **Editor de sample** integrado en la página TRIGGER; ya no es una ventana flotante.
 - **Dock de 8 slots cuadrados** siempre visible y centrado abajo, sobre cualquier vista; se llena con ALT + drag desde el browser. En la página TRIGGER, cada slot tiene su fader arriba con meter, M/S/Ø y nivel.
 
-### 7.2 Universe
+### 7.2 HOME (mapa de samples)
 
 - 1000 samples sintéticos + 1 real (`SNARE.cm`, id 9001).
 - Posición: X = duración en log, Y = brightness en log. La nube tiene sensación 3D, sin ejes visibles.
 - Hover: el nombre del sample aparece en una **barra sutil abajo** (estilo XO), centrada y sin tooltip flotante. Al salir, vuelve al sample seleccionado.
-- Click en un punto: lo selecciona y habilita hover por el mapa (sin arrastrar). **ALT + drag** convierte el sample en una **partícula arrastrable** del mismo tamaño que su punto en el Universe, con glow y estela, que sigue al cursor y se imanta a los 8 slots del dock; al soltar vuela al slot y hace burst/impact. Si se suelta fuera de un slot, toast de Finder (demo). El click/hover hace snap al sample más cercano dentro de un aura de 20 px.
+- Click en un punto: lo selecciona y habilita hover por el mapa (sin arrastrar). **ALT + drag** convierte el sample en una **partícula arrastrable** del mismo tamaño que su punto en HOME, con glow y estela, que sigue al cursor y se imanta a los 8 slots del dock; al soltar vuela al slot y hace burst/impact. Si se suelta fuera de un slot, toast de Finder (demo). El click/hover hace snap al sample más cercano dentro de un aura de 20 px.
 - **Rueda:** zoom anclado al cursor (0.7×–6×).
 - **Click derecho + arrastrar o Ctrl + click izquierdo + arrastrar:** pan con cursor de mano. Sin auto-pan en bordes.
 - **Click izquierdo en vacío:** solo cierra paneles; no mueve la cámara. El pan queda en click derecho o Ctrl+click.
 - Botones `−`, `+`, `⤢` para zoom/reset.
-- Click en el Universo cierra Settings y la barra de similitud; la página TRIGGER se maneja con el corchete TRIGGER o Esc.
+- Click en HOME cierra Settings y la barra de similitud. **Esc vuelve siempre a HOME**, desde TRIGGER, FILE SEARCH, Settings o cualquier popover. El corchete TRIGGER sigue recordando la vista anterior.
 - **Scrub:** mantener el click y moverse por el mapa reproduce un preview corto de cada sample y dibuja una estela multicolor entre los puntos visitados; al soltar, la estela se desvanece en ~2,4 s.
 - **SIMILARITY**: al seleccionar un sample se calculan 33 vecinos por categoría, duración (log), brightness (log) y druminess, con una separación visual mínima para no caer en casi-duplicados. Las flechas `◂ ▸` (o `← →`) recorren la lista; el mapa hace un **seguimiento suave** (solo si el sample queda cerca del borde, dejando libre el dock) y traza una **línea animada** desde el anterior. La barra tiene fade en ambos bordes y se auto-oculta a los 3,5 s sin navegar; se oculta al panear, hacer zoom, abrir TRIGGER/editor, buscar o cambiar de vista.
 
 ### 7.3 FILE SEARCH
 
-- Alterna Universe ↔ File Search con el botón superior.
+- Alterna HOME ↔ File Search con el botón del buscador.
 - **Rediseño 20/11:** árbol tipo Finder con iconos de carpeta, filas de 24 px y tipografía 10.5 px. Root `ALL SAMPLES` → `SAMPLES FOLDER` → subcarpetas (`Kicks`, `Snares`, `Hats`, `Percussion`, …).
 - En el prototipo los paths son sintéticos; el sample real aparece primero.
 - Lista con filas altas (11.5 px): solo **nombre + duración + punto de categoría**, sin columnas CAT/BRIGHT. Path con contador a la derecha.
@@ -269,7 +269,7 @@ Paneles (visibles a la vez en la página TRIGGER):
 
 ### 7.5 TRIGGER (página)
 
-- Tercera página full-screen, como Universe o FILE SEARCH. Se abre con el **corchete TRIGGER** izquierdo; se vuelve con el mismo corchete (recuerda la vista anterior).
+- Tercera página full-screen, como HOME o FILE SEARCH. Se abre con el **corchete TRIGGER** izquierdo; se vuelve con el mismo corchete (recuerda la vista anterior).
 - Sin fila de header: se quitaron título, INPUT, HITS y MASTER. El contenido arranca arriba; el corchete TRIGGER activo identifica la página.
 - **INPUT DETECTOR** a la izquierda, más grande: waveform del INPUT real (≈205 px de alto en 717 px de ventana), 8 knobs compactos en una sola fila (Sens, Retrig, Detail, Low, High, Supp, Input, Output), GATE, **▶ INPUT**, MIX.
 - **Editor de sample** a la derecha con los **4 paneles visibles al mismo tiempo**: SAMPLE y ENVELOPE/ADSR arriba; TONE y SLOT abajo. El ADSR tiene ≈158 px de alto.
@@ -278,7 +278,7 @@ Paneles (visibles a la vez en la página TRIGGER):
   - Click en un fader selecciona el slot para el editor.
 - **Dock de 8 slots cuadrados** abajo, siempre visible en todas las vistas:
   - Recuadros de glass `01`–`08`, cuadrados y centrados, vacíos al inicio.
-  - ALT + drag desde Universe o FILE SEARCH para asignar; el × vacía el slot.
+  - ALT + drag desde HOME o FILE SEARCH para asignar; el × vacía el slot. Click en un slot lleno **audiciona** su sample; doble click lo abre en TRIGGER.
   - Click en un slot abre la página TRIGGER con ese slot cargado.
   - Nombre, dot de categoría y duración cuando tiene sample.
 
@@ -289,7 +289,7 @@ Paneles (visibles a la vez en la página TRIGGER):
   - AUTO PHASE ALL re-analiza las 8 capas.
   - FLIP ALL invierte polaridad en los 8 slots.
   - Los otros dos son toasts demo.
-- **AUDIO TEST y LED eliminados** de la barra: el audio se inicia con **▶ INPUT** o al clickear un sample del Universo o una fila de FILE SEARCH.
+- **AUDIO TEST y LED eliminados** de la barra: el audio se inicia con **▶ INPUT**, al clickear un sample de HOME, una fila de FILE SEARCH o un Trigger Slot cargado.
 
 ---
 
@@ -478,7 +478,7 @@ AAX **no** se necesita.
 ### 11.3 Producto
 
 - Persistencia de biblioteca todavía no implementada.
-- Proyección 2D del Universe todavía no usa features tímbricas reales; usa duración y brightness.
+- Proyección 2D de HOME todavía no usa features tímbricas reales; usa duración y brightness.
 - La similitud del prototipo usa features sintéticas; falta similitud tímbrica real (MFCC, centroide, etc.) sobre audio analizado.
 - No hay presets ni automatización.
 
@@ -553,7 +553,7 @@ AAX **no** se necesita.
 | Archivo | Para qué |
 | --- | --- |
 | `prototype/index.html` | Estructura del prototipo |
-| `prototype/style.css` | Glass UI, Universe, editor, trigger |
+| `prototype/style.css` | Glass UI, HOME, editor, trigger |
 | `prototype/app.js` | UI + Web Audio + detector JS |
 | `prototype/samples/SNARE.cm.wav` | Sample real |
 | `engine/DrumReplacer/DSP/TransientDetector.h` | Detector C++ testeado |
@@ -585,16 +585,17 @@ AAX **no** se necesita.
 10. **FILE SEARCH rediseñado**: menos datos por fila, tipografía mayor y jerarquía tipo Finder. Ver 7.3.
 11. **Barra superior rediseñada**: título centrado, search con toggle folder/universo, OUTPUT + mini VU al extremo derecho y AUDIO TEST eliminado. Ver 7.1 y 7.6.
 12. **SIMILARITY funcional + FAVORITES**: navegación por 33 vecinos, seguimiento suave y línea animada, teclas ← →, favoritos persistentes y nodo FAVORITES en FILE SEARCH. Ver 7.2 y 7.3.
-13. **Performance del prototipo**: el waveform del INPUT solo se dibuja con la página TRIGGER abierta; meters a ~25 fps con escrituras cacheadas; redraw del Universe coalescido por frame; barra de nombre inferior sin tooltip flotante. El renderer de OpenCode bajó de ~99 % a ~12 % de CPU en reposo.
+13. **Performance del prototipo**: el waveform del INPUT solo se dibuja con la página TRIGGER abierta; meters a ~25 fps con escrituras cacheadas; redraw de HOME coalescido por frame; barra de nombre inferior sin tooltip flotante. El renderer de OpenCode bajó de ~99 % a ~12 % de CPU en reposo.
 14. **File browser**: click en una fila reproduce el audio al instante y se eliminó el botón Audition del pie. En esa iteración, al cambiar a FILE SEARCH se cerraban TRIGGER, INPUT DETECTOR y el editor con animación de salida.
 15. **TRIGGER como página + dock de slots**: TRIGGER, INPUT DETECTOR y el editor/ADSR pasaron a una tercera vista full-screen. El drawer y los faders se reemplazaron por un dock fijo de 8 slots de glass vacíos, siempre visible para arrastrar samples desde Universe/FILE SEARCH. Ver 7.1, 7.4 y 7.5.
 16. **Layout Slate-style**: TRIGGER pasó arriba junto a Settings, con el mismo tamaño. Los slots ahora son cuadrados, centrados y con más separación. En la página TRIGGER se recuperó el banco de 8 faders verticales con meter, M/S/Ø y nivel, alineado sobre los slots. Ver 7.1 y 7.5.
 17. **TRIGGER expandido**: se quitó la fila de título/INPUT/HITS/MASTER para subir todo; el detector pasó a 400 px de ancho con waveform de ≈205 px y knobs en una fila; el ADSR creció a ≈158 px; los 4 paneles del editor se muestran juntos (SAMPLE/ENVELOPE arriba, TONE/SLOT abajo) y los faders se alargaron a ≈116 px. Ver 7.5.
-18. **Drag de partículas**: ALT + drag ya no usa un pill de texto; el sample se convierte en una partícula del mismo tamaño que su dot del Universe, con glow y una estela con los mismos anchos/puntos que la del scrub, sin orbe, anillo ni tether; el nombre aparece como caption sutil. Los slots tienen magnetismo con radio de captura y el drop hace fly-in + burst + impact en el slot y en el fader. Todo el FX vive dentro de la app (canvas fijo), nunca sobre el Finder. Ver 7.2.
-19. **Barra de nombre XO**: se eliminó el tooltip flotante del Universe. El nombre del sample hovereado (o de la fila de FILE SEARCH) aparece centrado en una barra fina **debajo de los slots**; al salir vuelve al seleccionado. En la página TRIGGER muestra el slot seleccionado o `TRIGGER SLOT 0X · EMPTY`.
+18. **Drag de partículas**: ALT + drag ya no usa un pill de texto; el sample se convierte en una partícula del mismo tamaño que su dot de HOME, con glow y una estela con los mismos anchos/puntos que la del scrub, sin orbe, anillo ni tether; el nombre aparece como caption sutil. Los slots tienen magnetismo con radio de captura y el drop hace fly-in + burst + impact en el slot y en el fader. Todo el FX vive dentro de la app (canvas fijo), nunca sobre el Finder. Ver 7.2.
+19. **Barra de nombre XO**: se eliminó el tooltip flotante de HOME. El nombre del sample hovereado (o de la fila de FILE SEARCH) aparece centrado en una barra fina **debajo de los slots**; al salir vuelve al seleccionado. En la página TRIGGER muestra el slot seleccionado o `TRIGGER SLOT 0X · EMPTY`.
 20. **Trigger Slots + invitación al drag**: los 8 cuadrados pasan a llamarse **Trigger Slots**. Al comenzar un arrastre, todos se encienden con un glow mint más brillante y se magnifican con caída por proximidad, estilo Dock de macOS; no hay contorno general. El slot magnetizado mantiene su glow más fuerte.
 21. **Glass unificado**: search, Trigger Slots, fader strips, página TRIGGER, Settings y OUTPUT comparten la misma textura: gradiente mint, borde claro, insets de luz, glow suave y blur donde conviene.
 22. **Corchetes laterales**: TRIGGER pasó a un corchete vertical glass a la izquierda y SETTINGS a uno simétrico a la derecha. Se magnifican y brillan al hover, se resaltan al estar activos y el menú de Settings se ancla al corchete derecho. Ver 7.2.
+23. **HOME + Esc + audition de slots**: la vista principal pasa a llamarse **HOME**. **Esc** vuelve a HOME desde TRIGGER, FILE SEARCH, Settings o cualquier popover. Click en un Trigger Slot lleno **audiciona su sample** con nivel/pan/tone y un flash mint; doble click abre el slot en TRIGGER; click en un slot vacío abre TRIGGER para cargarlo.
 
 ---
 

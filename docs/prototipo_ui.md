@@ -4,10 +4,10 @@ Fecha: 20/11/2026. Prototipo navegable en `prototype/` (`index.html`, `style.css
 
 ## Layout elegido (Opción A)
 
-- **Universe / File Search / TRIGGER full-bleed**: tres páginas que ocupan toda el área principal.
+- **HOME / File Search / TRIGGER full-bleed**: las tres páginas ocupan toda el área principal. HOME es la vista del mapa (ex Universe).
 - **Página TRIGGER**: INPUT DETECTOR grande + los 4 paneles del editor a la vez + banco de 8 faders largos, sin fila de título/INPUT/HITS/MASTER. Se abre desde el corchete vertical TRIGGER (izquierda).
 - **Dock fijo de 8 slots cuadrados** abajo, centrado y visible en todas las vistas: recuadros de glass vacíos donde se arrastran los samples.
-- **Search flotante** arriba del Universe, centrado, estilo XO.
+- **Search flotante** arriba de HOME, centrado, estilo XO.
 - **Similarity bar** flotante arriba del dock, estilo XO.
 - **FILE SEARCH** con árbol tipo Finder y root `LOCATION` (la carpeta elegida por el usuario).
 
@@ -24,7 +24,7 @@ El editor vive dentro de la página TRIGGER y corresponde al slot seleccionado (
 - **ENVELOPE**: ADSR editable.
 - **TONE**: tone, cut, velocity sensitivity, gain, playback one-shot/gate, loop.
 
-El browser (Universe / File Search) solo selecciona y preescucha; no abre el editor. El flujo es: buscar → **ALT + drag** a un slot del dock → clickear el slot para abrir TRIGGER y editar.
+El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: buscar → **ALT + drag** a un slot del dock → **doble click** en el slot para abrir TRIGGER y editar. Un click simple en un slot lleno audiciona su sample.
 
 ## Fase / polaridad
 
@@ -61,9 +61,9 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 ## Actualización 20/11 — audio real y ajustes finales
 
-- **La app es el Universe**: logo y título centrados, search con toggle folder/universo, OUTPUT + VU vertical a la derecha y corchetes verticales TRIGGER/SETTINGS en los bordes. No hay topbar separado.
+- **La app es HOME**: logo y título centrados, search con toggle folder/HOME, OUTPUT + VU vertical a la derecha y corchetes verticales TRIGGER/SETTINGS en los bordes. No hay topbar separado.
 - **Search centrado** arriba, sin contorno de panel; **Similarity** flotante abajo.
-- **TRIGGER** es un corchete vertical glass a la izquierda; **SETTINGS** es su simétrico a la derecha. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/ADSR + banco de faders; se vuelve con el mismo botón o **Esc**.
+- **TRIGGER** es un corchete vertical glass a la izquierda; **SETTINGS** es su simétrico a la derecha. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/ADSR + banco de faders. **Esc vuelve siempre a HOME**, desde cualquier vista.
 - **Editor de sample**: en la página TRIGGER se ven los 4 paneles a la vez (**SAMPLE / ENVELOPE / TONE / SLOT**); la barra de tabs quedó oculta. El panel SLOT conserva **AUTO PHASE** (REF, re-analizar, TIMING, resultado, OFFSET, SHIFT).
 - **Fase**: 0/90/180/260; **180 = Ø**. Los badges se mantienen en el editor.
 - **Slots**: solo números 01–08, sin faders.
@@ -102,6 +102,13 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - **♥** en la barra de similitud y en cada fila de FILE SEARCH agrega/quita favoritos.
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
+
+## Actualización 21/11 — HOME, Esc y audition de slots
+
+- La vista principal pasa a llamarse **HOME** (antes Universe) en la UI y la documentación.
+- **Esc** vuelve siempre a **HOME**: cierra TRIGGER, FILE SEARCH, Settings, el popover de slot y cualquier drag en curso.
+- Click en un **Trigger Slot** con sample lo **audiciona** al instante con su nivel/pan/tone, con un flash mint en el slot y el nombre en la barra inferior. Ya no abre TRIGGER.
+- **Doble click** en un slot abre la página TRIGGER con ese slot en el editor; el click en un slot vacío también abre TRIGGER para cargarlo.
 
 ## Actualización 21/11 — corchetes laterales
 

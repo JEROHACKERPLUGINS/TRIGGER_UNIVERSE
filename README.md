@@ -19,20 +19,21 @@ cd prototype
 python3 -m http.server 8765 --bind 127.0.0.1
 ```
 
-Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (izquierda), click en **▶ INPUT** para reproducir el snare real y disparar los slots cargados; o hacé click en un sample del Universo o de **FILE SEARCH** para escucharlo al instante. El audio arranca con el primer click (política de autoplay del browser).
+Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (izquierda), click en **▶ INPUT** para reproducir el snare real y disparar los slots cargados; o hacé click en un sample de **HOME** o de **FILE SEARCH** para escucharlo al instante. El audio arranca con el primer click (política de autoplay del browser).
 
 Controles principales:
 
-- Click en un **Trigger Slot 01–08** del dock para abrir la página **TRIGGER** con ese slot en el editor.
+- Click en un **Trigger Slot 01–08** con sample: lo **audiciona** al instante con su nivel, pan y tone. **Doble click** abre la página **TRIGGER** con ese slot en el editor; en un slot vacío, el click abre TRIGGER para cargarlo.
+- **Esc** vuelve siempre a **HOME** (la vista principal del mapa), desde TRIGGER, FILE SEARCH, Settings o cualquier popover.
 - El corchete **TRIGGER** (izquierda) abre una página completa con **INPUT DETECTOR grande + los 4 paneles del editor visibles a la vez + banco de 8 faders largos**. No hay fila de título/INPUT/HITS/MASTER: el contenido arranca arriba y el botón TRIGGER activo indica la página.
-- Los 8 **Trigger Slots** arrancan **vacíos**, son cuadrados y quedan centrados abajo. Arrastrá samples desde el Universe o FILE SEARCH para llenarlos; el **×** de cada slot lo vacía. En la página TRIGGER, arriba de cada slot aparece su fader largo con meter, M/S/Ø y nivel.
-- Mantené el click y movete por el Universe: se escucha un preview inmediato de cada sample (snap dentro de un aura de ~20 px) y queda una **estela de colores** entre los puntos visitados. Al soltar, la estela se desvanece.
-- Click en un sample: lo selecciona y permite hacer hover por el mapa. **ALT + arrastrar** desde el Universe o FILE SEARCH a uno de los **8 Trigger Slots** del dock para asignarlo. Mientras arrastrás, el sample se convierte en una **partícula del mismo tamaño que su punto en el Universe**, con glow y una estela; sin orbe ni anillo, con el nombre como caption sutil. Al empezar el drag, los 8 Trigger Slots se encienden con un glow mint más brillante y se **magnifican tipo Dock de macOS**; al acercarte a uno se imanta, y al soltar vuela hacia el slot y explota en un burst. Si se suelta fuera, se muestra el toast de export a Finder (demo).
+- Los 8 **Trigger Slots** arrancan **vacíos**, son cuadrados y quedan centrados abajo. Arrastrá samples desde HOME o FILE SEARCH para llenarlos; el **×** de cada slot lo vacía. En la página TRIGGER, arriba de cada slot aparece su fader largo con meter, M/S/Ø y nivel.
+- Mantené el click y movete por HOME: se escucha un preview inmediato de cada sample (snap dentro de un aura de ~20 px) y queda una **estela de colores** entre los puntos visitados. Al soltar, la estela se desvanece.
+- Click en un sample: lo selecciona y permite hacer hover por el mapa. **ALT + arrastrar** desde HOME o FILE SEARCH a uno de los **8 Trigger Slots** del dock para asignarlo. Mientras arrastrás, el sample se convierte en una **partícula del mismo tamaño que su punto en HOME**, con glow y una estela; sin orbe ni anillo, con el nombre como caption sutil. Al empezar el drag, los 8 Trigger Slots se encienden con un glow mint más brillante y se **magnifican tipo Dock de macOS**; al acercarte a uno se imanta, y al soltar vuela hacia el slot y explota en un burst. Si se suelta fuera, se muestra el toast de export a Finder (demo).
 - Rueda del mouse: zoom anclado al cursor. Click derecho + arrastrar o **Ctrl + click izquierdo + arrastrar**: pan. Click izquierdo en vacío: solo cierra paneles, sin mover la cámara.
-- Al pasar por un sample del Universe o una fila de FILE SEARCH, su nombre aparece en una **barra sutil abajo**, estilo XO; ya no hay tooltip flotante.
-- **FILE SEARCH** alterna entre el universo y el árbol de carpetas (ícono de carpeta a la derecha del buscador). El dock de Trigger Slots queda siempre visible, así podés arrastrar sin salir del browser. El efecto de la partícula queda contenido dentro de la app: nunca se dibuja sobre el Finder.
+- Al pasar por un sample de HOME o una fila de FILE SEARCH, su nombre aparece en una **barra sutil abajo**, estilo XO; ya no hay tooltip flotante.
+- **FILE SEARCH** alterna entre **HOME** y el árbol de carpetas (ícono de carpeta a la derecha del buscador). El dock de Trigger Slots queda siempre visible, así podés arrastrar sin salir del browser. El efecto de la partícula queda contenido dentro de la app: nunca se dibuja sobre el Finder.
 - Click en una fila de FILE SEARCH: selecciona el sample y **reproduce su audio al instante**; ya no hay botón Audition en el pie.
-- **SIMILARITY** (abajo): al seleccionar un sample se arma una lista de 33 parecidos. Las flechas `◂ ▸` o las teclas `← →` recorren esa lista; el Universe hace un paneo suave solo si el sample queda cerca del borde y dibuja una línea animada entre ambos.
+- **SIMILARITY** (abajo): al seleccionar un sample se arma una lista de 33 parecidos. Las flechas `◂ ▸` o las teclas `← →` recorren esa lista; HOME hace un paneo suave solo si el sample queda cerca del borde y dibuja una línea animada entre ambos.
 - **♥** en la barra de similitud o en cada fila de FILE SEARCH: agrega/quita favoritos persistentes. **FAVORITES** aparece arriba del árbol de carpetas.
 - El corchete **SETTINGS** (derecha) abre el menú con AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS y AUDIO/MIDI.
 - La textura **glass** es la misma familia en el search, los Trigger Slots, la página TRIGGER, Settings y el bloque OUTPUT.
@@ -53,7 +54,7 @@ Controles principales:
 
 ## Principios de alcance
 
-- El Universo sirve para **descubrir, editar y asignar** samples; no es un beatmaker.
+- **HOME** (el mapa de samples) sirve para **descubrir, editar y asignar** samples; no es un beatmaker.
 - Fuera de alcance: step sequencer, patrones A/B, groove, swing, nudge, BPM sync y preset browser.
 - El motor de Trigger existente se **audita y reutiliza**; no se reemplaza sin una razón técnica documentada.
 - ADSR (amplitud) y Phase/Align (polaridad + alineación temporal) son sistemas **independientes**, aunque compartan panel visual.
@@ -78,7 +79,7 @@ docs/                  auditoría, diseño, pruebas y capturas
 | --- | --- | --- |
 | 0 | Auditoría y cimentación | ✅ completada y aprobada |
 | 1 | Library / Browser (scanner, SQLite, análisis) | 🟡 modelo de datos diseñado |
-| 2 | Universe (proyección, filtros, similitud) | 🟡 prototipo visual |
+| 2 | HOME (proyección, filtros, similitud) | 🟡 prototipo visual |
 | 3 | Sample Editor + Phase / Align | 🟡 prototipo UI y diseño DSP |
 | 4 | Ocho slots / mixer / trigger | 🟡 motor testeado, prototipo con audio |
 | 5 | Pulido, presets, automatización, release | ⬜ pendiente |
