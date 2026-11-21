@@ -144,8 +144,13 @@ body{
 .universe.files-mode .search-box .ico-folder{display:none}
 .universe.files-mode .search-box .ico-universe{display:block}
 .center-body{position:absolute;inset:0;min-height:0}
-.view{display:none;height:100%;min-height:0;position:relative}
+.view{display:none;position:absolute;inset:0;min-height:0}
 .view.active{display:block}
+/* the universe stays behind FILE SEARCH: dimmed, blurred and inert */
+#universeView{display:block;transition:filter .35s ease, opacity .35s ease, transform .35s ease}
+.universe.files-mode #universeView{filter:blur(7px) saturate(125%);opacity:.65;transform:scale(1.03);pointer-events:none}
+#fileView.active{animation:fileViewIn .3s ease both}
+@keyframes fileViewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .search-box{position:absolute;left:50%;top:0;transform:translateX(-50%);width:min(420px,55%);
   height:40px;display:flex;align-items:center;gap:10px;
   border-radius:999px;padding:4px 4px 4px 16px;min-width:0;--lg-radius:999px}
@@ -215,7 +220,7 @@ body{
 .universe.files-mode .map-tools{display:none}
 .universe.files-mode .similar-bar{display:none}
 .universe.files-mode .file-browser{inset:110px 36px 30px}
-.tree-pane{border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.16);
+.tree-pane{border:1px solid var(--line);border-radius:10px;background:rgba(8,12,20,.34);
   display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .tree-head{display:flex;align-items:center;justify-content:space-between;height:30px;padding:0 10px;
   border-bottom:1px solid var(--line);font-size:12px;letter-spacing:.14em;color:var(--muted-2);flex:none}
@@ -239,7 +244,7 @@ body{
 .tree-node.fav-node.active{background:rgba(255,107,107,.10)}
 .tree-children{margin-left:9px}
 .file-main{display:grid;grid-template-rows:30px 1fr 36px;border:1px solid var(--line);
-  border-radius:10px;overflow:hidden;min-height:0;background:rgba(0,0,0,.16)}
+  border-radius:10px;overflow:hidden;min-height:0;background:rgba(8,12,20,.34)}
 .file-path{padding:0 12px;display:flex;align-items:center;gap:10px;font-size:12px;letter-spacing:.06em;
   color:var(--mint);border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden}
 .file-path span{overflow:hidden;text-overflow:ellipsis}
