@@ -104,8 +104,9 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 ## Actualización 21/11 — drag de partículas
 
-- **ALT + drag** convierte el sample en una **partícula del mismo tamaño que su punto en el Universe**, con glow y estela aditiva; sin orbe, anillo, nombre ni tether.
+- **ALT + drag** convierte el sample en una **partícula del mismo tamaño que su punto en el Universe**, con glow y estela aditiva; sin orbe, anillo ni tether.
 - La partícula sigue al cursor con lag elástico y deja una estela con los **mismos anchos de línea, puntos y cadencia que la estela del scrub**.
+- El **nombre** del sample aparece como caption sutil de 9 px debajo (o arriba si está cerca del borde), con alpha 0.48 y sube a 0.72 cuando se imanta a un slot.
 - Los slots tienen **magnetismo** (radio de captura) y glow; al soltar, la partícula vuela al slot, hace burst y el slot/fader tienen un impacto.
 - Si se suelta fuera de un slot, la partícula se disuelve y queda el toast de Finder (demo). Todo el FX está contenido en la app.
 

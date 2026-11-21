@@ -772,6 +772,8 @@ let dragRAF = null;
 let dragLast = 0;
 let dragRgb = '124,92,255';
 let dragDepth = .5;
+let dragLabelText = '';
+let dragLabelT0 = 0;
 
 const DRAG_TRAIL_MS = 480;
 const DRAG_FLY_MS = 190;
@@ -823,6 +825,8 @@ function setMagnetSlot(slot) {
 function startPlanetDrag(smp) {
   setPlanetColor(CAT[smp.category].color);
   dragDepth = smp.z ?? .5;
+  dragLabelText = smp.name.toUpperCase();
+  dragLabelT0 = performance.now();
   document.body.classList.add('dragging-planet');
   dragPos = { x: dragOrigin.x, y: dragOrigin.y };
   dragCursor = { ...dragPos };
@@ -837,6 +841,7 @@ function endPlanetDrag() {
   document.body.classList.remove('dragging-planet');
   setMagnetSlot(null);
   dragDrop = null;
+  dragLabelText = '';
 }
 
 function completePlanetDrop(drop = dragDrop) {
@@ -965,6 +970,25 @@ function drawDragFx(now) {
       ctx.fillStyle = '#fff';
       ctx.beginPath(); ctx.arc(dragPos.x - .6, dragPos.y - .6, .5 + dragDepth * .5 * sc, 0, 6.2832); ctx.fill();
     }
+    ctx.globalAlpha = 1;
+  }
+  if (state.drag && dragStarted && dragLabelText) {
+    const fade = clamp((now - dragLabelT0) / 170, 0, 1);
+    ctx.font = '600 9px -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Inter, sans-serif';
+    try { ctx.letterSpacing = '1.3px'; } catch (e) {}
+    let label = dragLabelText;
+    while (label.length > 1 && ctx.measureText(label).width > 190) label = label.slice(0, -1);
+    if (label !== dragLabelText) label = label.trimEnd() + '…';
+    const below = dragPos.y + 20 < dragFxH - 10;
+    const ly = below ? dragPos.y + 19 : dragPos.y - 19;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = below ? 'top' : 'bottom';
+    ctx.globalAlpha = (dragTargetSlot ? .72 : .48) * fade;
+    ctx.fillStyle = '#E9EEF7';
+    ctx.shadowColor = 'rgba(0,0,0,.95)';
+    ctx.shadowBlur = 6;
+    ctx.fillText(label, dragPos.x, ly);
+    ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
   ctx.restore();
