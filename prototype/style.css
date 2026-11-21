@@ -986,3 +986,52 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 .top-actions .btn.ghost:not(.active):hover{
   background:linear-gradient(180deg,rgba(180,232,222,.20),rgba(95,200,182,.06) 55%,rgba(95,200,182,.12)),rgba(14,30,32,.40);
   border-color:rgba(215,245,239,.30)}
+
+/* ---------- side glass brackets: TRIGGER left, SETTINGS right ---------- */
+.side-bracket{position:fixed;top:50%;width:32px;height:156px;z-index:60;display:flex;
+  align-items:center;justify-content:center;padding:0;appearance:none;overflow:hidden;
+  color:rgba(233,238,247,.68);cursor:pointer;
+  font-family:var(--sans);font-size:9.5px;font-weight:650;letter-spacing:.26em;text-transform:uppercase;
+  background:var(--glass-fill),rgba(14,30,32,.42);
+  border:1px solid var(--glass-line);
+  box-shadow:0 12px 30px rgba(0,0,0,.28),0 0 18px var(--glass-glow),
+    inset 1px 1px 0 -.5px var(--glass-hi),
+    inset -1px -1px 0 -.5px var(--glass-lo);
+  backdrop-filter:blur(12px) saturate(130%) brightness(1.05);
+  -webkit-backdrop-filter:blur(12px) saturate(130%) brightness(1.05);
+  transition:transform .18s cubic-bezier(.2,.8,.2,1),border-color .18s ease,
+    box-shadow .18s ease,background .18s ease,color .18s ease}
+.side-bracket.left{left:0;border-left:none;border-radius:0 14px 14px 0;
+  transform:translateY(-50%);transform-origin:left center}
+.side-bracket.right{right:0;border-right:none;border-radius:14px 0 0 14px;
+  transform:translateY(-50%);transform-origin:right center}
+.side-bracket span{writing-mode:vertical-rl;text-orientation:mixed;line-height:1;white-space:nowrap}
+.side-bracket::after{content:"";position:absolute;top:14px;bottom:14px;width:2px;border-radius:2px;
+  background:rgba(45,226,197,.32);transition:background .18s ease,box-shadow .18s ease}
+.side-bracket.left::after{right:5px}
+.side-bracket.right::after{left:5px}
+.side-bracket.left:hover{transform:translateY(-50%) scale(1.07)}
+.side-bracket.right:hover{transform:translateY(-50%) scale(1.07)}
+.side-bracket:hover{color:#fff;border-color:rgba(215,245,239,.30);
+  box-shadow:0 0 28px rgba(45,226,197,.18),0 14px 34px rgba(0,0,0,.32),
+    inset 1px 1px 0 -.5px rgba(215,245,239,.62),
+    inset -1px -1px 0 -.5px rgba(95,200,182,.36)}
+.side-bracket:hover::after{background:rgba(45,226,197,.78);box-shadow:0 0 12px rgba(45,226,197,.55)}
+.side-bracket.active{color:var(--mint);border-color:rgba(45,226,197,.46);
+  box-shadow:0 0 28px rgba(45,226,197,.20),0 12px 30px rgba(0,0,0,.30),
+    inset 1px 1px 0 -.5px rgba(215,245,239,.55),
+    inset -1px -1px 0 -.5px rgba(95,200,182,.32)}
+.side-bracket.active::after{background:var(--mint);box-shadow:0 0 14px var(--mint)}
+.side-bracket:focus-visible{outline:1px solid var(--mint);outline-offset:-3px}
+
+/* settings window opens beside the right bracket */
+.settings-menu{top:50%;right:46px;transform:translate(4px,-50%) scale(.97)}
+.settings-menu.show{transform:translate(0,-50%)}
+
+/* leave room for the side brackets on the TRIGGER page */
+.trigger-page{padding-left:42px;padding-right:42px}
+
+.side-bracket.left.active{transform:translateY(-50%) scale(1.04)}
+.side-bracket.right.active{transform:translateY(-50%) scale(1.04)}
+.side-bracket.left.active:hover{transform:translateY(-50%) scale(1.07)}
+.side-bracket.right.active:hover{transform:translateY(-50%) scale(1.07)}

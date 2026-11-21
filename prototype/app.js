@@ -1051,10 +1051,15 @@ function setTriggerOpen(open) {
   else closeTriggerPage();
 }
 
+function setSettingsOpen(open) {
+  $('#settingsMenu').classList.toggle('show', open);
+  $('#settingsBtn').classList.toggle('active', open);
+}
+
 function dismissWindows() {
   stopScrub();
   hideSimilarity();
-  $('#settingsMenu').classList.remove('show');
+  setSettingsOpen(false);
   if ($('#slotPopover')) closeSlotPopover();
 }
 
@@ -1415,7 +1420,7 @@ $('#autoPhaseAll').onclick = () => {
   renderSlots();
   syncAllSlotAudio();
   if ($('.inspector').classList.contains('show')) updateInspector();
-  $('#settingsMenu').classList.remove('show');
+  setSettingsOpen(false);
   const loaded = state.slots.filter(s => slotSample(s)).length;
   toast(`AUTO PHASE applied to ${loaded} layer${loaded === 1 ? '' : 's'} · ${state.autoTiming ? 'polarity + timing' : 'polarity only'} · ref INPUT`);
 };
@@ -1773,7 +1778,7 @@ function setView(mode) {
   if (isTrigger) {
     hideSimilarity();
     stopScrub();
-    $('#settingsMenu').classList.remove('show');
+    setSettingsOpen(false);
     selectSlot(state.selectedSlot);
     setInspectorTab('env');
     requestAnimationFrame(() => {
@@ -2335,7 +2340,7 @@ $('#flipAll').onclick = () => {
   });
   renderSlots();
   syncAllSlotAudio();
-  $('#settingsMenu').classList.remove('show');
+  setSettingsOpen(false);
   toast('Polarity flipped on all 8 slots (180°)');
 };
 
@@ -2366,21 +2371,21 @@ let masterOut = 0;
 
 $('#settingsBtn').onclick = () => {
   hideSimilarity();
-  $('#settingsMenu').classList.toggle('show');
+  setSettingsOpen(!$('#settingsMenu').classList.contains('show'));
 };
 $('#menuFolders').onclick = () => {
-  $('#settingsMenu').classList.remove('show');
+  setSettingsOpen(false);
   toast('Library folders: add/remove roots (demo)');
 };
 $('#menuAudio').onclick = () => {
-  $('#settingsMenu').classList.remove('show');
+  setSettingsOpen(false);
   toast('Audio / MIDI settings (demo)');
 };
 document.addEventListener('mousedown', e => {
   const menu = $('#settingsMenu');
   if (!menu.classList.contains('show')) return;
   if (menu.contains(e.target) || e.target.closest('#settingsBtn')) return;
-  menu.classList.remove('show');
+  setSettingsOpen(false);
 });
 
 // ---------- toast ----------

@@ -5,7 +5,7 @@ Fecha: 20/11/2026. Prototipo navegable en `prototype/` (`index.html`, `style.css
 ## Layout elegido (Opción A)
 
 - **Universe / File Search / TRIGGER full-bleed**: tres páginas que ocupan toda el área principal.
-- **Página TRIGGER**: INPUT DETECTOR grande + los 4 paneles del editor a la vez + banco de 8 faders largos, sin fila de título/INPUT/HITS/MASTER. Se abre desde el botón TRIGGER (arriba, junto a Settings).
+- **Página TRIGGER**: INPUT DETECTOR grande + los 4 paneles del editor a la vez + banco de 8 faders largos, sin fila de título/INPUT/HITS/MASTER. Se abre desde el corchete vertical TRIGGER (izquierda).
 - **Dock fijo de 8 slots cuadrados** abajo, centrado y visible en todas las vistas: recuadros de glass vacíos donde se arrastran los samples.
 - **Search flotante** arriba del Universe, centrado, estilo XO.
 - **Similarity bar** flotante arriba del dock, estilo XO.
@@ -61,9 +61,9 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 ## Actualización 20/11 — audio real y ajustes finales
 
-- **La app es el Universe**: logo y título centrados, search con toggle folder/universo, Settings y OUTPUT + VU vertical a la derecha. No hay topbar separado.
+- **La app es el Universe**: logo y título centrados, search con toggle folder/universo, OUTPUT + VU vertical a la derecha y corchetes verticales TRIGGER/SETTINGS en los bordes. No hay topbar separado.
 - **Search centrado** arriba, sin contorno de panel; **Similarity** flotante abajo.
-- **TRIGGER** está arriba junto a Settings, mismo tamaño. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/ADSR + banco de faders; se vuelve con el mismo botón o **Esc**.
+- **TRIGGER** es un corchete vertical glass a la izquierda; **SETTINGS** es su simétrico a la derecha. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/ADSR + banco de faders; se vuelve con el mismo botón o **Esc**.
 - **Editor de sample**: en la página TRIGGER se ven los 4 paneles a la vez (**SAMPLE / ENVELOPE / TONE / SLOT**); la barra de tabs quedó oculta. El panel SLOT conserva **AUTO PHASE** (REF, re-analizar, TIMING, resultado, OFFSET, SHIFT).
 - **Fase**: 0/90/180/260; **180 = Ø**. Los badges se mantienen en el editor.
 - **Slots**: solo números 01–08, sin faders.
@@ -102,6 +102,13 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - **♥** en la barra de similitud y en cada fila de FILE SEARCH agrega/quita favoritos.
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
+
+## Actualización 21/11 — corchetes laterales
+
+- **TRIGGER** pasó a un **corchete vertical glass a la izquierda**, pegado al borde y centrado verticalmente.
+- **SETTINGS** es el corchete simétrico a la derecha; el menú se abre a su izquierda y el corchete queda activo.
+- Los corchetes comparten la textura glass y la dinámica de los Trigger Slots: se **magnifican al hover** desde el borde, brillan más y dejan un acento mint en el borde interno.
+- El header quedó solo con logo, search y OUTPUT.
 
 ## Actualización 21/11 — textura glass unificada
 
@@ -143,14 +150,14 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 ## Actualización 21/11 — layout Slate Trigger
 
-- **TRIGGER** se movió arriba, junto a Settings y con el mismo tamaño; el botón activo se resalta.
+- En esa pasada **TRIGGER** se movió arriba junto a Settings; más tarde pasó a corchete lateral izquierdo.
 - Los slots son **cuadrados**, están centrados y tienen más separación entre sí.
 - La página TRIGGER recupera el **banco de 8 faders** verticales con meter, M/S/Ø, nivel y fase, alineado exactamente sobre los slots.
 - El banco está dentro de la página (no en el dock): solo aparece al abrir TRIGGER, con los slots cuadrados debajo.
 
 ## Actualización 21/11 — primera pasada: TRIGGER page + dock
 
-- TRIGGER, INPUT DETECTOR y el editor/ADSR se unificaron en una **tercera página full-screen**, abierta desde el botón TRIGGER del dock.
+- TRIGGER, INPUT DETECTOR y el editor/ADSR se unificaron en una **tercera página full-screen**, abierta desde el corchete TRIGGER izquierdo.
 - En esta primera pasada, el drawer inferior desapareció y quedaron **8 slots de glass** en un dock fijo abajo. La segunda pasada (layout Slate Trigger) recuperó los faders arriba de los slots dentro de la página TRIGGER.
 - **ALT + drag** desde el Universe o FILE SEARCH asigna el sample a un slot; el × lo vacía.
 - Click en un slot abre la página TRIGGER con ese slot cargado; el editor abre en **ENVELOPE (ADSR)**.

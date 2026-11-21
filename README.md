@@ -19,12 +19,12 @@ cd prototype
 python3 -m http.server 8765 --bind 127.0.0.1
 ```
 
-Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá **TRIGGER** (arriba, junto a Settings), click en **▶ INPUT** para reproducir el snare real y disparar los slots cargados; o hacé click en un sample del Universo o de **FILE SEARCH** para escucharlo al instante. El audio arranca con el primer click (política de autoplay del browser).
+Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (izquierda), click en **▶ INPUT** para reproducir el snare real y disparar los slots cargados; o hacé click en un sample del Universo o de **FILE SEARCH** para escucharlo al instante. El audio arranca con el primer click (política de autoplay del browser).
 
 Controles principales:
 
 - Click en un **Trigger Slot 01–08** del dock para abrir la página **TRIGGER** con ese slot en el editor.
-- **TRIGGER** (arriba, junto a Settings) abre una página completa con **INPUT DETECTOR grande + los 4 paneles del editor visibles a la vez + banco de 8 faders largos**. No hay fila de título/INPUT/HITS/MASTER: el contenido arranca arriba y el botón TRIGGER activo indica la página.
+- El corchete **TRIGGER** (izquierda) abre una página completa con **INPUT DETECTOR grande + los 4 paneles del editor visibles a la vez + banco de 8 faders largos**. No hay fila de título/INPUT/HITS/MASTER: el contenido arranca arriba y el botón TRIGGER activo indica la página.
 - Los 8 **Trigger Slots** arrancan **vacíos**, son cuadrados y quedan centrados abajo. Arrastrá samples desde el Universe o FILE SEARCH para llenarlos; el **×** de cada slot lo vacía. En la página TRIGGER, arriba de cada slot aparece su fader largo con meter, M/S/Ø y nivel.
 - Mantené el click y movete por el Universe: se escucha un preview inmediato de cada sample (snap dentro de un aura de ~20 px) y queda una **estela de colores** entre los puntos visitados. Al soltar, la estela se desvanece.
 - Click en un sample: lo selecciona y permite hacer hover por el mapa. **ALT + arrastrar** desde el Universe o FILE SEARCH a uno de los **8 Trigger Slots** del dock para asignarlo. Mientras arrastrás, el sample se convierte en una **partícula del mismo tamaño que su punto en el Universe**, con glow y una estela; sin orbe ni anillo, con el nombre como caption sutil. Al empezar el drag, los 8 Trigger Slots se encienden con un glow mint más brillante y se **magnifican tipo Dock de macOS**; al acercarte a uno se imanta, y al soltar vuela hacia el slot y explota en un burst. Si se suelta fuera, se muestra el toast de export a Finder (demo).
@@ -34,7 +34,7 @@ Controles principales:
 - Click en una fila de FILE SEARCH: selecciona el sample y **reproduce su audio al instante**; ya no hay botón Audition en el pie.
 - **SIMILARITY** (abajo): al seleccionar un sample se arma una lista de 33 parecidos. Las flechas `◂ ▸` o las teclas `← →` recorren esa lista; el Universe hace un paneo suave solo si el sample queda cerca del borde y dibuja una línea animada entre ambos.
 - **♥** en la barra de similitud o en cada fila de FILE SEARCH: agrega/quita favoritos persistentes. **FAVORITES** aparece arriba del árbol de carpetas.
-- **Settings** contiene AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS y AUDIO/MIDI.
+- El corchete **SETTINGS** (derecha) abre el menú con AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS y AUDIO/MIDI.
 - La textura **glass** es la misma familia en el search, los Trigger Slots, la página TRIGGER, Settings y el bloque OUTPUT.
 
 ## Documentación

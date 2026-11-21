@@ -46,7 +46,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8765/
 
 ### 3.2 Probar el audio en 10 segundos
 
-1. Click en **TRIGGER** (arriba, junto a Settings).
+1. Click en el corchete **TRIGGER** (izquierda).
 2. Click en **▶ INPUT** dentro de INPUT DETECTOR.
 3. Se escucha `SNARE.cm.wav` y se disparan los slots cargados.
 4. El meter MASTER de la página y el mini VU de OUTPUT se mueven.
@@ -88,7 +88,7 @@ window.__setTriggerOpen(true)
 | 9 | Editor | Vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre al clickear un slot |
 | 10 | Paneles del editor | **SAMPLE / ENVELOPE / TONE / SLOT**, los 4 visibles a la vez en la página TRIGGER |
 | 11 | Tab SLOT | Solo **Auto Phase** y sus controles. Sin Level/Pan/Tune/Mute/Solo/Pol |
-| 12 | TRIGGER | Tercera página full-screen, se abre con el botón TRIGGER junto a Settings. Contiene INPUT DETECTOR + editor/ADSR + banco de 8 faders. Se vuelve con el mismo botón o Esc |
+| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR + editor/ADSR + banco de 8 faders. Se vuelve con el mismo corchete o Esc |
 | 13 | Universe | Full-bleed, nube de puntos 3D abstracta, sin ejes de frecuencia/ms. Search arriba, similitud abajo |
 | 14 | FILE SEARCH | Árbol tipo Finder con root en la carpeta elegida por el usuario. Subcarpetas reales. Samples reales primero |
 | 15 | OUTPUT | Knob arriba a la derecha. Settings funcional. AUTO PHASE ALL vive en Settings |
@@ -203,10 +203,10 @@ Estética: glassmorphism unificado (search, Trigger Slots, TRIGGER, Settings y O
 ### 7.1 Layout
 
 - **La app es el Universe**: el canvas ocupa el 100% de la ventana, sin padding, borde, radio, fondo de panel ni sombra. El fondo aurora del `body` se ve a través del canvas y los puntos tienen un overscan de 36 px, así que sangran fuera del viewport. No se percibe el final del mapa.
-- **La UI flota** sobre ese mapa. Arriba: logo y título **TRIGGER UNIVERSE** centrados; search centrado con toggle folder/universo; Settings y **OUTPUT + mini VU vertical** al extremo derecho. Abajo: similarity, TRIGGER y zoom.
+- **La UI flota** sobre ese mapa. Arriba: logo y título **TRIGGER UNIVERSE** centrados; search centrado con toggle folder/universo; **OUTPUT + mini VU vertical** al extremo derecho. En los bordes: **corchete TRIGGER a la izquierda** y **corchete SETTINGS a la derecha**. Abajo: similarity, Trigger Slots y zoom.
 - **Search** centrado arriba, sin contorno de panel.
 - **Similarity bar** flotante abajo, estilo XO.
-- **TRIGGER** es una tercera página full-screen (como Universe o FILE SEARCH). Se abre desde el botón junto a Settings y contiene el detector grande + los 4 paneles del editor a la vez + el banco de faders largos. No tiene fila de título/INPUT/HITS/MASTER.
+- **TRIGGER** es una tercera página full-screen (como Universe o FILE SEARCH). Se abre desde el corchete TRIGGER izquierdo y contiene el detector grande + los 4 paneles del editor a la vez + el banco de faders largos. No tiene fila de título/INPUT/HITS/MASTER.
 - **Editor de sample** integrado en la página TRIGGER; ya no es una ventana flotante.
 - **Dock de 8 slots cuadrados** siempre visible y centrado abajo, sobre cualquier vista; se llena con ALT + drag desde el browser. En la página TRIGGER, cada slot tiene su fader arriba con meter, M/S/Ø y nivel.
 
@@ -220,7 +220,7 @@ Estética: glassmorphism unificado (search, Trigger Slots, TRIGGER, Settings y O
 - **Click derecho + arrastrar o Ctrl + click izquierdo + arrastrar:** pan con cursor de mano. Sin auto-pan en bordes.
 - **Click izquierdo en vacío:** solo cierra paneles; no mueve la cámara. El pan queda en click derecho o Ctrl+click.
 - Botones `−`, `+`, `⤢` para zoom/reset.
-- Click en el Universo cierra Settings y la barra de similitud; la página TRIGGER se maneja con el botón TRIGGER o Esc.
+- Click en el Universo cierra Settings y la barra de similitud; la página TRIGGER se maneja con el corchete TRIGGER o Esc.
 - **Scrub:** mantener el click y moverse por el mapa reproduce un preview corto de cada sample y dibuja una estela multicolor entre los puntos visitados; al soltar, la estela se desvanece en ~2,4 s.
 - **SIMILARITY**: al seleccionar un sample se calculan 33 vecinos por categoría, duración (log), brightness (log) y druminess, con una separación visual mínima para no caer en casi-duplicados. Las flechas `◂ ▸` (o `← →`) recorren la lista; el mapa hace un **seguimiento suave** (solo si el sample queda cerca del borde, dejando libre el dock) y traza una **línea animada** desde el anterior. La barra tiene fade en ambos bordes y se auto-oculta a los 3,5 s sin navegar; se oculta al panear, hacer zoom, abrir TRIGGER/editor, buscar o cambiar de vista.
 
@@ -269,8 +269,8 @@ Paneles (visibles a la vez en la página TRIGGER):
 
 ### 7.5 TRIGGER (página)
 
-- Tercera página full-screen, como Universe o FILE SEARCH. Se abre con el botón **TRIGGER** junto a Settings; se vuelve con el mismo botón (recuerda la vista anterior).
-- Sin fila de header: se quitaron título, INPUT, HITS y MASTER. El contenido arranca arriba; el botón TRIGGER activo identifica la página.
+- Tercera página full-screen, como Universe o FILE SEARCH. Se abre con el **corchete TRIGGER** izquierdo; se vuelve con el mismo corchete (recuerda la vista anterior).
+- Sin fila de header: se quitaron título, INPUT, HITS y MASTER. El contenido arranca arriba; el corchete TRIGGER activo identifica la página.
 - **INPUT DETECTOR** a la izquierda, más grande: waveform del INPUT real (≈205 px de alto en 717 px de ventana), 8 knobs compactos en una sola fila (Sens, Retrig, Detail, Low, High, Supp, Input, Output), GATE, **▶ INPUT**, MIX.
 - **Editor de sample** a la derecha con los **4 paneles visibles al mismo tiempo**: SAMPLE y ENVELOPE/ADSR arriba; TONE y SLOT abajo. El ADSR tiene ≈158 px de alto.
 - **Banco de 8 faders** arriba del dock, alineado columna a columna con los slots:
@@ -285,7 +285,7 @@ Paneles (visibles a la vez en la página TRIGGER):
 ### 7.6 Settings / OUTPUT
 
 - **OUTPUT knob** al extremo derecho: arrastrar verticalmente, −24…+6 dB, aplica al master gain real. Al lado tiene un **mini VU vertical** de salida, alimentado por el analizador master.
-- **Settings**: AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS…, AUDIO / MIDI…
+- **Settings**: se abre desde el corchete vertical derecho; el menú aparece a su izquierda y el corchete se resalta mientras está abierto. Contiene AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS…, AUDIO / MIDI…
   - AUTO PHASE ALL re-analiza las 8 capas.
   - FLIP ALL invierte polaridad en los 8 slots.
   - Los otros dos son toasts demo.
@@ -593,7 +593,8 @@ AAX **no** se necesita.
 18. **Drag de partículas**: ALT + drag ya no usa un pill de texto; el sample se convierte en una partícula del mismo tamaño que su dot del Universe, con glow y una estela con los mismos anchos/puntos que la del scrub, sin orbe, anillo ni tether; el nombre aparece como caption sutil. Los slots tienen magnetismo con radio de captura y el drop hace fly-in + burst + impact en el slot y en el fader. Todo el FX vive dentro de la app (canvas fijo), nunca sobre el Finder. Ver 7.2.
 19. **Barra de nombre XO**: se eliminó el tooltip flotante del Universe. El nombre del sample hovereado (o de la fila de FILE SEARCH) aparece centrado en una barra fina **debajo de los slots**; al salir vuelve al seleccionado. En la página TRIGGER muestra el slot seleccionado o `TRIGGER SLOT 0X · EMPTY`.
 20. **Trigger Slots + invitación al drag**: los 8 cuadrados pasan a llamarse **Trigger Slots**. Al comenzar un arrastre, todos se encienden con un glow mint más brillante y se magnifican con caída por proximidad, estilo Dock de macOS; no hay contorno general. El slot magnetizado mantiene su glow más fuerte.
-21. **Glass unificado**: search, Trigger Slots, fader strips, página TRIGGER, Settings y OUTPUT comparten la misma textura: gradiente mint, borde claro, insets de luz, glow suave y blur donde conviene. Ver 7.2.
+21. **Glass unificado**: search, Trigger Slots, fader strips, página TRIGGER, Settings y OUTPUT comparten la misma textura: gradiente mint, borde claro, insets de luz, glow suave y blur donde conviene.
+22. **Corchetes laterales**: TRIGGER pasó a un corchete vertical glass a la izquierda y SETTINGS a uno simétrico a la derecha. Se magnifican y brillan al hover, se resaltan al estar activos y el menú de Settings se ancla al corchete derecho. Ver 7.2.
 
 ---
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=79">
+<link rel="stylesheet" href="style.css?v=81">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -30,8 +30,6 @@
             <div class="brand-text"><b>TRIGGER</b><span>UNIVERSE</span></div>
           </div>
           <div class="top-actions">
-            <button class="btn ghost" id="triggerTab" title="Open TRIGGER page">TRIGGER</button>
-            <button class="btn ghost" id="settingsBtn">Settings</button>
             <div class="top-master">
               <div class="top-knob" id="masterOutKnob" title="Master output"><div class="knob-ind"></div></div>
               <span>OUTPUT<b id="masterOutVal">+0.0 dB</b></span>
@@ -236,6 +234,9 @@
 
 </div>
 
+<button class="side-bracket left" id="triggerTab" title="Open TRIGGER page"><span>TRIGGER</span></button>
+<button class="side-bracket right" id="settingsBtn" title="Settings"><span>SETTINGS</span></button>
+
 <div class="settings-menu" id="settingsMenu">
   <div class="sm-head">SETTINGS</div>
   <button class="sm-item primary" id="autoPhaseAll">AUTO PHASE ALL</button>
@@ -247,6 +248,6 @@
 <div class="toast" id="toast"></div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=79"></script>
+<script src="app.js?v=81"></script>
 </body>
 </html>

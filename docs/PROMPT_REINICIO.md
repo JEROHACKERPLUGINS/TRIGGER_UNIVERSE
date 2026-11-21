@@ -48,7 +48,7 @@ cd /Users/dante/Desktop/TRIGGER_UNIVERSE/prototype
 python3 -m http.server 8765 --bind 127.0.0.1
 ```
 
-Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá **TRIGGER** (arriba, junto a Settings) y clickeá **▶ INPUT** en INPUT DETECTOR. Los slots arrancan vacíos: volvé al browser y hacé **ALT + drag** de samples a los 8 slots.
+Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (izquierda) y clickeá **▶ INPUT** en INPUT DETECTOR. Los slots arrancan vacíos: volvé al browser y hacé **ALT + drag** de samples a los 8 slots.
 
 ---
 
@@ -68,7 +68,7 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá **TRIGGER** (arriba, junt
 - **TRIGGER:** pestaña chica abajo; abre al arrastrar un sample o al clickearla; queda abierto; cierra al clickear el Universe, al seleccionar un sample o desde la cabecera.
 - **Universe:** full-bleed, nube de puntos 3D abstracta, sin ejes. Search arriba, similitud abajo.
 - **FILE SEARCH:** árbol tipo Finder con root en la carpeta elegida por el usuario; subcarpetas reales; samples reales primero.
-- **OUTPUT** arriba a la derecha. Settings funcional. **AUTO PHASE ALL** vive en Settings.
+- **OUTPUT** arriba a la derecha, cápsula glass. **TRIGGER** es un corchete vertical glass a la izquierda y **SETTINGS** otro a la derecha. **AUTO PHASE ALL** vive en Settings.
 - **Fuera de alcance:** step sequencer, patrones, groove, swing, BPM sync, preset browser.
 - **XO:** solo referencia funcional/UX. **No copiar código, assets ni diseño propietario.**
 
