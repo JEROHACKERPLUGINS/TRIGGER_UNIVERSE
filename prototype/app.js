@@ -820,6 +820,18 @@ function setMagnetSlot(slot) {
   $$('.slot[data-slot]').forEach(x => x.classList.toggle('drop-target', x === slot));
 }
 
+function updateSlotMagnification() {
+  if (!state.drag || !dragStarted) return;
+  $$('.slot[data-slot]').forEach(el => {
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const dx = dragCursor.x - cx;
+    const prox = Math.exp(-(dx * dx) / (2 * 92 * 92));
+    const scale = 1.05 + .07 * prox;
+    el.style.transform = `scale(${scale.toFixed(3)})`;
+  });
+}
+
 function startPlanetDrag(smp) {
   setPlanetColor(CAT[smp.category].color);
   dragDepth = smp.z ?? .5;
@@ -839,6 +851,7 @@ function startPlanetDrag(smp) {
 function endPlanetDrag() {
   document.body.classList.remove('dragging-planet');
   $('#slotDock').classList.remove('invite');
+  $$('.slot[data-slot]').forEach(el => { el.style.transform = ''; });
   setMagnetSlot(null);
   dragDrop = null;
   dragLabelText = '';
@@ -869,6 +882,7 @@ function completePlanetDrop(drop = dragDrop) {
 }
 
 function updateDragFx(now, dt) {
+  updateSlotMagnification();
   if (state.drag && dragStarted) {
     const k = Math.min(1, .46 * dt);
     dragPos.x += (dragCursor.x - dragPos.x) * k;

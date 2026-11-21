@@ -36,7 +36,7 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 ## Trigger Slots y faders
 
 - Ocho **Trigger Slots** de glass **01 … 08**, cuadrados, en un dock fijo abajo, centrados y con separación.
-- Al comenzar un drag, los 8 se encienden con un glow mint suave y un contorno pulsante alrededor de la zona; el slot magnetizado mantiene un glow más fuerte.
+- Al comenzar un drag, los 8 se encienden con un glow mint más brillante y se magnifican con caída por proximidad, estilo Dock de macOS; sin contorno general. El slot magnetizado mantiene un glow más fuerte.
 - Arrancan **vacíos**: muestran `+` / `DROP`.
 - Al llenarse muestran dot de categoría, nombre y duración; el × los vacía.
 - En la página TRIGGER, arriba de cada slot hay un **fader vertical largo** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna. Los 4 paneles del editor (SAMPLE, ENVELOPE/ADSR, TONE, SLOT) se ven al mismo tiempo.
@@ -106,8 +106,8 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 ## Actualización 21/11 — Trigger Slots invitan al drag
 
 - Los 8 cuadrados pasan a llamarse **Trigger Slots**.
-- Al empezar un drag, **todos** se encienden con un glow mint suave: borde, sombra y tinte.
-- Un **contorno pulsante** rodea toda la zona de Trigger Slots para invitar a soltar.
+- Al empezar un drag, **todos** se encienden con un glow mint más brillante: borde, sombra y tinte.
+- Se **magnifican tipo Dock de macOS**: base 1.05× y hasta 1.12× para el más cercano al cursor, con origen abajo. No hay contorno general.
 - El slot magnetizado mantiene su glow más fuerte; los demás quedan en modo invitación.
 
 ## Actualización 21/11 — barra de nombre XO
