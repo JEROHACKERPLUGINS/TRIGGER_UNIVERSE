@@ -215,7 +215,7 @@ Estética: glassmorphism, fondo aurora, puntos saturados con halo aditivo y bril
 - 1000 samples sintéticos + 1 real (`SNARE.cm`, id 9001).
 - Posición: X = duración en log, Y = brightness en log. La nube tiene sensación 3D, sin ejes visibles.
 - Hover: tooltip con nombre, categoría, path, duración, brightness, druminess.
-- Click en un punto: lo selecciona y habilita hover por el mapa (sin arrastrar). **ALT + drag** convierte el sample en un **planeta arrastrable** (orbe con halo, anillo, cola de partículas y tether al origen) que sigue al cursor y se imanta a los 8 slots del dock; al soltar vuela al slot y hace burst/impact. Si se suelta fuera de un slot, toast de Finder (demo). El click/hover hace snap al sample más cercano dentro de un aura de 20 px.
+- Click en un punto: lo selecciona y habilita hover por el mapa (sin arrastrar). **ALT + drag** convierte el sample en una **partícula arrastrable** del mismo tamaño que su punto en el Universe, con glow y estela, que sigue al cursor y se imanta a los 8 slots del dock; al soltar vuela al slot y hace burst/impact. Si se suelta fuera de un slot, toast de Finder (demo). El click/hover hace snap al sample más cercano dentro de un aura de 20 px.
 - **Rueda:** zoom anclado al cursor (0.7×–6×).
 - **Click derecho + arrastrar o Ctrl + click izquierdo + arrastrar:** pan con cursor de mano. Sin auto-pan en bordes.
 - **Click izquierdo en vacío:** solo cierra paneles; no mueve la cámara. El pan queda en click derecho o Ctrl+click.
@@ -590,7 +590,7 @@ AAX **no** se necesita.
 15. **TRIGGER como página + dock de slots**: TRIGGER, INPUT DETECTOR y el editor/ADSR pasaron a una tercera vista full-screen. El drawer y los faders se reemplazaron por un dock fijo de 8 slots de glass vacíos, siempre visible para arrastrar samples desde Universe/FILE SEARCH. Ver 7.1, 7.4 y 7.5.
 16. **Layout Slate-style**: TRIGGER pasó arriba junto a Settings, con el mismo tamaño. Los slots ahora son cuadrados, centrados y con más separación. En la página TRIGGER se recuperó el banco de 8 faders verticales con meter, M/S/Ø y nivel, alineado sobre los slots. Ver 7.1 y 7.5.
 17. **TRIGGER expandido**: se quitó la fila de título/INPUT/HITS/MASTER para subir todo; el detector pasó a 400 px de ancho con waveform de ≈205 px y knobs en una fila; el ADSR creció a ≈158 px; los 4 paneles del editor se muestran juntos (SAMPLE/ENVELOPE arriba, TONE/SLOT abajo) y los faders se alargaron a ≈116 px. Ver 7.5.
-18. **Drag de planetas**: ALT + drag ya no usa un pill de texto; el sample se convierte en un planeta con halo, anillo orbitando, cola aditiva y tether al punto de origen. Los slots tienen magnetismo con radio de captura, el nombre pasa a caption sutil y el drop hace fly-in + burst + impact en el slot y en el fader. Todo el FX vive dentro de la app (canvas/DOM fijo), nunca sobre el Finder. Ver 7.2.
+18. **Drag de partículas**: ALT + drag ya no usa un pill de texto; el sample se convierte en una partícula del mismo tamaño que su dot del Universe, con glow y una estela con los mismos anchos/puntos que la del scrub, sin orbe, anillo, nombre ni tether. Los slots tienen magnetismo con radio de captura y el drop hace fly-in + burst + impact en el slot y en el fader. Todo el FX vive dentro de la app (canvas fijo), nunca sobre el Finder. Ver 7.2.
 
 ---
 
