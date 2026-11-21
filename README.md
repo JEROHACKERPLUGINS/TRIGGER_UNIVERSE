@@ -25,6 +25,7 @@ Controles principales:
 
 - Click en un **Trigger Slot 01–08** con sample: lo **audiciona** al instante con su nivel, pan y tone. **Doble click** abre la página **TRIGGER** con ese slot en el editor; en un slot vacío, el click abre TRIGGER para cargarlo.
 - **Esc** vuelve siempre a **HOME** (la vista principal del mapa), desde TRIGGER, FILE SEARCH, Settings o cualquier popover.
+- La página **TRIGGER** se estira de forma proporcional al cambiar el tamaño de la ventana: detector/editor mantienen un split 40/60 y el dock, los faders y sus gaps escalan juntos.
 - El corchete **TRIGGER** (izquierda) abre una página completa con **INPUT DETECTOR grande + los 4 paneles del editor visibles a la vez + banco de 8 faders largos**. No hay fila de título/INPUT/HITS/MASTER: el contenido arranca arriba y el botón TRIGGER activo indica la página.
 - Los 8 **Trigger Slots** arrancan **vacíos**, son cuadrados y quedan centrados abajo. Arrastrá samples desde HOME o FILE SEARCH para llenarlos; el **×** de cada slot lo vacía. En la página TRIGGER, arriba de cada slot aparece su fader largo con meter, M/S/Ø y nivel.
 - Mantené el click y movete por HOME: se escucha un preview inmediato de cada sample (snap dentro de un aura de ~20 px) y queda una **estela de colores** entre los puntos visitados. Al soltar, la estela se desvanece.

@@ -103,6 +103,14 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
 
+## Actualización 21/11 — TRIGGER se estira uniformemente
+
+- El detector y el editor mantienen un split **40/60** (`2fr/3fr`) en cualquier resolución, en vez de dejar el detector fijo mientras el editor absorbe todo el ancho.
+- El tamaño de los Trigger Slots y de los faders sigue una medida fluida: `clamp(52px, min(8vw, 12vh), 132px)`, con gaps `min(1.4vw, 2vh)`. El banco crece o se achica junto con la ventana y nunca se come la altura útil en ventanas anchas y bajas.
+- La altura de los faders es proporcional al slot (`≈2.05×`), así el banco también estira en vertical.
+- La fila inferior del editor (TONE / SLOT) recibe más altura para que el panel SLOT siga entrando completo.
+- Verificado sin overflow en 900×1200, 1280×720, 1366×768, 1400×900, 1600×700 y 1920×1080.
+
 ## Actualización 21/11 — TRIGGER con la transparencia de FILE SEARCH
 
 - La página **TRIGGER** copia la estética de **FILE SEARCH**: paneles con fondo plano `rgba(8,12,20,.34)`, borde `--line` de 1 px, radio 10 px y sin blur ni insets de glass.

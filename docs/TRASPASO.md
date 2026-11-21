@@ -597,6 +597,7 @@ AAX **no** se necesita.
 22. **Corchetes laterales**: TRIGGER pasó a un corchete vertical glass a la izquierda y SETTINGS a uno simétrico a la derecha. Se magnifican y brillan al hover, se resaltan al estar activos y el menú de Settings se ancla al corchete derecho. Ver 7.2.
 23. **HOME + Esc + audition de slots**: la vista principal pasa a llamarse **HOME**. **Esc** vuelve a HOME desde TRIGGER, FILE SEARCH, Settings o cualquier popover. Click en un Trigger Slot lleno **audiciona su sample** con nivel/pan/tone y un flash mint; doble click abre el slot en TRIGGER; click en un slot vacío abre TRIGGER para cargarlo.
 24. **TRIGGER con la transparencia de FILE SEARCH**: el detector, el editor y el banco de faders de la página TRIGGER usan el mismo fondo plano `rgba(8,12,20,.34)`, borde `--line` y radio de 10 px que `.tree-pane` / `.file-main`, sin blur ni brillos internos. La tipografía sube a 10–12 px con los valores en mono, y el fader seleccionado usa el mismo tinte violeta que la fila seleccionada de FILE SEARCH.
+25. **TRIGGER proporcional**: el split detector/editor pasó a `2fr/3fr` (40/60) en todos los tamaños; el gap y el banco de faders usan medidas fluidas (`min(8vw,12vh)`), la altura de los faders escala con el slot y la fila inferior del editor recibe algo más de altura para que el panel SLOT no desborde en ventanas anchas y bajas. Probado en 900×1200, 1280×720, 1366×768, 1400×900, 1600×700 y 1920×1080 sin overflow.
 
 ---
 
