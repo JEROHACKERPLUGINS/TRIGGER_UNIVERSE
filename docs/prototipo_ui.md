@@ -102,6 +102,14 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
 
+## Actualización 21/11 — drag de planetas
+
+- **ALT + drag** convierte el sample en un planeta: orbe con halo pulsante, anillo orbitando y cola de partículas aditiva.
+- El nombre queda como caption sutil debajo del planeta; al entrar en un slot cambia a `NOMBRE → SLOT 03` en mint.
+- Un **tether** punteado conecta el punto de origen con el planeta; el planeta sigue al cursor con lag elástico.
+- Los slots tienen **magnetismo** (radio de captura) y glow; al soltar, el planeta vuela al slot, hace burst y el slot/fader tienen un impacto.
+- Si se suelta fuera de un slot, el planeta se disuelve y queda el toast de Finder (demo). Todo el FX está contenido en la app.
+
 ## Actualización 21/11 — TRIGGER expandido
 
 - Se eliminó la fila de título/INPUT/HITS/MASTER; el contenido sube hasta el borde superior y el botón TRIGGER activo identifica la página.

@@ -78,7 +78,7 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá **TRIGGER** (arriba, junt
 
 - Universe full-bleed con 1000 samples sintéticos + `SNARE.cm.wav` real.
 - Zoom con rueda anclado al cursor; pan con click derecho o Ctrl+click; click izquierdo en vacío solo cierra paneles; hover/snap dentro de un aura de 20 px con tooltip.
-- FILE SEARCH con árbol, búsqueda, preview, audition al click en cada fila y ALT + drag a los 8 slots del dock. El dock queda siempre visible.
+- FILE SEARCH con árbol, búsqueda, preview, audition al click en cada fila y ALT + drag a los 8 slots del dock. El dock queda siempre visible. El drag convierte el sample en un planeta con halo/anillo/cola, magnetismo a slots y burst al soltar.
 - Editor integrado en la página TRIGGER con los 4 paneles SAMPLE / ENVELOPE / TONE / SLOT visibles a la vez.
 - Waveform real, start/end, fades, reverse, ADSR, tone/cut, tune, pan, loop.
 - TRIGGER como página full-screen sin header de stats, con INPUT DETECTOR grande, los 4 paneles del editor visibles a la vez y banco de 8 faders largos; dock de 8 slots cuadrados vacíos para arrastrar samples.

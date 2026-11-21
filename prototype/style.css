@@ -876,3 +876,52 @@ body{
 
 /* keep the universe as a dimmed backdrop behind the full TRIGGER page */
 .universe.trigger-mode #universeView{filter:blur(9px) saturate(120%);opacity:.38;transform:scale(1.03);pointer-events:none}
+
+/* ---------- planet drag experience ---------- */
+.drag-fx{position:fixed;inset:0;width:100vw;height:100vh;z-index:88;pointer-events:none}
+.drag-planet{position:fixed;left:0;top:0;width:64px;height:64px;z-index:90;pointer-events:none;
+  opacity:0;transform:translate3d(-200px,-200px,0) translate(-50%,-50%) scale(.4);
+  will-change:transform,opacity;transition:opacity .14s ease;--pc:#7C5CFF;--pc-rgb:124,92,255}
+.drag-planet.show{opacity:1}
+.dp-halo{position:absolute;inset:-28px;border-radius:50%;
+  background:radial-gradient(circle,rgba(var(--pc-rgb),.52),rgba(var(--pc-rgb),.16) 46%,rgba(var(--pc-rgb),0) 70%);
+  filter:blur(2px);animation:planetPulse 1.5s ease-in-out infinite}
+.dp-core{position:absolute;inset:11px;border-radius:50%;
+  background:radial-gradient(circle at 33% 27%,#FFFFFF 0 3%,var(--pc) 21%,#101722 63%,#05070B 100%);
+  box-shadow:0 0 18px rgba(var(--pc-rgb),.8),0 0 46px rgba(var(--pc-rgb),.34),
+    inset -7px -9px 15px rgba(0,0,0,.58),inset 3px 4px 9px rgba(255,255,255,.28);
+  animation:planetBob 2.2s ease-in-out infinite}
+.dp-ring{position:absolute;inset:-5px;border:1px solid rgba(var(--pc-rgb),.5);border-radius:50%;
+  transform:rotate(-24deg) scaleY(.34);box-shadow:0 0 12px rgba(var(--pc-rgb),.3);
+  animation:planetRing 3.8s linear infinite}
+.dp-label{position:absolute;left:50%;top:calc(100% + 9px);transform:translateX(-50%);
+  font-family:var(--sans);font-size:9px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(233,238,247,.56);text-shadow:0 1px 6px rgba(0,0,0,.95);white-space:nowrap;
+  opacity:0;transition:opacity .2s ease}
+.drag-planet.show .dp-label{opacity:.72}
+.drag-planet.magnet .dp-ring{border-color:var(--mint);box-shadow:0 0 20px rgba(45,226,197,.55)}
+.drag-planet.magnet .dp-core{box-shadow:0 0 22px rgba(45,226,197,.55),0 0 50px rgba(45,226,197,.22),
+  inset -7px -9px 15px rgba(0,0,0,.55),inset 3px 4px 9px rgba(255,255,255,.3)}
+.drag-planet.magnet .dp-label{color:var(--mint);opacity:1}
+.drag-planet.drop .dp-label{opacity:0}
+body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
+@keyframes planetPulse{0%,100%{transform:scale(.9);opacity:.55}50%{transform:scale(1.14);opacity:.95}}
+@keyframes planetBob{0%,100%{transform:translateY(-1px) scale(1)}50%{transform:translateY(1px) scale(1.04)}}
+@keyframes planetRing{from{transform:rotate(-24deg) scaleY(.34)}to{transform:rotate(336deg) scaleY(.34)}}
+.slot.slot-impact{animation:slotImpact .58s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes slotImpact{
+  0%{transform:scale(1);box-shadow:0 0 0 0 rgba(45,226,197,.55),0 12px 32px rgba(0,0,0,.28)}
+  35%{transform:scale(1.07);box-shadow:0 0 0 9px rgba(45,226,197,.12),0 0 34px rgba(45,226,197,.4),0 12px 32px rgba(0,0,0,.28)}
+  100%{transform:scale(1);box-shadow:0 0 0 0 rgba(45,226,197,0),0 12px 32px rgba(0,0,0,.28)}
+}
+.slot-fader.fader-impact{animation:faderImpact .58s ease}
+@keyframes faderImpact{
+  0%{box-shadow:0 10px 26px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.12)}
+  35%{box-shadow:0 0 0 1px rgba(45,226,197,.5),0 0 24px rgba(45,226,197,.28),inset 0 1px 0 rgba(255,255,255,.16)}
+  100%{box-shadow:0 10px 26px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.12)}
+}
+@media (prefers-reduced-motion:reduce){
+  .dp-halo,.dp-core,.dp-ring{animation:none}
+}
+
+.dp-label{max-width:190px;overflow:hidden;text-overflow:ellipsis}

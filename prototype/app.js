@@ -255,6 +255,24 @@ const visible = () => state.samples.filter(passes);
 const canvas = $('#universe');
 const wrap = $('.canvas-wrap');
 const tooltip = $('#tooltip');
+const dragPlanet = $('#dragPlanet');
+const dragPlanetLabel = $('#dragPlanetLabel');
+const dragFxCanvas = $('#dragFx');
+const dragFxCtx = dragFxCanvas.getContext('2d');
+let dragFxW = window.innerWidth, dragFxH = window.innerHeight, dragFxDpr = 1;
+
+function resizeDragFx() {
+  dragFxDpr = Math.min(2, window.devicePixelRatio || 1);
+  dragFxW = window.innerWidth;
+  dragFxH = window.innerHeight;
+  dragFxCanvas.width = Math.round(dragFxW * dragFxDpr);
+  dragFxCanvas.height = Math.round(dragFxH * dragFxDpr);
+  dragFxCanvas.style.width = dragFxW + 'px';
+  dragFxCanvas.style.height = dragFxH + 'px';
+  dragFxCtx.setTransform(dragFxDpr, 0, 0, dragFxDpr, 0, 0);
+}
+window.addEventListener('resize', resizeDragFx);
+resizeDragFx();
 let plot = { x: 0, y: 0, w: 1, h: 1 };
 let canvasW = 1, canvasH = 1;
 
@@ -740,9 +758,259 @@ function focusSample(smp, animate = true) {
   }
 }
 
-// ---------- drag & drop ----------
+// ---------- drag & drop: planet carry ----------
 let dragStarted = false;
 let dragStart = null;
+let dragCursor = { x: 0, y: 0 };
+let dragPos = { x: 0, y: 0 };
+let dragOrigin = { x: 0, y: 0 };
+let dragPlanetScale = 1;
+let dragTargetSlot = null;
+let dragDrop = null;
+let dragTrailPts = [];
+let dragSparks = [];
+let dragRings = [];
+let dragRAF = null;
+let dragLast = 0;
+let dragRgb = '124,92,255';
+
+const DRAG_TRAIL_MS = 480;
+const DRAG_FLY_MS = 190;
+
+function hexRgbTriplet(hex) {
+  const v = parseInt(String(hex).replace('#', ''), 16);
+  return `${(v >> 16) & 255},${(v >> 8) & 255},${v & 255}`;
+}
+
+function setPlanetColor(hex) {
+  dragRgb = hexRgbTriplet(hex);
+  dragPlanet.style.setProperty('--pc', hex);
+  dragPlanet.style.setProperty('--pc-rgb', dragRgb);
+}
+
+function spawnDragRing(x, y, rgb = dragRgb, strength = 1) {
+  dragRings.push({ x, y, t: performance.now(), rgb, strength });
+}
+
+function spawnDragBurst(x, y, rgb = dragRgb) {
+  const now = performance.now();
+  for (let i = 0; i < 18; i++) {
+    const a = (Math.PI * 2 * i) / 18 + Math.random() * .5;
+    const sp = 40 + Math.random() * 130;
+    dragSparks.push({
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      t: now, life: 420 + Math.random() * 260, rgb,
+      size: 1.2 + Math.random() * 1.8,
+    });
+  }
+  spawnDragRing(x, y, rgb, 1.5);
+}
+
+function magnetSlotAt(x, y) {
+  let best = null, bestD = Infinity;
+  $$('.slot[data-slot]').forEach(el => {
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const d = Math.hypot(cx - x, cy - y);
+    const reach = Math.max(54, Math.max(r.width, r.height) * .92);
+    if (d < reach && d < bestD) { bestD = d; best = el; }
+  });
+  return best;
+}
+
+function setMagnetSlot(slot) {
+  dragTargetSlot = slot;
+  const on = !!slot;
+  dragPlanet.classList.toggle('magnet', on);
+  $$('.slot[data-slot]').forEach(x => x.classList.toggle('drop-target', x === slot));
+  if (state.drag) {
+    dragPlanetLabel.textContent = on
+      ? `${state.drag.name}  →  SLOT ${String(+slot.dataset.slot + 1).padStart(2, '0')}`
+      : state.drag.name;
+  }
+}
+
+function startPlanetDrag(smp) {
+  setPlanetColor(CAT[smp.category].color);
+  dragPlanetLabel.textContent = smp.name;
+  dragPlanet.classList.add('show');
+  dragPlanet.classList.remove('magnet', 'drop');
+  document.body.classList.add('dragging-planet');
+  dragPos = { x: dragOrigin.x, y: dragOrigin.y };
+  dragCursor = { ...dragPos };
+  dragPlanetScale = .48;
+  dragTrailPts = [];
+  dragSparks = [];
+  dragRings = [];
+  spawnDragRing(dragOrigin.x, dragOrigin.y, dragRgb, 1.1);
+  ensureDragLoop();
+}
+
+function endPlanetDrag() {
+  dragPlanet.classList.remove('show', 'magnet', 'drop');
+  document.body.classList.remove('dragging-planet');
+  setMagnetSlot(null);
+  dragDrop = null;
+  dragPlanetLabel.textContent = '';
+}
+
+function drawPlanet() {
+  dragPlanet.style.transform =
+    `translate3d(${dragPos.x}px,${dragPos.y}px,0) translate(-50%,-50%) scale(${dragPlanetScale})`;
+}
+
+function completePlanetDrop(drop = dragDrop) {
+  if (!drop || drop.done) return;
+  drop.done = true;
+  const { smp, slotIndex, toX, toY, rgb } = drop;
+  const isCurrent = dragDrop === drop;
+  if (isCurrent) {
+    dragDrop = null;
+    endPlanetDrag();
+  }
+  spawnDragBurst(toX, toY, rgb);
+  assignSample(slotIndex, smp);
+  const slotEl = document.querySelector(`.slot[data-slot="${slotIndex}"]`);
+  if (slotEl) {
+    slotEl.classList.add('slot-impact');
+    setTimeout(() => slotEl.classList.remove('slot-impact'), 640);
+  }
+  const faderEl = document.querySelector(`.slot-fader[data-slot="${slotIndex}"]`);
+  if (faderEl) {
+    faderEl.classList.add('fader-impact');
+    setTimeout(() => faderEl.classList.remove('fader-impact'), 640);
+  }
+  ensureDragLoop();
+}
+
+function updateDragFx(now, dt) {
+  if (state.drag && dragStarted) {
+    const k = Math.min(1, .46 * dt);
+    dragPos.x += (dragCursor.x - dragPos.x) * k;
+    dragPos.y += (dragCursor.y - dragPos.y) * k;
+    const targetScale = dragTargetSlot ? .82 : 1;
+    dragPlanetScale += (targetScale - dragPlanetScale) * Math.min(1, .3 * dt);
+    const last = dragTrailPts.length ? dragTrailPts[dragTrailPts.length - 1] : null;
+    if (!last || now - last.t > 8) {
+      dragTrailPts.push({ x: dragPos.x, y: dragPos.y, t: now, rgb: dragRgb });
+      if (Math.random() < .55) {
+        dragSparks.push({
+          x: dragPos.x + (Math.random() - .5) * 18,
+          y: dragPos.y + (Math.random() - .5) * 18,
+          vx: (Math.random() - .5) * 45,
+          vy: (Math.random() - .5) * 45,
+          t: now, life: 300 + Math.random() * 260, rgb: dragRgb,
+          size: .8 + Math.random() * 1.4,
+        });
+      }
+    }
+  } else if (dragDrop) {
+    const k = clamp((now - dragDrop.t0) / dragDrop.dur, 0, 1);
+    const e = 1 - Math.pow(1 - k, 3);
+    dragPos.x = lerp(dragDrop.fromX, dragDrop.toX, e);
+    dragPos.y = lerp(dragDrop.fromY, dragDrop.toY, e);
+    dragPlanetScale = lerp(dragDrop.fromScale, .16, e);
+    if (k >= 1) completePlanetDrop();
+  } else {
+    dragPlanetScale += (.4 - dragPlanetScale) * Math.min(1, .2 * dt);
+  }
+  drawPlanet();
+  const trailCut = now - DRAG_TRAIL_MS;
+  if (dragTrailPts.length && dragTrailPts[0].t < trailCut) {
+    dragTrailPts = dragTrailPts.filter(p => p.t >= trailCut);
+  }
+  dragSparks = dragSparks.filter(s => {
+    if (now - s.t > s.life) return false;
+    const k = (now - s.t) / s.life;
+    s.x += s.vx * .016 * (1 - k);
+    s.y += s.vy * .016 * (1 - k);
+    s.vx *= .96; s.vy *= .96;
+    return true;
+  });
+  dragRings = dragRings.filter(r => now - r.t < 620);
+}
+
+function drawDragFx(now) {
+  const ctx = dragFxCtx;
+  ctx.clearRect(0, 0, dragFxW, dragFxH);
+  const active = (state.drag && dragStarted) || dragDrop;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  if (active) {
+    const rgb = dragDrop ? dragDrop.rgb : dragRgb;
+    const ox = dragOrigin.x, oy = dragOrigin.y;
+    const px = dragPos.x, py = dragPos.y;
+    if (Math.hypot(px - ox, py - oy) > 24) {
+      const c1x = ox + (px - ox) * .5, c1y = oy + (py - oy) * .5 - 34;
+      const grad = ctx.createLinearGradient(ox, oy, px, py);
+      grad.addColorStop(0, `rgba(${rgb},0)`);
+      grad.addColorStop(.45, `rgba(${rgb},.16)`);
+      grad.addColorStop(1, `rgba(${rgb},.45)`);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([2, 7]);
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.quadraticCurveTo(c1x, c1y, px, py);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (let i = 0; i < 3; i++) {
+        const t = ((now / 900) + i / 3) % 1;
+        const mt = 1 - t;
+        const sx = mt * mt * ox + 2 * mt * t * c1x + t * t * px;
+        const sy = mt * mt * oy + 2 * mt * t * c1y + t * t * py;
+        ctx.fillStyle = `rgba(${rgb},${.55 * (1 - t)})`;
+        ctx.beginPath(); ctx.arc(sx, sy, 1.6, 0, 6.2832); ctx.fill();
+      }
+    }
+    if (dragTargetSlot) {
+      const r = dragTargetSlot.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      ctx.strokeStyle = 'rgba(45,226,197,.5)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 5]);
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(cx, cy); ctx.stroke();
+      ctx.setLineDash([]);
+      const rr = Math.max(r.width, r.height) * .62 + Math.sin(now / 140) * 3;
+      ctx.strokeStyle = 'rgba(45,226,197,.26)';
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 6.2832); ctx.stroke();
+    }
+  }
+  for (const p of dragTrailPts) {
+    const age = clamp((now - p.t) / DRAG_TRAIL_MS, 0, 1);
+    ctx.fillStyle = `rgba(${p.rgb},${(1 - age) * .4})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3 + (1 - age) * 13, 0, 6.2832); ctx.fill();
+  }
+  for (const s of dragSparks) {
+    const age = clamp((now - s.t) / s.life, 0, 1);
+    ctx.fillStyle = `rgba(${s.rgb},${(1 - age) * .8})`;
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.size * (1 - age * .5), 0, 6.2832); ctx.fill();
+  }
+  for (const r of dragRings) {
+    const age = clamp((now - r.t) / 620, 0, 1);
+    const rad = 8 + age * 78 * r.strength;
+    ctx.strokeStyle = `rgba(${r.rgb},${(1 - age) * .55})`;
+    ctx.lineWidth = 1.6 * (1 - age * .6);
+    ctx.beginPath(); ctx.arc(r.x, r.y, rad, 0, 6.2832); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function ensureDragLoop() {
+  if (dragRAF) return;
+  dragLast = performance.now();
+  const step = now => {
+    dragRAF = null;
+    const dt = Math.min(2.5, Math.max(.2, (now - dragLast) / 16.6667));
+    dragLast = now;
+    updateDragFx(now, dt);
+    drawDragFx(now);
+    if ((state.drag && dragStarted) || dragDrop || dragTrailPts.length || dragSparks.length || dragRings.length) {
+      dragRAF = requestAnimationFrame(step);
+    }
+  };
+  dragRAF = requestAnimationFrame(step);
+}
 
 function beginDrag(smp, e, opts) {
   if (!smp) return;
@@ -752,8 +1020,18 @@ function beginDrag(smp, e, opts) {
   if (opts && opts.fromUniverse) showSimilarity();
   else hideSimilarity();
   state.drag = smp;
+  tooltip.classList.remove('show');
   dragStarted = false;
   dragStart = { x: e.clientX, y: e.clientY };
+  dragOrigin = { x: e.clientX, y: e.clientY };
+  dragCursor = { x: e.clientX, y: e.clientY };
+  dragPos = { x: e.clientX, y: e.clientY };
+  dragPlanetScale = .48;
+  dragTrailPts = [];
+  dragSparks = [];
+  dragRings = [];
+  dragDrop = null;
+  setMagnetSlot(null);
   e.preventDefault();
 }
 
@@ -768,6 +1046,7 @@ function dismissWindows() {
   $('#settingsMenu').classList.remove('show');
   if ($('#slotPopover')) closeSlotPopover();
 }
+
 $('#triggerTab').onclick = () => {
   if (state.viewMode === 'trigger') closeTriggerPage();
   else openTriggerPage();
@@ -775,44 +1054,70 @@ $('#triggerTab').onclick = () => {
 
 window.addEventListener('mousemove', e => {
   if (!state.drag) return;
+  dragCursor = { x: e.clientX, y: e.clientY };
   const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
   if (!dragStarted && Math.hypot(dx, dy) > 6) {
     dragStarted = true;
-    const gh = $('#dragGhost');
-    gh.textContent = state.drag.name;
-    gh.style.borderColor = CAT[state.drag.category].color;
-    gh.classList.add('show');
+    startPlanetDrag(state.drag);
   }
   if (dragStarted) {
-    const gh = $('#dragGhost');
-    gh.style.left = e.clientX + 'px';
-    gh.style.top = e.clientY + 'px';
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const slot = el && el.closest ? el.closest('.slot[data-slot]') : null;
-    $$('.slot[data-slot]').forEach(x => x.classList.toggle('drop-target', x === slot));
+    const exact = el && el.closest ? el.closest('.slot[data-slot]') : null;
+    setMagnetSlot(exact || magnetSlotAt(e.clientX, e.clientY));
   }
 });
 
 window.addEventListener('mouseup', e => {
   if (state.scanning) stopScrub();
   if (state.drag) {
+    const smp = state.drag;
     if (dragStarted) {
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      const slot = el && el.closest ? el.closest('.slot[data-slot]') : null;
-      if (slot) assignSample(+slot.dataset.slot, state.drag);
-      else if (state.dragAlt) toast(`Finder export (demo) · ${state.drag.name}`);
+      const exact = el && el.closest ? el.closest('.slot[data-slot]') : null;
+      const slot = exact || dragTargetSlot;
+      if (slot) {
+        const r = slot.getBoundingClientRect();
+        dragDrop = {
+          smp, slotIndex: +slot.dataset.slot, rgb: dragRgb,
+          fromX: dragPos.x, fromY: dragPos.y, fromScale: dragPlanetScale,
+          toX: r.left + r.width / 2, toY: r.top + r.height / 2,
+          t0: performance.now(), dur: DRAG_FLY_MS,
+        };
+        const drop = dragDrop;
+        dragPlanet.classList.add('drop');
+        dragPlanet.classList.remove('magnet');
+        dragPlanetLabel.textContent = '';
+        setTimeout(() => completePlanetDrop(drop), DRAG_FLY_MS);
+        ensureDragLoop();
+      } else {
+        spawnDragBurst(dragPos.x, dragPos.y, dragRgb);
+        endPlanetDrag();
+        if (state.dragAlt) toast(`Finder export (demo) · ${smp.name}`);
+      }
+    } else {
+      endPlanetDrag();
     }
     state.drag = null;
     state.dragAlt = false;
     dragStarted = false;
-    $('#dragGhost').classList.remove('show');
-    $$('.slot[data-slot]').forEach(x => x.classList.remove('drop-target'));
+    setMagnetSlot(null);
+    ensureDragLoop();
   }
   if (state.pan) {
     state.pan = null;
     canvas.style.cursor = 'crosshair';
   }
 });
+
+window.__dragPlanet = {
+  get active() { return !!state.drag; },
+  get started() { return dragStarted; },
+  get target() { return dragTargetSlot ? +dragTargetSlot.dataset.slot : null; },
+  get visible() { return dragPlanet.classList.contains('show'); },
+  get pos() { return { x: Math.round(dragPos.x), y: Math.round(dragPos.y) }; },
+  get drop() { return !!dragDrop; },
+  magnetAt(x, y) { const el = magnetSlotAt(x, y); return el ? +el.dataset.slot : null; },
+};
 
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
