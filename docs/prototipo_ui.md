@@ -5,8 +5,8 @@ Fecha: 20/11/2026. Prototipo navegable en `prototype/` (`index.html`, `style.css
 ## Layout elegido (Opción A)
 
 - **Universe / File Search / TRIGGER full-bleed**: tres páginas que ocupan toda el área principal.
-- **Página TRIGGER**: INPUT DETECTOR + editor de sample/ADSR en una sola vista, abierta desde el botón TRIGGER.
-- **Dock fijo de 8 slots** abajo, visible en todas las vistas: recuadros de glass vacíos donde se arrastran los samples.
+- **Página TRIGGER**: INPUT DETECTOR + editor de sample/ADSR + banco de 8 faders en una sola vista, abierta desde el botón TRIGGER (arriba, junto a Settings).
+- **Dock fijo de 8 slots cuadrados** abajo, centrado y visible en todas las vistas: recuadros de glass vacíos donde se arrastran los samples.
 - **Search flotante** arriba del Universe, centrado, estilo XO.
 - **Similarity bar** flotante arriba del dock, estilo XO.
 - **FILE SEARCH** con árbol tipo Finder y root `LOCATION` (la carpeta elegida por el usuario).
@@ -33,12 +33,12 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - **Auto Phase** corre automáticamente al cargar un sample en un slot. Por defecto **solo corrige polaridad**; el offset queda en **0** y se muestra como `suggested`. El toggle **TIMING** permite aplicar también el offset medido.
 - El análisis real será GCC-PHAT (ver `docs/auto_phase.md`).
 
-## Slots
+## Slots y faders
 
-- Ocho recuadros de glass **01 … 08** en un dock fijo abajo, visibles en todas las vistas.
-- Arrancan **vacíos**: muestran `DROP SAMPLE` / `ALT + drag`.
+- Ocho recuadros de glass **01 … 08** cuadrados en un dock fijo abajo, centrados y con separación.
+- Arrancan **vacíos**: muestran `+` / `DROP`.
 - Al llenarse muestran dot de categoría, nombre y duración; el × los vacía.
-- Ya no hay fader, meter por canal ni M/S/Ø en el dock: la edición vive en la página TRIGGER.
+- En la página TRIGGER, arriba de cada slot hay un **fader vertical** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna.
 
 ## FILE SEARCH
 
@@ -62,7 +62,7 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 - **La app es el Universe**: logo y título centrados, search con toggle folder/universo, Settings y OUTPUT + VU vertical a la derecha. No hay topbar separado.
 - **Search centrado** arriba, sin contorno de panel; **Similarity** flotante abajo.
-- **TRIGGER** es un botón dentro del dock. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/ADSR; se vuelve con **← BACK** o el mismo botón.
+- **TRIGGER** está arriba junto a Settings, mismo tamaño. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/ADSR + banco de faders; se vuelve con **← BACK** o el mismo botón.
 - **Editor de sample**: tabs **SAMPLE → ENVELOPE → TONE → SLOT**. El tab SLOT quedó solo con **AUTO PHASE** (REF, re-analizar, TIMING, resultado, OFFSET, SHIFT); se quitaron Level/Pan/Tune/Mute/Solo/Pol de esa ventana.
 - **Fase**: 0/90/180/260; **180 = Ø**. Los badges se mantienen en el editor.
 - **Slots**: solo números 01–08, sin faders.
@@ -102,10 +102,17 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
 
-## Actualización 21/11 — TRIGGER page + dock de slots
+## Actualización 21/11 — layout Slate Trigger
+
+- **TRIGGER** se movió arriba, junto a Settings y con el mismo tamaño; el botón activo se resalta.
+- Los slots son **cuadrados**, están centrados y tienen más separación entre sí.
+- La página TRIGGER recupera el **banco de 8 faders** verticales con meter, M/S/Ø, nivel y fase, alineado exactamente sobre los slots.
+- El banco está dentro de la página (no en el dock): solo aparece al abrir TRIGGER, con los slots cuadrados debajo.
+
+## Actualización 21/11 — primera pasada: TRIGGER page + dock
 
 - TRIGGER, INPUT DETECTOR y el editor/ADSR se unificaron en una **tercera página full-screen**, abierta desde el botón TRIGGER del dock.
-- El drawer inferior y los faders desaparecieron. Quedan **8 slots de glass vacíos** en un dock fijo abajo, visibles en Universe, FILE SEARCH y TRIGGER.
+- En esta primera pasada, el drawer inferior desapareció y quedaron **8 slots de glass** en un dock fijo abajo. La segunda pasada (layout Slate Trigger) recuperó los faders arriba de los slots dentro de la página TRIGGER.
 - **ALT + drag** desde el Universe o FILE SEARCH asigna el sample a un slot; el × lo vacía.
 - Click en un slot abre la página TRIGGER con ese slot cargado; el editor abre en **ENVELOPE (ADSR)**.
 - El paneo suave del Universe deja libre el dock y el waveform del INPUT solo corre con la página TRIGGER visible.

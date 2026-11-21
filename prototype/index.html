@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=46">
+<link rel="stylesheet" href="style.css?v=50">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -30,6 +30,7 @@
             <div class="brand-text"><b>TRIGGER</b><span>UNIVERSE</span></div>
           </div>
           <div class="top-actions">
+            <button class="btn ghost" id="triggerTab" title="Open TRIGGER page">TRIGGER</button>
             <button class="btn ghost" id="settingsBtn">Settings</button>
             <div class="top-master">
               <div class="top-knob" id="masterOutKnob" title="Master output"><div class="knob-ind"></div></div>
@@ -198,6 +199,7 @@
       </div>
     </aside>
             </div>
+            <div class="fader-bank" id="faderBank"></div>
           </div>
         </div>
 
@@ -226,9 +228,6 @@
   </main>
 
   <section class="slot-dock" id="slotDock">
-    <button class="trigger-tab liquid-glass" id="triggerTab" title="Open TRIGGER page">
-      <span>TRIGGER</span><i>▲</i>
-    </button>
     <div class="slots" id="slots"></div>
   </section>
 
@@ -247,6 +246,6 @@
 <div class="toast" id="toast"></div>
 <div class="drag-ghost" id="dragGhost"></div>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=46"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>

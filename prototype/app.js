@@ -922,8 +922,45 @@ function renderSlots() {
           ${smp ? `<span class="slot-dot" style="background:${color};color:${color}"></span>` : ''}
           ${smp ? `<button class="slot-clear" data-clear="${i}" title="Clear slot">×</button>` : ''}
         </div>
-        <div class="slot-name">${smp ? smp.name : 'DROP SAMPLE'}</div>
-        <div class="slot-meta">${smp ? `${CAT[smp.category].short} · ${fmtMs(smp.dur)}` : 'ALT + drag'}</div>
+        ${smp
+          ? `<div class="slot-name">${smp.name}</div><div class="slot-meta">${CAT[smp.category].short} · ${fmtMs(smp.dur)}</div>`
+          : `<div class="slot-plus">+</div><div class="slot-meta">DROP</div>`}
+      </div>`;
+  }).join('');
+  renderFaders();
+}
+
+let slotMeterVals = new Array(8).fill(-1);
+
+function renderFaders() {
+  const host = $('#faderBank');
+  if (!host) return;
+  slotMeterVals.fill(-1);
+  const anySolo = state.slots.some(s => s.solo);
+  host.innerHTML = state.slots.map((s, i) => {
+    const smp = slotSample(s);
+    const color = smp ? CAT[smp.category].color : '';
+    const sel = i === state.selectedSlot ? ' selected' : '';
+    const dim = (anySolo && !s.solo) || s.mute ? ' dim' : '';
+    const empty = smp ? '' : ' empty';
+    return `
+      <div class="slot-fader${sel}${dim}${empty}" data-slot="${i}">
+        <div class="sf-head">
+          <span class="sf-num">${String(i + 1).padStart(2, '0')}</span>
+          ${smp ? `<span class="sf-dot" style="background:${color};color:${color}"></span>` : ''}
+          <span class="sf-name">${smp ? smp.name : 'EMPTY'}</span>
+        </div>
+        <div class="sf-body">
+          <div class="sf-meter"><i id="meter-${i}" style="height:0%"></i></div>
+          <div class="sf-track"><input class="sf-range" id="fader-${i}" data-slot="${i}" type="range" min="-60" max="6" step="0.1" value="${s.level}" aria-label="Slot ${i + 1} level"></div>
+        </div>
+        <div class="sf-level" id="slotLevel-${i}">${fmtDb(s.level)}</div>
+        <div class="sf-phase">${phaseBadge(s)}</div>
+        <div class="sf-btns">
+          <button data-act="m" data-slot="${i}" class="${s.mute ? 'on' : ''}" title="Mute">M</button>
+          <button data-act="s" data-slot="${i}" class="${s.solo ? 'on solo' : ''}" title="Solo">S</button>
+          <button data-act="o" data-slot="${i}" class="${s.polarity ? 'on phase' : ''}" title="Polarity">Ø</button>
+        </div>
       </div>`;
   }).join('');
 }
@@ -960,6 +997,36 @@ $('#slots').addEventListener('click', e => {
   const i = +slot.dataset.slot;
   selectSlot(i);
   if (state.viewMode !== 'trigger') openTriggerPage();
+});
+
+$('#faderBank').addEventListener('input', e => {
+  const r = e.target.closest('.sf-range');
+  if (!r) return;
+  const i = +r.dataset.slot, s = state.slots[i];
+  s.level = +r.value;
+  const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(s.level);
+  syncSlotAudio(i);
+});
+
+$('#faderBank').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-act]');
+  if (btn) {
+    e.stopPropagation();
+    const i = +btn.dataset.slot, s = state.slots[i];
+    if (btn.dataset.act === 'm') s.mute = !s.mute;
+    if (btn.dataset.act === 's') s.solo = !s.solo;
+    if (btn.dataset.act === 'o') {
+      s.polarity = !s.polarity;
+      s.shift = s.polarity ? 180 : 0;
+    }
+    selectSlot(i);
+    syncAllSlotAudio();
+    updateInspector();
+    return;
+  }
+  const strip = e.target.closest('.slot-fader[data-slot]');
+  if (!strip) return;
+  selectSlot(+strip.dataset.slot);
 });
 
 function assignSample(i, smp) {
@@ -2224,6 +2291,22 @@ function startMeters() {
   const loop = now => {
     if (audioCtx && now - lastMeter > 40) {
       lastMeter = now;
+      if (state.viewMode === 'trigger') {
+        const anySolo = state.slots.some(s => s.solo);
+        state.slots.forEach((s, i) => {
+          const node = slotNodes[i];
+          if (!node) return;
+          node.analyser.getByteTimeDomainData(node.buf);
+          let sum = 0;
+          for (const v of node.buf) { const x = (v - 128) / 128; sum += x * x; }
+          const rms = Math.sqrt(sum / node.buf.length);
+          const active = !s.mute && (!anySolo || s.solo);
+          const h = Math.round(active ? clamp(rms * 380, 3, 100) : 3);
+          if (h === slotMeterVals[i]) return;
+          slotMeterVals[i] = h;
+          const mt = $(`#meter-${i}`); if (mt) mt.style.height = h + '%';
+        });
+      }
       masterAnalyser.getByteTimeDomainData(mb);
       let sum = 0;
       for (const v of mb) { const x = (v - 128) / 128; sum += x * x; }

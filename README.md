@@ -19,13 +19,13 @@ cd prototype
 python3 -m http.server 8765 --bind 127.0.0.1
 ```
 
-Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá **TRIGGER** (abajo a la izquierda del dock), click en **▶ INPUT** para reproducir el snare real y disparar los slots cargados; o hacé click en un sample del Universo o de **FILE SEARCH** para escucharlo al instante. El audio arranca con el primer click (política de autoplay del browser).
+Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá **TRIGGER** (arriba, junto a Settings), click en **▶ INPUT** para reproducir el snare real y disparar los slots cargados; o hacé click en un sample del Universo o de **FILE SEARCH** para escucharlo al instante. El audio arranca con el primer click (política de autoplay del browser).
 
 Controles principales:
 
 - Click en un slot **01–08** del dock para abrir la página **TRIGGER** con ese slot en el editor.
-- **TRIGGER** (botón inferior izquierdo) abre una página completa con **INPUT DETECTOR + editor de sample / ADSR**.
-- Los 8 slots arrancan **vacíos**. Arrastrá samples desde el Universe o FILE SEARCH para llenarlos; el **×** de cada slot lo vacía.
+- **TRIGGER** (arriba, junto a Settings) abre una página completa con **INPUT DETECTOR + editor de sample / ADSR + banco de 8 faders**.
+- Los 8 slots arrancan **vacíos**, son cuadrados y quedan centrados abajo. Arrastrá samples desde el Universe o FILE SEARCH para llenarlos; el **×** de cada slot lo vacía. En la página TRIGGER, arriba de cada slot aparece su fader con meter, M/S/Ø y nivel.
 - Mantené el click y movete por el Universe: se escucha un preview inmediato de cada sample (snap dentro de un aura de ~20 px) y queda una **estela de colores** entre los puntos visitados. Al soltar, la estela se desvanece.
 - Click en un sample: lo selecciona y permite hacer hover por el mapa. **ALT + arrastrar** desde el Universe o FILE SEARCH a uno de los **8 slots** del dock para asignarlo; si se suelta fuera, se muestra el toast de export a Finder (demo).
 - Rueda del mouse: zoom anclado al cursor. Click derecho + arrastrar o **Ctrl + click izquierdo + arrastrar**: pan. Click izquierdo en vacío: solo cierra paneles, sin mover la cámara.
