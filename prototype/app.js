@@ -160,13 +160,18 @@ const state = {
   selectedSample: null,
   favorites: new Set(loadFavoriteIds()),
   sim: { baseId: null, list: [], index: 0 },
+  simVisible: false,
   travel: null,
+  scanning: false,
+  pointer: null,
+  scrubTrail: { pts: [], alpha: 1 },
   viewMode: 'universe',
   fileFolder: 'ALL',
   expanded: new Set(['ALL', 'SAMPLES FOLDER', 'SAMPLES FOLDER/Kicks', 'SAMPLES FOLDER/Snares', 'SAMPLES FOLDER/Hats', 'SAMPLES FOLDER/Percussion']),
   filters: { search: '' },
   view: { zoom: 1, panX: 0, panY: 0 },
   drag: null,
+  dragAlt: false,
   dragOpen: false,
   pan: null,
   popoverSlot: null,
@@ -247,6 +252,7 @@ function selectSample(smp, closeTrigger = true, opts = {}) {
 }
 
 function openSlotEditor(i) {
+  hideSimilarity();
   selectSlot(i);
   $('.inspector').classList.add('show');
   setInspectorTab('sample');
@@ -304,6 +310,113 @@ const STARS = Array.from({ length: 220 }, () => ({
   x: starRand(), y: starRand(), z: starRand(), s: .3 + starRand() * 1.4,
 }));
 
+let trailFadeRAF = null;
+
+function startScrubTrail(smp) {
+  if (!smp) return;
+  cancelAnimationFrame(trailFadeRAF);
+  state.scrubTrail = { pts: [smp], alpha: 1 };
+}
+
+function appendScrubTrail(smp) {
+  if (!smp) return;
+  const tr = state.scrubTrail;
+  const last = tr.pts[tr.pts.length - 1];
+  if (last && last.id === smp.id) return;
+  tr.pts.push(smp);
+  if (tr.pts.length > 80) tr.pts.shift();
+  tr.alpha = 1;
+}
+
+function stopScrub() {
+  const was = state.scanning;
+  state.scanning = false;
+  stopHoverPreview();
+  if (was) fadeScrubTrail();
+}
+
+function fadeScrubTrail() {
+  cancelAnimationFrame(trailFadeRAF);
+  const tr = state.scrubTrail;
+  if (tr.pts.length < 2) { tr.pts = []; tr.alpha = 1; drawUniverse(); return; }
+  const t0 = performance.now(), dur = 2400;
+  const step = now => {
+    const k = clamp((now - t0) / dur, 0, 1);
+    tr.alpha = 1 - k;
+    drawUniverse();
+    if (k < 1) trailFadeRAF = requestAnimationFrame(step);
+    else { tr.pts = []; tr.alpha = 1; drawUniverse(); }
+  };
+  trailFadeRAF = requestAnimationFrame(step);
+}
+
+function drawPointerAura(ctx) {
+  const p = state.pointer;
+  if (!p || state.pan || state.drag) return;
+  const r = PICK_RADIUS;
+  const a = state.scanning ? .035 : .015;
+  const g = ctx.createRadialGradient(p.x, p.y, r * .55, p.x, p.y, r);
+  g.addColorStop(0, 'rgba(45,226,197,0)');
+  g.addColorStop(1, `rgba(45,226,197,${a})`);
+  ctx.save();
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 6.2832); ctx.fill();
+  ctx.strokeStyle = `rgba(45,226,197,${state.scanning ? .12 : .05})`;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 7]);
+  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 6.2832); ctx.stroke();
+  ctx.restore();
+}
+
+function drawScrubTrail(ctx) {
+  const tr = state.scrubTrail;
+  if (!tr || tr.pts.length < 2 || tr.alpha <= 0) return;
+  const pts = tr.pts.map(toPx);
+  const a = tr.alpha, n = pts.length;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (let i = 1; i < n; i++) {
+    const t = i / (n - 1);
+    const color = CAT[tr.pts[i].category].color;
+    ctx.globalAlpha = (.06 + .14 * t) * a;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 8 - 3 * t;
+    ctx.beginPath(); ctx.moveTo(pts[i - 1].x, pts[i - 1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
+    ctx.globalAlpha = (.28 + .60 * t) * a;
+    ctx.lineWidth = 1.7;
+    ctx.beginPath(); ctx.moveTo(pts[i - 1].x, pts[i - 1].y); ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke();
+  }
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const color = CAT[tr.pts[i].category].color;
+    ctx.globalAlpha = (.15 + .45 * t) * a;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, 1.8 + t * 1.2, 0, 6.2832); ctx.fill();
+  }
+  if (state.scanning) {
+    const head = pts[n - 1];
+    const color = CAT[tr.pts[n - 1].category].color;
+    ctx.globalAlpha = .45 * a;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(head.x, head.y, 8, 0, 6.2832); ctx.fill();
+    ctx.globalAlpha = .95;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(head.x, head.y, 2.4, 0, 6.2832); ctx.fill();
+  }
+  ctx.restore();
+}
+
+let universeRAF = null;
+function requestUniverseDraw() {
+  if (universeRAF) return;
+  universeRAF = requestAnimationFrame(() => {
+    universeRAF = null;
+    drawUniverse();
+  });
+}
+
 function drawUniverse() {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -355,6 +468,9 @@ function drawUniverse() {
   }
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
+
+  drawPointerAura(ctx);
+  drawScrubTrail(ctx);
 
   for (const s of [state.hover, state.selectedSample]) {
     if (!s) continue;
@@ -408,26 +524,34 @@ function drawUniverse() {
   ctx.restore();
 }
 
+const PICK_RADIUS = 20;
+
 function pickSample(mx, my) {
-  let best = null, bestD = 12;
+  let best = null, bestD = PICK_RADIUS;
   for (const s of state.samples) {
     const p = toPx(s);
     let d = Math.hypot(p.x - mx, p.y - my);
-    if (!passes(s)) d += 5;
+    if (!passes(s)) d += 1000;
     if (d < bestD) { bestD = d; best = s; }
   }
   return best;
 }
 
+
+let tooltipId = null;
+
 function showTooltip(s, e) {
-  if (!s) { tooltip.classList.remove('show'); return; }
+  if (!s) { tooltip.classList.remove('show'); tooltipId = null; return; }
   const c = CAT[s.category];
-  tooltip.innerHTML = `
+  if (tooltipId !== s.id) {
+    tooltipId = s.id;
+    tooltip.innerHTML = `
     <div class="tt-name">${s.name}</div>
     <div class="tt-cat" style="color:${c.color}">${c.short} · ${s.path}</div>
     <div class="tt-row"><span>Duration</span><b>${fmtMs(s.dur)}</b></div>
     <div class="tt-row"><span>Brightness</span><b>${fmtHz(s.bright)}</b></div>
     <div class="tt-row"><span>Druminess</span><b>${Math.round(s.drum * 100)}%</b></div>`;
+  }
   const r = wrap.getBoundingClientRect();
   tooltip.style.left = clamp(e.clientX - r.left, 80, r.width - 80) + 'px';
   tooltip.style.top = clamp(e.clientY - r.top, 60, r.height - 10) + 'px';
@@ -443,7 +567,7 @@ function sampleDistance(a, b) {
   return cat + dur + bright + drum;
 }
 
-function similarSamples(smp, limit = 24) {
+function similarSamples(smp, limit = 32) {
   const ranked = state.samples
     .filter(s => s.id !== smp.id)
     .map(s => ({ s, d: sampleDistance(smp, s) }))
@@ -476,7 +600,7 @@ function resetSimilarity(smp) {
     updateSimilarityUI();
     return;
   }
-  const near = similarSamples(smp, 24);
+  const near = similarSamples(smp, 32);
   state.sim = { baseId: smp.id, list: [smp.id, ...near.map(s => s.id)], index: 0 };
   updateSimilarityUI();
 }
@@ -517,6 +641,28 @@ function updateSimilarityUI() {
   }
 }
 
+const SIM_HIDE_MS = 3500;
+let simHideTimer = null;
+
+function restartSimTimer() {
+  clearTimeout(simHideTimer);
+  if (!state.simVisible) return;
+  simHideTimer = setTimeout(() => hideSimilarity(), SIM_HIDE_MS);
+}
+
+function showSimilarity() {
+  state.simVisible = true;
+  $('#similarBar').classList.add('show');
+  restartSimTimer();
+}
+
+function hideSimilarity() {
+  clearTimeout(simHideTimer);
+  if (!state.simVisible && !$('#similarBar').classList.contains('show')) return;
+  state.simVisible = false;
+  $('#similarBar').classList.remove('show');
+}
+
 function toggleFavorite(id) {
   const smp = state.samples.find(s => s.id === id);
   if (!smp) return;
@@ -530,6 +676,7 @@ function toggleFavorite(id) {
 }
 
 function navigateSimilar(dir) {
+  if (!state.simVisible) return;
   const list = state.sim.list;
   if (list.length < 2) return;
   const from = state.selectedSample;
@@ -539,28 +686,32 @@ function navigateSimilar(dir) {
   state.sim.index = idx;
   selectSample(smp, true, { keepSim: true });
   travelTo(smp, from);
+  restartSimTimer();
 }
 
 // ---------- universe focus / travel ----------
 let viewAnimRAF = null;
 
-function centerPanFor(s) {
-  const depth = s.z ?? .5;
-  const scale = .84 + depth * .32;
-  return {
-    x: -(s.x - .5) * plot.w * state.view.zoom * scale,
-    y: (s.y - .5) * plot.h * state.view.zoom * scale,
-  };
+function softPanFor(s) {
+  const p = toPx(s);
+  const mx = Math.min(170, canvasW * .20);
+  const my = Math.min(150, canvasH * .21);
+  const tx = clamp(p.x, mx, canvasW - mx);
+  const ty = clamp(p.y, my, canvasH - my);
+  return { x: state.view.panX + (tx - p.x), y: state.view.panY + (ty - p.y) };
 }
 
-function animateViewTo(to, from = null, duration = 520) {
+function animateViewTo(to, from = null, duration = 420) {
   cancelAnimationFrame(viewAnimRAF);
   const startPan = { x: state.view.panX, y: state.view.panY };
-  const targetPan = centerPanFor(to);
+  const targetPan = softPanFor(to);
+  const dist = Math.hypot(targetPan.x - startPan.x, targetPan.y - startPan.y);
+  if (dist < .5 && !from) { drawUniverse(); return; }
+  const dur = from ? 480 : Math.min(duration, 240 + dist * .5);
   const t0 = performance.now();
   state.travel = from ? { from, to, progress: 0 } : null;
   const step = now => {
-    const k = clamp((now - t0) / duration, 0, 1);
+    const k = clamp((now - t0) / dur, 0, 1);
     const e = 1 - Math.pow(1 - k, 3);
     state.view.panX = lerp(startPan.x, targetPan.x, e);
     state.view.panY = lerp(startPan.y, targetPan.y, e);
@@ -575,21 +726,24 @@ function animateViewTo(to, from = null, duration = 520) {
 function travelTo(to, from) {
   if (!to) return;
   if (!from || from.id === to.id) { focusSample(to, true); return; }
-  animateViewTo(to, from, 620);
+  animateViewTo(to, from, 480);
 }
 
 function focusSample(smp, animate = true) {
   if (!smp) {
     cancelAnimationFrame(viewAnimRAF);
     state.travel = null;
-    state.view.panX = 0;
-    state.view.panY = 0;
     drawUniverse();
     return;
   }
-  if (animate) animateViewTo(smp, null, 420);
+  const target = softPanFor(smp);
+  if (Math.hypot(target.x - state.view.panX, target.y - state.view.panY) < .5) {
+    drawUniverse();
+    return;
+  }
+  if (animate) animateViewTo(smp, null, 360);
   else {
-    const p = centerPanFor(smp);
+    const p = softPanFor(smp);
     state.view.panX = p.x;
     state.view.panY = p.y;
     drawUniverse();
@@ -602,8 +756,12 @@ let dragStart = null;
 
 function beginDrag(smp, e, opts) {
   if (!smp) return;
+  stopScrub();
   const keepTrigger = !!(opts && opts.keepTrigger);
   selectSample(smp, !keepTrigger);
+  state.dragAlt = !!(opts && opts.altDrag);
+  if (opts && opts.fromUniverse) showSimilarity();
+  else hideSimilarity();
   state.drag = smp;
   state.dragOpen = true;
   dragStarted = false;
@@ -614,9 +772,13 @@ function beginDrag(smp, e, opts) {
 function setTriggerOpen(open) {
   $('#triggerDrawer').classList.toggle('open', open);
   $('.app').classList.toggle('trigger-open', open);
+  if (open) { hideSimilarity(); startInputLoop(); }
+  else { stopInputLoop(); $('.inspector').classList.remove('show'); }
 }
 
 function dismissWindows() {
+  stopScrub();
+  hideSimilarity();
   setTriggerOpen(false);
   $('.inspector').classList.remove('show');
   $('#settingsMenu').classList.remove('show');
@@ -653,13 +815,16 @@ window.addEventListener('mousemove', e => {
 });
 
 window.addEventListener('mouseup', e => {
+  if (state.scanning) stopScrub();
   if (state.drag) {
     if (dragStarted) {
       const el = document.elementFromPoint(e.clientX, e.clientY);
       const ch = el && el.closest ? el.closest('.channel') : null;
       if (ch) assignSample(+ch.dataset.slot, state.drag);
+      else if (state.dragAlt) toast(`Finder export (demo) · ${state.drag.name}`);
     }
     state.drag = null;
+    state.dragAlt = false;
     dragStarted = false;
     state.dragOpen = false;
     $('#dragGhost').classList.remove('show');
@@ -677,19 +842,27 @@ canvas.addEventListener('mousemove', e => {
   const r = canvas.getBoundingClientRect();
   const mx = e.clientX - r.left, my = e.clientY - r.top;
   if (state.pan) {
+    state.pointer = null;
     state.view.panX = state.pan.px + (e.clientX - state.pan.x);
     state.view.panY = state.pan.py + (e.clientY - state.pan.y);
-    drawUniverse(); return;
+    requestUniverseDraw(); return;
   }
-  if (state.drag) return;
+  if (state.drag) { state.pointer = null; return; }
+  state.pointer = { x: mx, y: my };
 
   const s = pickSample(mx, my);
   state.hover = s;
   showTooltip(s, e);
-  drawUniverse();
+  if (state.scanning) {
+    scheduleHoverPreview(s);
+    appendScrubTrail(s);
+  }
+  requestUniverseDraw();
 });
 
 canvas.addEventListener('mouseleave', () => {
+  if (state.scanning) stopHoverPreview();
+  state.pointer = null;
   state.hover = null;
   tooltip.classList.remove('show'); drawUniverse();
 });
@@ -697,22 +870,38 @@ canvas.addEventListener('mouseleave', () => {
 canvas.addEventListener('mousedown', e => {
   dismissWindows();
   if (e.button === 2) {
+    stopScrub();
     state.pan = { x: e.clientX, y: e.clientY, px: state.view.panX, py: state.view.panY };
     canvas.style.cursor = 'grabbing';
     e.preventDefault();
     return;
   }
   if (e.button !== 0) return;
-  const r = canvas.getBoundingClientRect();
-  const s = pickSample(e.clientX - r.left, e.clientY - r.top);
-  if (s) beginDrag(s, e);
-  else {
+  if (e.ctrlKey) {
+    stopScrub();
     state.pan = { x: e.clientX, y: e.clientY, px: state.view.panX, py: state.view.panY };
     canvas.style.cursor = 'grabbing';
+    e.preventDefault();
+    return;
+  }
+  const r = canvas.getBoundingClientRect();
+  state.pointer = { x: e.clientX - r.left, y: e.clientY - r.top };
+  const s = pickSample(e.clientX - r.left, e.clientY - r.top);
+  if (s) {
+    if (e.altKey) beginDrag(s, e, { altDrag: true });
+    else {
+      selectSample(s, true);
+      showSimilarity();
+      startScrubTrail(s);
+      state.scanning = true;
+      playHoverPreview(s);
+    }
   }
 });
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
+  stopScrub();
+  hideSimilarity();
   const r = canvas.getBoundingClientRect();
   const mx = e.clientX - r.left, my = e.clientY - r.top;
   const f = e.deltaY < 0 ? 1.12 : 1 / 1.12;
@@ -725,12 +914,12 @@ canvas.addEventListener('wheel', e => {
   state.view.zoom = newZoom;
   state.view.panX = mx - cx - (wx - .5) * plot.w * newZoom;
   state.view.panY = my - cy + (wy - .5) * plot.h * newZoom;
-  drawUniverse();
+  requestUniverseDraw();
 }, { passive: false });
 
-$('#zoomIn').onclick = () => { state.view.zoom = clamp(state.view.zoom * 1.22, .7, 6); drawUniverse(); };
-$('#zoomOut').onclick = () => { state.view.zoom = clamp(state.view.zoom / 1.22, .7, 6); drawUniverse(); };
-$('#resetView').onclick = () => { state.view = { zoom: 1, panX: 0, panY: 0 }; drawUniverse(); };
+$('#zoomIn').onclick = () => { hideSimilarity(); state.view.zoom = clamp(state.view.zoom * 1.22, .7, 6); drawUniverse(); };
+$('#zoomOut').onclick = () => { hideSimilarity(); state.view.zoom = clamp(state.view.zoom / 1.22, .7, 6); drawUniverse(); };
+$('#resetView').onclick = () => { hideSimilarity(); state.view = { zoom: 1, panX: 0, panY: 0 }; drawUniverse(); };
 
 $('#editorGrip').addEventListener('mousedown', e => {
   const smp = currentSlotSample();
@@ -801,7 +990,12 @@ $('#channels').addEventListener('click', e => {
     return;
   }
   const ch = e.target.closest('.channel');
-  if (ch) openSlotEditor(+ch.dataset.slot);
+  if (ch) {
+    const i = +ch.dataset.slot;
+    const insp = $('.inspector');
+    if (insp.classList.contains('show') && state.selectedSlot === i) insp.classList.remove('show');
+    else openSlotEditor(i);
+  }
 });
 
 $('#channels').addEventListener('input', e => {
@@ -1145,7 +1339,9 @@ $('#fileList').addEventListener('mousedown', e => {
   const row = e.target.closest('.file-row[data-id]');
   if (!row) return;
   const smp = state.samples.find(s => s.id === +row.dataset.id);
-  if (smp) beginDrag(smp, e);
+  if (!smp) return;
+  if (e.altKey) beginDrag(smp, e, { altDrag: true });
+  else selectSample(smp, true);
 });
 $('#fileList').addEventListener('click', e => {
   const btn = e.target.closest('.fav-btn[data-id]');
@@ -1161,12 +1357,13 @@ window.addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const tag = e.target && e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-  if (state.viewMode !== 'universe') return;
+  if (state.viewMode !== 'universe' || !state.simVisible) return;
   if (e.key === 'ArrowLeft') { e.preventDefault(); navigateSimilar(-1); }
   if (e.key === 'ArrowRight') { e.preventDefault(); navigateSimilar(1); }
 });
 $('#simFav').onclick = () => {
   if (state.selectedSample) toggleFavorite(state.selectedSample.id);
+  restartSimTimer();
 };
 $('#simDots').addEventListener('click', e => {
   const dot = e.target.closest('i[data-index]');
@@ -1179,6 +1376,7 @@ $('#simDots').addEventListener('click', e => {
   state.sim.index = idx;
   selectSample(smp, true, { keepSim: true });
   travelTo(smp, from);
+  restartSimTimer();
 });
 $('#fileAudition').onclick = () => {
   const smp = state.selectedSample;
@@ -1214,15 +1412,18 @@ function setView(mode) {
     requestAnimationFrame(() => {
       resizeCanvas();
       if (state.selectedSample) focusSample(state.selectedSample, true);
-      else focusSample(null, false);
     });
   } else {
+    stopScrub();
+    hideSimilarity();
     renderFolderTree(); renderFileList();
   }
 }
 $('#viewToggle').onclick = () => setView(state.viewMode === 'universe' ? 'files' : 'universe');
 
+$('#search').addEventListener('focus', hideSimilarity);
 $('#search').addEventListener('input', e => {
+  hideSimilarity();
   state.filters.search = e.target.value.trim();
   drawUniverse();
   if (state.viewMode === 'files') renderFileList();
@@ -1733,7 +1934,16 @@ function drawInput(now) {
   const il = $('#inputLevel');
   if (il) il.textContent = (lvl >= 0 ? '+' : '') + lvl + ' dB';
 }
-function inputLoop(now) { drawInput(now); requestAnimationFrame(inputLoop); }
+let inputRAF = null;
+function startInputLoop() {
+  if (inputRAF) return;
+  const loop = now => { drawInput(now); inputRAF = requestAnimationFrame(loop); };
+  inputRAF = requestAnimationFrame(loop);
+}
+function stopInputLoop() {
+  if (inputRAF) cancelAnimationFrame(inputRAF);
+  inputRAF = null;
+}
 
 // ---------- top actions ----------
 $('#flipAll').onclick = () => {
@@ -1773,6 +1983,7 @@ let masterOut = 0;
 })();
 
 $('#settingsBtn').onclick = () => {
+  hideSimilarity();
   $('#settingsMenu').classList.toggle('show');
 };
 $('#menuFolders').onclick = () => {
@@ -1896,6 +2107,60 @@ function getBuffer(smp) {
   return smp.audioBuffer;
 }
 
+let hoverPreview = { src: null, gain: null, id: null };
+
+function stopHoverPreview() {
+  const { src, gain } = hoverPreview;
+  hoverPreview = { src: null, gain: null, id: null };
+  if (!src) return;
+  try {
+    if (gain && audioCtx) {
+      const now = audioCtx.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      gain.gain.linearRampToValueAtTime(0, now + .018);
+      src.stop(now + .022);
+    } else {
+      src.stop();
+    }
+  } catch (e) {}
+}
+
+function playHoverPreview(smp) {
+  if (!smp) { stopHoverPreview(); return; }
+  const ctx = ensureAudio();
+  if (!ctx || !masterGain) return;
+  const buf = getBuffer(smp);
+  if (!buf) return;
+  stopHoverPreview();
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const g = ctx.createGain();
+  const level = dbToAmp(-8);
+  const now = ctx.currentTime + .01;
+  const dur = Math.min(.8, Math.max(.06, buf.duration));
+  const offset = smp.isReal ? Math.min(.1, buf.duration * .1) : 0;
+  g.gain.setValueAtTime(0, now);
+  g.gain.linearRampToValueAtTime(level, now + .006);
+  g.gain.setValueAtTime(level, now + dur);
+  g.gain.linearRampToValueAtTime(0, now + dur + .07);
+  src.connect(g).connect(masterGain);
+  src.start(now, offset);
+  src.stop(now + dur + .08);
+  hoverPreview = { src, gain: g, id: smp.id };
+  src.onended = () => {
+    if (hoverPreview.src === src) hoverPreview = { src: null, gain: null, id: null };
+    try { src.disconnect(); } catch (e) {}
+    try { g.disconnect(); } catch (e) {}
+  };
+}
+
+function scheduleHoverPreview(smp) {
+  if (!smp) { stopHoverPreview(); return; }
+  if (hoverPreview.id === smp.id) return;
+  playHoverPreview(smp);
+}
+
 function getReversedBuffer(smp) {
   if (smp._rev) return smp._rev;
   const src = getBuffer(smp);
@@ -1975,21 +2240,26 @@ function playSlot(i, when = 0) {
 
 function startMeters() {
   if (meterRAF) return;
-  const loop = () => {
-    if (audioCtx) {
-      const anySolo = state.slots.some(s => s.solo);
-      state.slots.forEach((s, i) => {
-        const node = slotNodes[i];
-        if (!node) return;
-        node.analyser.getByteTimeDomainData(node.buf);
-        let sum = 0;
-        for (const v of node.buf) { const x = (v - 128) / 128; sum += x * x; }
-        const rms = Math.sqrt(sum / node.buf.length);
-        const active = !s.mute && (!anySolo || s.solo);
-        const h = active ? clamp(rms * 380, 3, 100) : 3;
-        const mt = $(`#meter-${i}`); if (mt) mt.style.height = h + '%';
-      });
-      const mb = new Uint8Array(masterAnalyser.fftSize);
+  const mb = new Uint8Array(masterAnalyser.fftSize);
+  let lastMeter = 0;
+  const loop = now => {
+    if (audioCtx && now - lastMeter > 40) {
+      lastMeter = now;
+      const drawerOpen = document.querySelector('#triggerDrawer').classList.contains('open');
+      if (drawerOpen) {
+        const anySolo = state.slots.some(s => s.solo);
+        state.slots.forEach((s, i) => {
+          const node = slotNodes[i];
+          if (!node) return;
+          node.analyser.getByteTimeDomainData(node.buf);
+          let sum = 0;
+          for (const v of node.buf) { const x = (v - 128) / 128; sum += x * x; }
+          const rms = Math.sqrt(sum / node.buf.length);
+          const active = !s.mute && (!anySolo || s.solo);
+          const h = active ? clamp(rms * 380, 3, 100) : 3;
+          const mt = $(`#meter-${i}`); if (mt) mt.style.height = h + '%';
+        });
+      }
       masterAnalyser.getByteTimeDomainData(mb);
       let sum = 0;
       for (const v of mb) { const x = (v - 128) / 128; sum += x * x; }
@@ -2186,9 +2456,11 @@ window.__audio = {
   playInput,
   stopInput,
   playSlot,
+  get previewId() { return hoverPreview.id; },
 };
 window.__selectSample = selectSample;
 window.__setTriggerOpen = setTriggerOpen;
+window.__focus = focusSample;
 window.__updateInspector = updateInspector;
 
 // ---------- init ----------
@@ -2204,7 +2476,7 @@ function init() {
     new ResizeObserver(resizeCanvas).observe(wrap);
     resizeInput();
     new ResizeObserver(resizeInput).observe(inputCanvas.parentElement);
-    requestAnimationFrame(inputLoop);
+    if (document.querySelector('#triggerDrawer').classList.contains('open')) startInputLoop();
   });
   loadRealAudio();
 }

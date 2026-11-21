@@ -213,13 +213,14 @@ Estética: glassmorphism, fondo aurora, puntos saturados con halo aditivo y bril
 - 1000 samples sintéticos + 1 real (`SNARE.cm`, id 9001).
 - Posición: X = duración en log, Y = brightness en log. La nube tiene sensación 3D, sin ejes visibles.
 - Hover: tooltip con nombre, categoría, path, duración, brightness, druminess.
-- Click en un punto: lo selecciona e inicia drag.
+- Click en un punto: lo selecciona y habilita hover por el mapa (sin arrastrar). **ALT + drag** inicia el arrastre hacia los faders o hacia Finder (demo). El click/hover hace snap al sample más cercano dentro de un aura de 20 px.
 - **Rueda:** zoom anclado al cursor (0.7×–6×).
-- **Click derecho + arrastrar:** pan con cursor de mano. Sin auto-pan en bordes.
-- **Click izquierdo en vacío:** pan.
+- **Click derecho + arrastrar o Ctrl + click izquierdo + arrastrar:** pan con cursor de mano. Sin auto-pan en bordes.
+- **Click izquierdo en vacío:** solo cierra paneles; no mueve la cámara. El pan queda en click derecho o Ctrl+click.
 - Botones `−`, `+`, `⤢` para zoom/reset.
 - Click en el Universo cierra TRIGGER, editor y Settings.
-- **SIMILARITY**: al seleccionar un sample se calculan 25 vecinos por categoría, duración (log), brightness (log) y druminess, con una separación visual mínima para no caer en casi-duplicados. Las flechas `◂ ▸` (o `← →`) recorren la lista; el mapa se centra en cada sample y traza una **línea animada** desde el anterior. Al volver desde FILE SEARCH, el Universe se centra en el sample seleccionado.
+- **Scrub:** mantener el click y moverse por el mapa reproduce un preview corto de cada sample y dibuja una estela multicolor entre los puntos visitados; al soltar, la estela se desvanece en ~2,4 s.
+- **SIMILARITY**: al seleccionar un sample se calculan 33 vecinos por categoría, duración (log), brightness (log) y druminess, con una separación visual mínima para no caer en casi-duplicados. Las flechas `◂ ▸` (o `← →`) recorren la lista; el mapa se centra en cada sample y traza una **línea animada** desde el anterior. Al volver desde FILE SEARCH, el Universe se centra en el sample seleccionado. La barra tiene fade en ambos bordes y se auto-oculta a los 3,5 s sin navegar; se oculta al panear, hacer zoom, abrir TRIGGER/editor, buscar o cambiar de vista.
 
 ### 7.3 FILE SEARCH
 
@@ -333,7 +334,8 @@ No es un solo hit: es una **secuencia de snare** con 11 golpes principales, ghos
 - **Offsets negativos no se aplican** en Web Audio: `scheduleSlot` usa `Math.max(0, s.offset)`. El rango de UI es −5…+50 ms.
 - **Velocity** no se usa en el preview.
 - **Normalize** es un toast demo.
-- **Similitud**: usa features sintéticas (categoría, duración, brightness, druminess), no análisis tímbrico del audio. La línea/centrado son efectos de navegación.
+- **ALT + drag fuera de un fader** muestra el toast de export a Finder; el drag real al Finder queda para el plugin.
+- **Similitud**: usa features sintéticas (categoría, duración, brightness, druminess), no análisis tímbrico del audio. La línea y el paneo suave son efectos de navegación.
 - **ONE SHOT / GATE** se guarda pero el scheduler no distingue el modo gate.
 - El motor C++ no se puede compilar como plugin (faltan SDKs); los headers DSP sí se compilan y testean.
 
@@ -578,7 +580,8 @@ AAX **no** se necesita.
 9. **Layout roto en ventanas angostas**: la media query de 1040 px conservaba reglas del layout viejo (`.app` con tres filas y `.workspace` con tres columnas); el Universe quedaba aplastado a 52 px. Se eliminaron esas dos reglas.
 10. **FILE SEARCH rediseñado**: menos datos por fila, tipografía mayor y jerarquía tipo Finder. Ver 7.3.
 11. **Barra superior rediseñada**: título centrado, search con toggle folder/universo, OUTPUT + mini VU al extremo derecho y AUDIO TEST eliminado. Ver 7.1 y 7.6.
-12. **SIMILARITY funcional + FAVORITES**: navegación por 25 vecinos, centrado y línea animada, teclas ← →, favoritos persistentes y nodo FAVORITES en FILE SEARCH. Ver 7.2 y 7.3.
+12. **SIMILARITY funcional + FAVORITES**: navegación por 33 vecinos, seguimiento suave y línea animada, teclas ← →, favoritos persistentes y nodo FAVORITES en FILE SEARCH. Ver 7.2 y 7.3.
+13. **Performance del prototipo**: el waveform del INPUT solo se dibuja con el drawer TRIGGER abierto; meters a ~25 fps y slots solo cuando el drawer está visible; redraw del Universe coalescido por frame; tooltip con caché de HTML. El renderer de OpenCode bajó de ~99 % a ~12 % de CPU en reposo.
 
 ---
 

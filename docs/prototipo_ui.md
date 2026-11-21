@@ -91,11 +91,28 @@ El browser (Universe / File Search) solo selecciona y preescucha; no abre el edi
 
 ## Actualización 20/11 — similitud y favoritos
 
-- Al seleccionar un sample se arma una lista de **25 vecinos** ordenada por categoría + duración (log) + brightness (log) + druminess.
+- Al seleccionar un sample se arma una lista de **33 vecinos** ordenada por categoría + duración (log) + brightness (log) + druminess.
 - Para evitar casi-duplicados, cada vecino debe estar a una **distancia visual mínima** del sample base y de los anteriores. Así las flechas recorren la nube.
 - **◂ ▸** o **← →** navegan la lista. El índice se muestra como `3 / 25 · Nombre`.
-- Al navegar, el Universe **se centra** en el sample nuevo y dibuja una **línea con estela** desde el anterior.
-- Al volver desde FILE SEARCH, el Universe se centra en el sample seleccionado.
+- Al navegar, el Universe hace un **seguimiento suave** (solo si el sample queda cerca del borde) y dibuja una **línea con estela** desde el anterior. No recentra cada selección.
+- Al volver desde FILE SEARCH, el Universe solo ajusta si el sample seleccionado quedó fuera del área segura.
+- La barra tiene **fade en ambos bordes** (efecto “desde el infinito”) y se **auto-oculta a los 3,5 s** sin navegar. Se oculta al panear, hacer zoom, abrir TRIGGER/editor, buscar o cambiar a FILE SEARCH; cada paso entre similares reinicia el timer.
 - **♥** en la barra de similitud y en cada fila de FILE SEARCH agrega/quita favoritos.
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
+
+## Actualización 21/11 — performance
+
+- El waveform del **INPUT** solo se redibuja con el drawer TRIGGER abierto.
+- Los meters corren a ~25 fps; los 8 slots solo se actualizan si el drawer está visible. El VU de OUTPUT sigue siempre.
+- `drawUniverse` se coalesce por `requestAnimationFrame` en mousemove/wheel.
+- El tooltip solo rehace su HTML cuando cambia el sample; la posición se actualiza aparte.
+- Resultado: el renderer de OpenCode pasó de ~99 % a ~12 % de CPU en reposo.
+
+## Actualización 21/11 — scrub y estela
+
+- Mantener el **click izquierdo** y moverse por el Universe activa un modo scrub: cada sample bajo el cursor dispara un **preview de 0,8 s** en el momento y queda seleccionado para hover/tooltip. El preview anterior hace un fade de 20 ms.
+- El scrub va dejando una **estela** que conecta los samples visitados. Cada segmento usa el color de la categoría del destino, con glow aditivo, núcleo brillante, nodos y cabeza viva mientras el botón está apretado.
+- Al soltar, la estela se desvanece en ~2,4 s. Un nuevo click la reinicia.
+- El click/hover hace **snap** al sample más cercano dentro de un **aura de 20 px**. El click en vacío solo cierra paneles: no busca ni centra nada.
+- El preview usa el buffer procedural cacheado de cada sample sintético o el WAV real de `SNARE.cm`.

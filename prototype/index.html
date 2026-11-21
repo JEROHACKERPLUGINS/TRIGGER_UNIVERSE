@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=35">
 </head>
 <body>
 <div class="app">
@@ -64,7 +64,7 @@
               <div class="file-preview">
                 <span class="fp-dot" id="filePreviewDot"></span>
                 <span class="fp-name" id="filePreviewName">Select a file</span>
-                <span class="fp-hint">drag to TRIGGER ↓</span>
+                <span class="fp-hint">ALT + drag to TRIGGER ↓</span>
                 <button class="chip" id="fileAudition">▶ Audition</button>
               </div>
             </div>
@@ -82,7 +82,7 @@
           </div>
         </div>
 
-        <div class="similar-bar">
+        <div class="similar-bar" id="similarBar">
           <span class="lbl">SIMILARITY</span>
           <button class="sim-arrow" id="simPrev" title="Previous similar">◂</button>
           <button class="sim-arrow" id="simNext" title="Next similar">▸</button>
@@ -234,6 +234,6 @@
 
 <div class="toast" id="toast"></div>
 <div class="drag-ghost" id="dragGhost"></div>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

@@ -25,10 +25,11 @@ Controles principales:
 
 - Click en un fader **01–08** para abrir el editor del sample cargado en ese slot.
 - **TRIGGER** (pestaña inferior) abre el drawer con el detector y los faders.
-- Arrastrar un sample desde el Universe o FILE SEARCH a un fader para asignarlo.
-- Rueda del mouse: zoom anclado al cursor. Click derecho + arrastrar: pan.
+- Mantené el click y movete por el Universe: se escucha un preview inmediato de cada sample (snap dentro de un aura de ~20 px) y queda una **estela de colores** entre los puntos visitados. Al soltar, la estela se desvanece.
+- Click en un sample: lo selecciona y permite hacer hover por el mapa. **ALT + arrastrar** desde el Universe o FILE SEARCH a un fader para asignarlo; si se suelta fuera de un fader, se muestra el toast de export a Finder (demo).
+- Rueda del mouse: zoom anclado al cursor. Click derecho + arrastrar o **Ctrl + click izquierdo + arrastrar**: pan. Click izquierdo en vacío: solo cierra paneles, sin mover la cámara.
 - **FILE SEARCH** alterna entre el universo y el árbol de carpetas (ícono de carpeta a la derecha del buscador).
-- **SIMILARITY** (abajo): al seleccionar un sample se arma una lista de 25 parecidos. Las flechas `◂ ▸` o las teclas `← →` recorren esa lista; el Universe se centra en cada sample y dibuja una línea animada entre ambos.
+- **SIMILARITY** (abajo): al seleccionar un sample se arma una lista de 33 parecidos. Las flechas `◂ ▸` o las teclas `← →` recorren esa lista; el Universe hace un paneo suave solo si el sample queda cerca del borde y dibuja una línea animada entre ambos.
 - **♥** en la barra de similitud o en cada fila de FILE SEARCH: agrega/quita favoritos persistentes. **FAVORITES** aparece arriba del árbol de carpetas.
 - **Settings** contiene AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS y AUDIO/MIDI.
 

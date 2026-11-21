@@ -76,13 +76,13 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: abrí **TRIGGER ▲** y clickeá 
 ## Qué está implementado en el prototipo
 
 - Universe full-bleed con 1000 samples sintéticos + `SNARE.cm.wav` real.
-- Zoom con rueda anclado al cursor; pan con click derecho; hover con tooltip.
-- FILE SEARCH con árbol, búsqueda, preview, audition y drag & drop a faders.
+- Zoom con rueda anclado al cursor; pan con click derecho o Ctrl+click; click izquierdo en vacío solo cierra paneles; hover/snap dentro de un aura de 20 px con tooltip.
+- FILE SEARCH con árbol, búsqueda, preview, audition y ALT + drag a faders.
 - Editor flotante con tabs SAMPLE / ENVELOPE / TONE / SLOT.
 - Waveform real, start/end, fades, reverse, ADSR, tone/cut, tune, pan, loop.
 - TRIGGER drawer con detector, 8 faders numerados, meters reales, M/S/Ø, badges de fase.
 - Settings con AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS, AUDIO/MIDI.
-- SIMILARITY funcional: 25 vecinos por features, flechas y teclas ← →, centrado del Universe y línea animada.
+- SIMILARITY funcional: 33 vecinos por features, flechas y teclas ← →, seguimiento suave del Universe y línea animada.
 - Favoritos persistentes (`localStorage`) con corazón en la barra y en FILE SEARCH, más el nodo FAVORITES.
 - OUTPUT knob real con mini VU vertical de salida. Export eliminado.
 - Web Audio: 8 capas, snare real como INPUT, primer golpe como sample del slot 01, polaridad 180° real.
