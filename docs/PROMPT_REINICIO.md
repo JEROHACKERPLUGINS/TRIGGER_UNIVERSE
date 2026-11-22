@@ -94,7 +94,7 @@ Limitaciones del prototipo:
 - Similitud basada en features sintéticas, no en análisis tímbrico real.
 - 90° / 260° **no** se aplican al audio; solo 180°.
 - Offsets negativos clampeados a 0 en Web Audio.
-- Velocity no aplicada; Normalize/folder picker son demos.
+- Velocity no aplicada; folder picker y Audio/MIDI son demos.
 
 ---
 

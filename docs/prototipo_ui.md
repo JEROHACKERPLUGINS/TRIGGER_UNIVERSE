@@ -20,7 +20,7 @@ Opciones alternativas propuestas:
 El editor vive dentro de la página TRIGGER y corresponde al slot seleccionado (por defecto **SLOT 01**). Se abre al clickear un slot del dock. Incluye:
 
 - **SLOT**: Level, Pan, Tune, Mute/Solo/Ø, Auto Phase (REF INPUT / SLOT 1), Timing, Offset, Shift 0°/90°/180°/260°.
-- **SAMPLE**: waveform, start/end, fade in/out, reverse, normalize, audition.
+- **SAMPLE**: waveform, start/end, fade in/out y Reverse (con estado activo).
 - **ENVELOPE**: A/D/R editable con tres puntos libres en X e Y (attack: tiempo + pico; decay: tiempo + nivel; release: punto final libre en tiempo + nivel), sin hold ni sustain. El release cae por defecto al final del sample.
 - **TONE**: tone, cut, velocity sensitivity, gain, playback one-shot/gate, loop.
 
@@ -102,6 +102,13 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - **♥** en la barra de similitud y en cada fila de FILE SEARCH agrega/quita favoritos.
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
+
+## Actualización 21/11 — limpieza del panel SAMPLE
+
+- Se quitaron los botones **Audition** y **Normalize** del panel SAMPLE.
+- **Reverse** queda junto a los valores de start/end/fades, con estado activo mint.
+- Audition se mantiene al clickear un Trigger Slot lleno o una fila de FILE SEARCH.
+- Se eliminó el playhead de audition del waveform.
 
 ## Actualización 21/11 — envelope A/D/R
 

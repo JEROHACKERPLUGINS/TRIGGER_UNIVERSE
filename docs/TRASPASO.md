@@ -248,11 +248,12 @@ Paneles (visibles a la vez en la página TRIGGER):
    - Waveform real del sample del slot.
    - Handles arrastrables de **start / end / fade in / fade out**.
    - Readout en ms.
-   - **▶ Audition**, **Reverse** (real en Web Audio), **Normalize** (toast demo).
+   - **Reverse** real en Web Audio, con estado activo mint; queda junto a los readouts.
+   - Audition se hace clickeando un Trigger Slot lleno o una fila de FILE SEARCH.
    - Drag desde la waveform a otro slot.
 2. **ENVELOPE**
-   - A/D/R editable con handles (sin sustain).
-   - Readout A/D/S/R y botón Reset.
+   - A/D/R editable con tres puntos libres (sin hold ni sustain).
+   - Readout A/D/R y botón Reset.
 3. **TONE**
    - TONE (−100…+100), CUT (0–100%), VEL SENS, GAIN.
    - PLAYBACK: ONE SHOT / GATE; LOOP.
@@ -337,7 +338,6 @@ No es un solo hit: es una **secuencia de snare** con 11 golpes principales, ghos
 - El **auto-phase es simulado**: lag/polaridad/confianza determinísticos por `sample.id`. La UX es real; el análisis no.
 - **Offsets negativos no se aplican** en Web Audio: `scheduleSlot` usa `Math.max(0, s.offset)`. El rango de UI es −5…+50 ms.
 - **Velocity** no se usa en el preview.
-- **Normalize** es un toast demo.
 - **ALT + drag fuera de un slot** muestra el toast de export a Finder; el drag real al Finder queda para el plugin.
 - **Similitud**: usa features sintéticas (categoría, duración, brightness, druminess), no análisis tímbrico del audio. La línea y el paneo suave son efectos de navegación.
 - **ONE SHOT / GATE** se guarda pero el scheduler no distingue el modo gate.
@@ -471,7 +471,7 @@ AAX **no** se necesita.
 - Offsets negativos clampeados a 0.
 - Velocity no aplicada.
 - Gate/one-shot no diferenciados en el scheduler.
-- Normalize/folder picker/Audio-MIDI son demos.
+- Folder picker / Audio-MIDI son demos.
 - Datos sintéticos: 1000 samples; el árbol no refleja una carpeta real.
 - Cache busting manual (`?v=N` en `index.html`); si se edita CSS/JS y no se ve el cambio, subir la versión.
 
@@ -604,6 +604,7 @@ AAX **no** se necesita.
 29. **Editor numérico neutro**: se quitó el halo mint, el subrayado punteado y el cambio de color al hover. El valor editable se indica solo con un recuadro gris de 1 px y fondo apenas más claro; la selección de texto también usa gris. El estado inválido mantiene un borde rojo tenue.
 30. **Envelope A/D/R sin hold**: los tres puntos son libres en X e Y. Attack ajusta tiempo y pico; Decay ajusta tiempo y nivel; Release es el punto final, libre en tiempo y nivel, y por defecto cae al final del sample. No hay meseta de sustain: el release sale directamente del decay. El readout R es la duración desde el decay hasta el punto de release; editarlo mueve ese punto. Mover Decay no mueve el release. Reset A 0 / D 120, release al final del sample, pico 100%, nivel de decay 50% y nivel final 0%. El motor sigue soportando ADSR.
 31. **Waveform en el ADR**: el gráfico del envelope superpone la waveform del sample recortado (y reversible) como silueta tenue detrás de la línea. El release point queda por defecto al final de cada sample, de modo que R se recalcula por sample; su nivel final es libre.
+32. **SAMPLE limpio**: se quitaron los botones Audition y Normalize del panel SAMPLE. Audition queda en el click de un Trigger Slot lleno o una fila de FILE SEARCH; Reverse queda junto a los readouts de start/end/fades y se marca en mint cuando está activo. Se eliminó el playhead de audition.
 
 ---
 

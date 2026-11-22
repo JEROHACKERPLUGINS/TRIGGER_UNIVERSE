@@ -326,6 +326,7 @@ body{
 .chip:hover{color:var(--text);border-color:var(--line-strong);background:rgba(255,255,255,.05)}
 .chip.danger:hover{color:#FFB3B3;border-color:rgba(255,107,107,.4)}
 .chip.toggle.on{background:rgba(255,107,107,.14);border-color:rgba(255,107,107,.5);color:#FFC2C2}
+.chip.reverse.on{background:rgba(45,226,197,.12);border-color:rgba(45,226,197,.48);color:var(--mint)}
 .env-note{display:flex;align-items:center;gap:6px;font-size:12px;letter-spacing:.12em;
   color:var(--muted);margin-bottom:4px}
 .live-dot{width:5px;height:5px;border-radius:50%;background:var(--mint);box-shadow:0 0 8px var(--mint);

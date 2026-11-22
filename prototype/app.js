@@ -2,7 +2,7 @@
 
 /* =========================================================
    TRIGGER UNIVERSE — UI prototype
-   - Inspector edits the SELECTED SAMPLE (audition via master).
+   - Inspector edits the selected slot; audition via a filled Trigger Slot or a FILE SEARCH row.
    - Drag the sample to one of the 8 TRIGGER faders.
    - Click a fader -> slot popover with AUTO PHASE.
    - FILE SEARCH = Finder-like tree of user folders.
@@ -2137,6 +2137,7 @@ function updateInspector() {
   $('#gain').value = slot.gain;
   $('#gainVal').textContent = fmtDb(slot.gain);
   $('#loopBtn').classList.toggle('on', slot.loop);
+  $('#reverseBtn').classList.toggle('on', !!slot.reverse);
   $$('#playbackSeg button').forEach(b => b.classList.toggle('active', b.dataset.pb === slot.playback));
 
   renderWaveform();
@@ -2196,7 +2197,6 @@ function renderWaveform() {
     <circle data-handle="end" cx="${endX}" cy="${top - 2}" r="5" fill="#fff" stroke="${color}" stroke-width="2" style="cursor:ew-resize"/>
     <circle data-handle="fadeIn" cx="${startX + fIn}" cy="${top}" r="4" fill="${color}" stroke="#0B0E14" stroke-width="1.5" style="cursor:ew-resize"/>
     <circle data-handle="fadeOut" cx="${endX - fOut}" cy="${top}" r="4" fill="${color}" stroke="#0B0E14" stroke-width="1.5" style="cursor:ew-resize"/>
-    <line id="playhead" x1="${startX}" y1="8" x2="${startX}" y2="${bottom + 8}" stroke="#fff" stroke-width="1" opacity="0"/>
   `;
   updateWaveReadout();
 }
@@ -2557,10 +2557,11 @@ $$('.tab').forEach(t => t.addEventListener('click', () => {
 $('#reverseBtn').onclick = () => {
   const slot = currentSlot();
   slot.reverse = !slot.reverse;
+  $('#reverseBtn').classList.toggle('on', slot.reverse);
   renderWaveform();
+  renderADSR();
   toast(slot.reverse ? 'Sample reversed' : 'Sample forward');
 };
-$('#normalizeBtn').onclick = () => toast('Normalize: −0.3 dB peak (demo)');
 
 function animateMaster() {
   const m = $('#masterMeter');
@@ -2575,31 +2576,6 @@ function animateMaster() {
   requestAnimationFrame(step);
 }
 
-let auditionRAF = null;
-function auditionSample() {
-  const slot = currentSlot();
-  const smp = slotSample(slot);
-  if (!smp) { toast('Empty slot'); return; }
-  ensureAudio();
-  playSlot(state.selectedSlot, 0.02);
-  const line = $('#playhead');
-  if (!line) return;
-  const { W, padX } = waveGeom();
-  const x0 = padX + slot.start * (W - 2 * padX);
-  const x1 = padX + slot.end * (W - 2 * padX);
-  const t0 = performance.now(), dur = 900;
-  cancelAnimationFrame(auditionRAF);
-  const step = now => {
-    const t = Math.min(1, (now - t0) / dur);
-    const x = x0 + (x1 - x0) * t;
-    line.setAttribute('x1', x); line.setAttribute('x2', x);
-    line.style.opacity = 1;
-    if (t < 1) auditionRAF = requestAnimationFrame(step);
-    else line.style.opacity = 0;
-  };
-  auditionRAF = requestAnimationFrame(step);
-}
-$('#audition').onclick = auditionSample;
 
 // ---------- detector ----------
 const DET = [
