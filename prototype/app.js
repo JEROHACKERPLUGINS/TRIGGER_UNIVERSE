@@ -3146,25 +3146,40 @@ function scheduleGate(startTime) {
     gateGain.gain.linearRampToValueAtTime(realGateEnv[b], startTime + b * blockDur);
   }
 }
+const GATE_GLIDE = 0.008; // 8 ms de-click when the gate is toggled while the dry input plays
 function rescheduleGate() {
   if (!gateGain || !audioCtx) return;
   const now = audioCtx.currentTime;
-  gateGain.gain.cancelScheduledValues(now);
+  const current = Number.isFinite(gateGain.gain.value) ? gateGain.gain.value : 1;
+  // cancelAndHold preserves the instantaneous value of a running value curve;
+  // cancelScheduledValues alone can leave the curve running under the new one.
+  if (gateGain.gain.cancelAndHoldAtTime) gateGain.gain.cancelAndHoldAtTime(now);
+  else {
+    gateGain.gain.cancelScheduledValues(now);
+    gateGain.gain.setValueAtTime(current, now);
+  }
   if (!state.detector.gate || !realGateEnv || !realInputBuffer) {
-    gateGain.gain.setValueAtTime(1, now);
+    gateGain.gain.setValueAtTime(current, now);
+    gateGain.gain.linearRampToValueAtTime(1, now + GATE_GLIDE);
     return;
   }
   const blockDur = realGateBlock / realInputBuffer.sampleRate;
   const startIdx = clamp(Math.floor((now - inputStartCtxTime) / blockDur), 0, realGateEnv.length - 1);
   const curve = realGateEnv.subarray(startIdx);
+  const target = realGateEnv[startIdx];
+  // Glide to the envelope value at the current playhead, then follow the new
+  // curve. This avoids the click/double-hit impression when GATE is toggled.
+  gateGain.gain.setValueAtTime(current, now);
+  gateGain.gain.linearRampToValueAtTime(target, now + GATE_GLIDE);
+  const curveStart = now + GATE_GLIDE;
   try {
-    gateGain.gain.setValueCurveAtTime(curve, now, curve.length * blockDur);
+    gateGain.gain.setValueCurveAtTime(curve, curveStart, curve.length * blockDur);
     return;
   } catch (e) {}
-  gateGain.gain.setValueAtTime(realGateEnv[startIdx], now);
+  gateGain.gain.setValueAtTime(target, curveStart);
   for (let b = startIdx + 1; b < realGateEnv.length; b++) {
     const t = inputStartCtxTime + b * blockDur;
-    if (t > now) gateGain.gain.linearRampToValueAtTime(realGateEnv[b], t);
+    if (t > curveStart) gateGain.gain.linearRampToValueAtTime(realGateEnv[b], t);
   }
 }
 

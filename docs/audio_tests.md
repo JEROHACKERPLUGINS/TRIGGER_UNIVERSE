@@ -147,6 +147,7 @@ El detector ahora captura el **pico real** del transiente y su `peakTime`; antes
 | Reverse SNARE.cm | forward 0.886 · reverse 0.923 · forward 0.886 |
 | Loop off vs on @800 ms | 0 vs energía audible (loop 2 s) |
 | GATE playback con gate cerrado | silencio (one-shot 0.886) |
+| GATE ON/OFF con input seco | glide de 8 ms; 1 fuente de INPUT y 1 muestra por hit (sin duplicados) |
 | Gate ATTACK 0 | envolvente = 1 desde el bloque anterior al pico |
 | Offset −5 ms / +50 ms | aplicado dentro del lookahead / clamp al próximo bloque |
 | 900×1200 · 1076×717 · 1280×800 · 1920×1080 | sin overflow ni solapamiento entre paneles |
