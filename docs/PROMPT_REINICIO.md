@@ -17,6 +17,8 @@ Antes de responder o tocar código, leé en este orden:
 
 No propongas reescribir nada antes de leer esos archivos.
 
+**Último estado: 22/11/2026.** Lo nuevo de esa sesión está resumido en `docs/TRASPASO.md` §2.1 (detección en tiempo real en `prototype/detector-worklet.js`, RETRIGGER estilo Trigger 2, editor SAMPLE + ENVELOPE multipunto con zoom, faders de consola, selección múltiple estilo Finder, teclas 1–8 / Alt+1–8 / Tab). Al tocar `app.js` o `style.css`, subí el `?v=` de `index.html`.
+
 ---
 
 ## Qué es el proyecto

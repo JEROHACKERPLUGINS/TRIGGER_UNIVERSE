@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=199">
+<link rel="stylesheet" href="style.css?v=208">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -125,7 +125,7 @@
           <div class="dc-knobs" id="detKnobsFilter"></div>
         </section>
 
-        <div class="det-wave" title="Waveform (2 s window): blue = post-gate · red ghost = pre-gate input · dashed = DETAIL threshold · orange = detected hits">
+        <div class="det-wave" title="Waveform · wheel = zoom (20 ms–20 s), Shift+wheel = scroll when stopped · blue = post-gate · red ghost = pre-gate input · dashed = DETAIL threshold · orange = detected hits">
           <canvas id="inputWave"></canvas>
           <span class="det-wave-label" id="inputWaveLabel">INPUT</span>
         </div>
@@ -153,24 +153,18 @@
         <div class="panel active" data-panel="sample">
           <div class="unified-editor">
             <div class="unified-head">
-              <span class="sample-meta" id="sampleMeta">—</span>
+              <span class="sample-meta" id="sampleMeta" title="Drag the sample to a Trigger Slot">—</span>
               <button class="chip reverse" id="reverseBtn" title="Reverse sample">Reverse</button>
             </div>
             <div class="unified-wave-wrap">
-              <svg id="wave" viewBox="0 0 600 170" preserveAspectRatio="none"></svg>
+              <svg id="wave" viewBox="0 0 600 170"></svg>
             </div>
             <div class="unified-readouts">
-              <div class="u-readout-row u-sample-row">
-                <span>START <b id="startVal">0.0 ms</b></span>
-                <span>END <b id="endVal">0.0 ms</b></span>
-                <span>FADE IN <b id="fadeInVal">0.0 ms</b></span>
-                <span>FADE OUT <b id="fadeOutVal">0.0 ms</b></span>
-              </div>
-              <div class="u-readout-row u-env-row">
-                <span>A <b id="aVal">0 ms</b></span>
-                <span>D <b id="dVal">120 ms</b></span>
-                <span>R <b id="rVal">—</b></span>
-                <span class="u-env-tag"><i class="live-dot"></i> ENV</span>
+              <div class="u-readout-row">
+                <span class="u-start" title="Sample start · drag the flag on the waveform">START <b id="startVal">0.0 ms</b><button class="u-snap" id="snapStartBtn" title="Adjust START to the transient (onset of the sample)">⇥ TRANSIENT</button></span>
+                <span class="u-env" title="Attack · time to the peak">ATTACK <b id="aVal">0 ms</b></span>
+                <span class="u-env" title="Decay · time from the peak to the decay level">DECAY <b id="dVal">120 ms</b></span>
+                <span class="u-env" title="Release · time from the decay point to the end point">RELEASE <b id="rVal">—</b></span>
               </div>
             </div>
           </div>
@@ -250,7 +244,7 @@
 
 </div>
 
-<button class="side-bracket left" id="triggerTab" data-kbd="T" title="Open TRIGGER page"><span>TRIGGER</span></button>
+<button class="side-bracket left" id="triggerTab" data-kbd="Tab" title="Open TRIGGER page (Tab toggles TRIGGER / UNIVERSE)"><span>TRIGGER</span></button>
 <button class="side-bracket right" id="settingsBtn" data-kbd="," title="Settings"><span>SETTINGS</span></button>
 
 <div class="settings-menu" id="settingsMenu">
@@ -298,6 +292,6 @@
 <div class="toast" id="toast"></div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=199"></script>
+<script src="app.js?v=208"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 # TRASPASO — TRIGGER UNIVERSE
 
-**Fecha:** 20/11/2026
+**Fecha:** 20/11/2026 · **actualizado 22/11/2026** (ver §2.1)
 **Propósito:** dejar todo el contexto necesario para retomar el proyecto en un chat nuevo sin perder decisiones, estado ni próximos pasos.
 **Documento principal:** este archivo. **Prompt listo para pegar:** [`PROMPT_REINICIO.md`](PROMPT_REINICIO.md).
 
@@ -23,6 +23,25 @@ El usuario busca un sample en HOME o en FILE SEARCH, lo arrastra a uno de los 8 
 ## 2. Estado en una línea
 
 **Fase 0 aprobada. Motor auditado y testeado. Prototipo UI navegable con audio real funcionando. Build del plugin bloqueado por entorno (faltan Xcode completo, CMake, Node y SDK VST3).**
+
+---
+
+## 2.1 Sesión 22/11/2026 — qué cambió (leer primero)
+
+Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el detalle de cada control.
+
+- **Detección en tiempo real** (`prototype/detector-worklet.js`, AudioWorklet): GATE → INPUT → FILTER → DETECT corren muestra por muestra sobre el audio que suena; los knobs se aplican en la muestra siguiente. **Lookahead de 100 ms** en el seco (`RT_LOOKAHEAD`); los hits llegan con ≥86 ms de margen y los slots se programan en el onset exacto (`playSlot(..., atTime)`, error 0,000 ms). Fallback precalculado si no hay AudioWorklet. Con el input detenido se ve una vista previa estática (`detectInputHits`, misma lógica que el worklet).
+- **Gate**: antes se desfasaba ~50 ms al mover knobs (curvas AudioParam programadas tarde en Chrome); ahora vive en el worklet. `prototype/gate-worklet.js` quedó **sin uso**: se puede borrar.
+- **RETRIGGER estilo Trigger 2**: solo tiempo ciego; pasado ese tiempo, si la señal sigue sobre DETAIL vuelve a disparar (0 ms = flams, ~4 disparos por golpe en SN TOP 1). **Default 30 ms** (16 daba ~2 por golpe). El C++ (`engine/DrumReplacer/DSP/TransientDetector.h`) todavía tiene la lógica vieja (rearma solo si la señal cae).
+- **Página TRIGGER**: detector y SAMPLE + ENVELOPE 50/50. Editor dibujado en píxeles reales (antes era un SVG estirado). Se quitaron **END / FADE IN / FADE OUT**: quedan **START** (bandera abajo + botón **⇥ TRANSIENT**) y el envelope. **Release y readouts (START / ATTACK / DECAY / RELEASE como duraciones) se dejaron como estaban a pedido del usuario.**
+- **Envelope multipunto** (estilo LFO Tool): doble click agrega puntos sin límite (pasado R, el nuevo punto pasa a ser R); doble click sobre un punto extra lo borra; niveles libres. Modelo: `slot.adsr` (A/D/R) + `slot.envPts [{t,v,id}]`; `slotEnvPoints()` arma la forma y `scheduleSlot` programa todos los puntos.
+- **Zoom con la ruedita** en SAMPLE + ENVELOPE y en la waveform del input (20 ms–20 s); Shift+rueda = scroll.
+- **Faders de consola**: verticales propios (`.sf-fader`), 0 dB a 3/4 del recorrido (`FADER_TAPER`), escala en dB, medidor en la misma escala, más largos (`--fader-h`).
+- **Selección múltiple estilo Finder** (`multiSel`, scopes `env` / `knobs` / `faders` / `slots`): click = uno; **Shift o Cmd+click = sumar/quitar de a uno**; recuadro desde cualquier espacio vacío (también el negro entre paneles); click afuera deselecciona salvo sobre algo seleccionado; mover uno mueve el grupo; Cmd+A; Delete borra puntos. **Faders y slots nunca se mezclan.** Pasar a UNIVERSE deselecciona todo.
+- **Teclado**: **Tab** alterna TRIGGER ↔ UNIVERSE; **1–8** reproducen el slot; **Alt+1–8** cargan el sample (HOME/FILE SEARCH: el seleccionado; TRIGGER: el del editor). Arrastrar el sample del editor a un slot: desde su nombre arriba de la waveform.
+- **Bugs viejos arreglados**: click en vacío del editor dejaba el sample pegado al cursor (ahora el drag termina también en `pointerup`).
+- **Ojo con la caché**: al tocar `app.js`/`style.css`, subir `?v=` en `index.html` (va en `v=208`) y en `detector-worklet.js?v=` dentro de `app.js`; si no, Chrome sigue usando la copia vieja.
+- **GitHub**: el repo `JEROHACKERPLUGINS/TRIGGER_UNIVERSE` se puede leer pero Claude no puede hacer push (falta instalar la Claude GitHub App en esa org). Los cambios se commitean desde la Mac.
 
 ---
 
