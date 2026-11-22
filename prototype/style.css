@@ -1354,18 +1354,18 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 @media (max-height:820px){
   .trigger-view .dc-knobs{gap:1px}
   .trigger-view .dc-knobs .knob{gap:0}
-  .trigger-view .dc-knobs .knob-dial{width:20px;height:20px}
-  .trigger-view .dc-knobs .knob-label{font-size:7px;line-height:1.15}
-  .trigger-view .dc-knobs .knob-val{font-size:7px;line-height:1.15}
+  .trigger-view .dc-knobs .knob-dial{width:22px;height:22px}
+  .trigger-view .dc-knobs .knob-label{font-size:7.5px;line-height:1.15}
+  .trigger-view .dc-knobs .knob-val{font-size:7.5px;line-height:1.15}
   .trigger-view .det-meter{height:50px}
   .trigger-view .gate-col{gap:3px}
-  .trigger-view .gate-toggle{font-size:7px;padding:1px}
-  .trigger-view .input-play{font-size:7px;padding:1px}
+  .trigger-view .gate-toggle{font-size:7.5px;padding:1px}
+  .trigger-view .input-play{font-size:7.5px;padding:1px}
 }
 @media (max-height:700px){
-  .trigger-view .dc-knobs .knob-dial{width:18px;height:18px}
-  .trigger-view .dc-knobs .knob-label{font-size:6.5px;line-height:1.1}
-  .trigger-view .dc-knobs .knob-val{font-size:6.5px;line-height:1.1}
+  .trigger-view .dc-knobs .knob-dial{width:20px;height:20px}
+  .trigger-view .dc-knobs .knob-label{font-size:7px;line-height:1.1}
+  .trigger-view .dc-knobs .knob-val{font-size:7px;line-height:1.1}
   .trigger-view .gate-col{gap:2px}
 }
 

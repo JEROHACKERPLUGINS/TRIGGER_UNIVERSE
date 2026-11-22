@@ -197,6 +197,7 @@ let realHits = [];
 let realInputDuration = 0;
 let realGateEnv = null;
 let realGateBlock = 0;
+let realInputMax = 1;
 
 // ---------- categories ----------
 const CATEGORIES = [
@@ -329,7 +330,7 @@ const state = {
   popoverSlot: null,
   autoRef: 'INPUT',
   autoTiming: false,
-  detector: { threshold: -18, attack: .5, hold: 4, release: 450, sens: 45, retrig: 50, detail: 50, low: 20, high: 20000, supp: 50, input: 0, mix: 50, gate: true },
+  detector: { attack: .5, hold: 4, release: 450, sens: 51, retrig: 16, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 50, gate: true },
 };
 
 function pickByCategory(cat, offset = 0) {
@@ -2580,23 +2581,33 @@ function animateMaster() {
 
 // ---------- detector ----------
 const DET = [
-  { key: 'threshold', label: 'THRESHOLD', min: -60, max: 0,   val: -18,   unit: 'dB', fmt: v => fmtDb(v), step: .5, decimals: 1, group: 'gate' },
-  { key: 'attack',    label: 'ATTACK',    min: 0,   max: 200, val: .5,    unit: 'ms', fmt: v => fmtMs(v), step: .1, decimals: 1, group: 'gate' },
-  { key: 'hold',      label: 'HOLD',      min: 0,   max: 500, val: 4,     unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate' },
-  { key: 'release',   label: 'RELEASE',   min: 0,   max: 2000,val: 450,   unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate' },
-  { key: 'input',     label: 'VOLUME',    min: -24, max: 24,  val: 0,     unit: 'dB', fmt: v => fmtDb(v), step: .1, decimals: 1, group: 'input' },
-  { key: 'supp',      label: 'SUPPRESS',  min: 0,   max: 100, val: 50,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'input' },
-  { key: 'low',       label: 'LOWCUT',    min: 20,  max: 20000, val: 20,  log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'filter' },
-  { key: 'high',      label: 'HIGHCUT',   min: 20,  max: 20000, val: 20000, log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'filter' },
-  { key: 'sens',      label: 'SENSITIVITY',min: 0,  max: 100, val: 45,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect' },
-  { key: 'retrig',    label: 'RETRIGGER', min: 0,   max: 1000,val: 50,    unit: 'ms', fmt: v => Math.round(v) + ' ms', group: 'detect' },
-  { key: 'detail',    label: 'DETAIL',    min: 0,   max: 100, val: 50,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect' },
+  { key: 'attack',    label: 'ATTACK',    min: 0,   max: 200, val: .5,    unit: 'ms', fmt: v => fmtMs(v), step: .1, decimals: 1, group: 'gate',
+    tip: 'GATE ATTACK · time for the gate to open on each detected hit' },
+  { key: 'hold',      label: 'HOLD',      min: 0,   max: 500, val: 4,     unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate',
+    tip: 'GATE HOLD · time the gate stays open after attack' },
+  { key: 'release',   label: 'RELEASE',   min: 0,   max: 2000, val: 450,   unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate',
+    tip: 'GATE RELEASE · time for the gate to close after hold' },
+  { key: 'input',     label: 'VOLUME',    min: -24, max: 24,  val: 0,     unit: 'dB', fmt: v => fmtDb(v), step: .1, decimals: 1, group: 'input',
+    tip: 'INPUT VOLUME · level that feeds the waveform and the detector' },
+  { key: 'supp',      label: 'SUPPRESS',  min: 0,   max: 100, val: 0,     unit: '%',  fmt: v => Math.round(v) + '%', group: 'input',
+    tip: 'SUPPRESS · leakage suppression' },
+  { key: 'low',       label: 'LOWCUT',    min: 20,  max: 20000, val: 20,  log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'filter',
+    tip: 'LOWCUT · detection filter only; does not alter the dry audio' },
+  { key: 'high',      label: 'HIGHCUT',   min: 20,  max: 20000, val: 20000, log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'filter',
+    tip: 'HIGHCUT · detection filter only; does not alter the dry audio' },
+  { key: 'sens',      label: 'SENSITIVITY',min: 0,  max: 100, val: 51,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
+    tip: 'SENSITIVITY · helps catch ghost notes and soft hits' },
+  { key: 'retrig',    label: 'RETRIGGER', min: 0,   max: 1000, val: 16,    unit: 'ms', fmt: v => Math.round(v) + ' ms', group: 'detect',
+    tip: 'RETRIGGER · blind window after each hit; shown as the red area' },
+  { key: 'detail',    label: 'DETAIL',    min: 0,   max: 100, val: 14,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
+    tip: 'DETAIL · detection threshold. Higher = ignores bleed; lower = catches ghost notes' },
 ];
 
 function makeKnob(cfg) {
   const el = document.createElement('div');
   el.className = 'knob';
   el.innerHTML = `<div class="knob-dial"><div class="knob-ind"></div></div><div class="knob-label">${cfg.label}</div><div class="knob-val"></div>`;
+  if (cfg.tip) el.title = cfg.tip;
   const dial = $('.knob-dial', el), ind = $('.knob-ind', el), val = $('.knob-val', el);
   const toNorm = v => cfg.log
     ? (Math.log(v) - Math.log(cfg.min)) / (Math.log(cfg.max) - Math.log(cfg.min))
@@ -2610,8 +2621,8 @@ function makeKnob(cfg) {
     val.textContent = cfg.fmt(v);
     state.detector[cfg.key] = v;
     if (cfg.key === 'input' && inputGain) inputGain.gain.value = dbToAmp(v);
-    if (audioReady && ['sens', 'retrig', 'detail', 'supp', 'low', 'high', 'input', 'threshold', 'attack', 'hold', 'release'].includes(cfg.key)) {
-      scheduleDetect(['threshold', 'attack', 'hold', 'release'].includes(cfg.key));
+    if (audioReady && ['sens', 'retrig', 'detail', 'supp', 'low', 'high', 'input', 'attack', 'hold', 'release'].includes(cfg.key)) {
+      scheduleDetect();
     }
   };
   render();
@@ -2711,15 +2722,13 @@ function applyBiquad(data, c) {
   }
   return out;
 }
-let detectPending = 0, gateReschedPending = false;
-function scheduleDetect(gateChanged = false) {
-  if (gateChanged) gateReschedPending = true;
+let detectPending = 0;
+function scheduleDetect() {
   if (detectPending) return;
   detectPending = setTimeout(() => {
     detectPending = 0;
     detectInputHits();
-    if (gateReschedPending && inputPlaying) rescheduleGate();
-    gateReschedPending = false;
+    if (inputPlaying) rescheduleGate();
   }, 40);
 }
 function filterDetection(data, sr) {
@@ -2730,31 +2739,36 @@ function filterDetection(data, sr) {
   if (high < 20000) out = applyBiquad(out, biquadCoeffs('lp', high, sr));
   return out;
 }
-function computeGateEnv(data, sr) {
+function detailThreshold() {
+  const d = clamp(state.detector.detail, 0, 100) / 100;
+  return 0.02 + 0.58 * Math.pow(d, 1.25);
+}
+// The gate is transient-driven: it opens on every detected hit and its
+// attack/hold/release shape the tail of the original input. It does not
+// change detection. This matches Slate Trigger's gate behavior.
+function computeGateEnvFromHits(hits, length, sr) {
   if (!state.detector.gate) { realGateEnv = null; realGateBlock = 0; return null; }
   const block = Math.max(8, Math.round(sr * 0.005));
-  const n = Math.ceil(data.length / block);
+  const n = Math.ceil(length / block);
   const env = new Float32Array(n);
-  const thr = dbToAmp(state.detector.threshold);
-  const atk = Math.max(0.0002, state.detector.attack / 1000);
+  const atk = Math.max(0, state.detector.attack / 1000);
   const hold = Math.max(0, state.detector.hold / 1000);
-  const rel = Math.max(0.005, state.detector.release / 1000);
-  const dt = block / sr;
-  let gain = 0, holdLeft = 0;
+  const rel = Math.max(0, state.detector.release / 1000);
+  const blockDur = block / sr;
   for (let b = 0; b < n; b++) {
-    let peak = 0;
-    const start = b * block, end = Math.min(data.length, start + block);
-    for (let i = start; i < end; i++) {
-      const a = Math.abs(data[i]);
-      if (a > peak) peak = a;
+    const t = b * blockDur;
+    let g = 0;
+    for (let h = 0; h < hits.length; h++) {
+      const dt = t - hits[h].time;
+      if (dt < 0) continue;
+      let v = 0;
+      if (dt < atk) v = atk > 0 ? dt / atk : 1;
+      else if (dt < atk + hold) v = 1;
+      else if (dt < atk + hold + rel) v = rel > 0 ? 1 - (dt - atk - hold) / rel : 0;
+      else continue;
+      if (v > g) g = v;
     }
-    const open = peak >= thr;
-    if (open) holdLeft = hold;
-    const target = (open || holdLeft > 0) ? 1 : 0;
-    if (!open && holdLeft > 0) holdLeft = Math.max(0, holdLeft - dt);
-    const tau = target > gain ? atk : rel;
-    gain += (target - gain) * (1 - Math.exp(-dt / tau));
-    env[b] = gain;
+    env[b] = g;
   }
   realGateEnv = env;
   realGateBlock = block;
@@ -2819,8 +2833,11 @@ function drawInput(now) {
   ctx.clearRect(0, 0, inW, inH);
   const mid = inH / 2, amp = inH * .34;
   const volAmp = dbToAmp(state.detector.input);
-  const thr = dbToAmp(state.detector.threshold);
+  const detailThr = detailThreshold();
   const gateOn = state.detector.gate;
+  const atk = state.detector.attack / 1000;
+  const hold = state.detector.hold / 1000;
+  const rel = state.detector.release / 1000;
 
   const envAt = t => {
     let v = .05;
@@ -2830,7 +2847,21 @@ function drawInput(now) {
     }
     return v;
   };
-  const openAt = t => !gateOn || envAt(t) >= thr;
+  const synthGateAt = t => {
+    if (!gateOn) return 1;
+    let g = 0;
+    for (let k = 0; k < transientAt.length; k++) {
+      const d = t - transientAt[k];
+      if (d < 0) continue;
+      let v = 0;
+      if (d < atk) v = atk > 0 ? d / atk : 1;
+      else if (d < atk + hold) v = 1;
+      else if (d < atk + hold + rel) v = rel > 0 ? 1 - (d - atk - hold) / rel : 0;
+      else continue;
+      if (v > g) g = v;
+    }
+    return g;
+  };
   const trace = () => {
     ctx.beginPath();
     for (let x = 0; x <= inW; x++) {
@@ -2850,7 +2881,7 @@ function drawInput(now) {
   if (gateOn) {
     ctx.save();
     ctx.beginPath();
-    for (let x = 0; x <= inW; x++) if (openAt(x / inW)) ctx.rect(x, 0, 1, inH);
+    for (let x = 0; x <= inW; x++) if (synthGateAt(x / inW) >= .5) ctx.rect(x, 0, 1, inH);
     ctx.clip();
     trace();
     ctx.fillStyle = 'rgba(118,190,255,.55)';
@@ -2865,12 +2896,27 @@ function drawInput(now) {
   ctx.strokeStyle = 'rgba(255,255,255,.22)';
   ctx.lineWidth = 1;
   ctx.stroke();
+  const retrigW = state.detector.retrig > 0 ? Math.max(4, state.detector.retrig / 1000 / 2.6 * inW) : 0;
+  if (retrigW > 0) {
+    ctx.fillStyle = 'rgba(255,90,90,.10)';
+    for (let k = 0; k < transientAt.length; k++) {
+      const x = transientAt[k] * inW;
+      ctx.fillRect(x, 0, Math.min(retrigW, inW - x), inH);
+    }
+  }
 
-  const thrY = mid - amp * Math.min(1, thr * volAmp);
+  const dy = mid - detailThr * amp;
   ctx.setLineDash([3, 3]);
-  ctx.strokeStyle = gateOn ? 'rgba(255,107,107,.62)' : 'rgba(255,107,107,.18)';
-  ctx.beginPath(); ctx.moveTo(0, thrY); ctx.lineTo(inW, thrY); ctx.stroke();
+  ctx.strokeStyle = 'rgba(45,226,197,.52)';
+  ctx.beginPath(); ctx.moveTo(0, dy); ctx.lineTo(inW, dy); ctx.stroke();
   ctx.setLineDash([]);
+  if (inW > 150) {
+    ctx.font = '600 7px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(45,226,197,.72)';
+    ctx.fillText('DETAIL', inW - 3, Math.max(9, Math.min(inH - 4, dy - 3)));
+    ctx.textAlign = 'left';
+  }
 
   for (let k = 0; k < transientAt.length; k++) {
     const x = transientAt[k] * inW;
@@ -2894,11 +2940,11 @@ function drawInput(now) {
 
   const led = $('#hitLed');
   if (led) led.classList.toggle('on', now - flashT < 130);
+  const gateV = synthGateAt(scan);
   const gled = $('#gateLed');
-  if (gled) gled.classList.toggle('on', gateOn && openAt(scan));
-
-  const gv = gateOn && !openAt(scan) ? 0 : 1;
-  const lvl = gv ? Math.round(-30 + envAt(scan) * 26 + 20 * Math.log10(Math.max(volAmp, .001))) : -48;
+  if (gled) gled.classList.toggle('on', gateOn && gateV > .5);
+  const peak = Math.min(1, envAt(scan) * volAmp * gateV);
+  const lvl = Math.round(20 * Math.log10(Math.max(peak, .001)));
   const il = $('#inputLevel');
   if (il) il.textContent = (lvl >= 0 ? '+' : '') + Math.max(-48, lvl) + ' dB';
   const imb = $('#inputMeterBar');
@@ -3294,6 +3340,7 @@ async function loadRealAudio() {
       maxPeak = Math.max(maxPeak, p);
     }
     for (let i = 0; i < n; i++) realInputPeaks[i] /= maxPeak;
+    realInputMax = maxPeak || 1;
     // first hit becomes the slot sample
     const sr = full.sampleRate;
     const start = Math.floor(0.14 * sr);
@@ -3319,29 +3366,25 @@ function detectInputHits() {
   if (!realInputBuffer) return realHits;
   const raw = realInputBuffer.getChannelData(0);
   const sr = realInputBuffer.sampleRate;
-  computeGateEnv(raw, sr);
   const data = filterDetection(raw, sr);
-  const sens = state.detector.sens, detail = state.detector.detail, supp = state.detector.supp / 100;
-  const retrig = Math.round(state.detector.retrig * 0.001 * sr);
-  const thresh = Math.pow(10, (-6 - 0.54 * sens) / 20);
+  const sensGain = Math.pow(2, (state.detector.sens - 50) / 25);
   const volAmp = dbToAmp(state.detector.input);
-  const gateOn = state.detector.gate && realGateEnv;
-  const k = 6 - 0.045 * detail;
+  const normGain = volAmp * sensGain / (realInputMax || 1);
+  const detailThr = detailThreshold();
+  const supp = state.detector.supp / 100;
+  const retrig = Math.round(state.detector.retrig * 0.001 * sr);
+  const k = 2.5;
   const fastRel = Math.exp(-1 / (0.005 * sr));
   const slowCoef = 1 - Math.exp(-1 / (0.05 * sr));
   const win = Math.round(0.005 * sr);
   let fast = 0, slow = 0, supTh = 0, hold = 0, capturing = false, peak = 0, cap = 0, armed = true;
   const hits = [];
   for (let i = 0; i < data.length; i++) {
-    let x = Math.abs(data[i]) * volAmp;
-    if (gateOn) {
-      const gi = Math.min(realGateEnv.length - 1, Math.floor(i / realGateBlock));
-      x *= realGateEnv[gi];
-    }
+    const x = Math.abs(data[i]) * normGain;
     fast = Math.max(x, fast * fastRel);
     slow += (x - slow) * slowCoef;
     supTh *= Math.exp(-1 / (0.05 * sr));
-    const thr = Math.max(thresh, supTh);
+    const thr = Math.max(detailThr, supTh);
     if (armed && fast > thr && fast > slow * k) {
       capturing = true; peak = 0; cap = 0;
     }
@@ -3358,10 +3401,11 @@ function detectInputHits() {
     }
     if (!armed) {
       if (hold > 0) hold--;
-      if (hold <= 0 && fast < thresh * 0.5) armed = true;
+      if (hold <= 0 && fast < detailThr * 0.5) armed = true;
     }
   }
   realHits = hits;
+  computeGateEnvFromHits(hits, raw.length, sr);
   const el = $('#triggerCount'); if (el) el.textContent = String(hits.length);
   return hits;
 }
@@ -3373,6 +3417,7 @@ function drawRealInput(now) {
   const mid = inH / 2, amp = inH * .38;
   const volAmp = dbToAmp(state.detector.input);
   const gateOn = state.detector.gate && !!realGateEnv;
+  const detailThr = detailThreshold();
   const peakAt = x => {
     const idx = Math.min(realInputPeaks.length - 1, Math.floor(x / inW * realInputPeaks.length));
     return Math.min(1, realInputPeaks[idx] * volAmp);
@@ -3388,10 +3433,11 @@ function drawRealInput(now) {
     }
     ctx.closePath();
   };
-  // Gated-out material stays visible but dark; only the open gate is bright.
+  // Full input behind the gate (dark blue).
   traceWave();
   ctx.fillStyle = 'rgba(110,155,255,.13)';
   ctx.fill();
+  // Audio passing the gate (light blue).
   if (gateOn) {
     ctx.save();
     ctx.beginPath();
@@ -3413,17 +3459,33 @@ function drawRealInput(now) {
   ctx.strokeStyle = 'rgba(170,210,255,.22)';
   ctx.lineWidth = 1;
   ctx.stroke();
+  // Retrigger blind window: the red area after each hit.
+  const retrigW = state.detector.retrig > 0 ? Math.max(4, state.detector.retrig / 1000 / realInputDuration * inW) : 0;
+  if (retrigW > 0) {
+    ctx.fillStyle = 'rgba(255,90,90,.10)';
+    for (const h of realHits) {
+      const x = (h.time / realInputDuration) * inW;
+      if (x >= inW) continue;
+      ctx.fillRect(x, 0, Math.min(retrigW, inW - x), inH);
+    }
+  }
   // zero line
   ctx.strokeStyle = 'rgba(255,255,255,.18)';
   ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(inW, mid); ctx.stroke();
-  // gate threshold line (pre-input-volume threshold scaled to the display)
-  const gateAmp = Math.min(1, dbToAmp(state.detector.threshold) * volAmp);
-  const gy = mid - gateAmp * amp;
+  // Detail threshold line: fixed display level, independent of Input Volume.
+  const dy = mid - detailThr * amp;
   ctx.setLineDash([3, 3]);
-  ctx.strokeStyle = state.detector.gate ? 'rgba(255,107,107,.62)' : 'rgba(255,107,107,.18)';
-  ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(inW, gy); ctx.stroke();
+  ctx.strokeStyle = 'rgba(45,226,197,.52)';
+  ctx.beginPath(); ctx.moveTo(0, dy); ctx.lineTo(inW, dy); ctx.stroke();
   ctx.setLineDash([]);
-  // detected hits
+  if (inW > 150) {
+    ctx.font = '600 7px ui-monospace, Menlo, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(45,226,197,.72)';
+    ctx.fillText('DETAIL', inW - 3, Math.max(9, Math.min(inH - 4, dy - 3)));
+    ctx.textAlign = 'left';
+  }
+  // detected hits (orange)
   for (const h of realHits) {
     const x = (h.time / realInputDuration) * inW;
     ctx.strokeStyle = 'rgba(255,150,90,.5)';
@@ -3439,7 +3501,7 @@ function drawRealInput(now) {
     ctx.strokeStyle = 'rgba(45,226,197,.85)';
     ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, inH); ctx.stroke();
     const gateV = gateValueAt(t * realInputDuration);
-    if (gled) gled.classList.toggle('on', gateV > .5);
+    if (gled) gled.classList.toggle('on', gateOn && gateV > .5);
     const led = $('#hitLed');
     const near = realHits.some(h => Math.abs(h.time / realInputDuration - t) < 0.006);
     if (led) led.classList.toggle('on', near);
@@ -3477,7 +3539,6 @@ function playInput() {
   if (!ctx) { toast('Audio not available'); return; }
   stopInput();
   if (detectPending) { clearTimeout(detectPending); detectPending = 0; }
-  gateReschedPending = false;
   detectInputHits();
   const src = ctx.createBufferSource();
   src.buffer = realInputBuffer;
