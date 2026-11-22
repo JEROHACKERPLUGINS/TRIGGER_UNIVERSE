@@ -106,9 +106,10 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 ## Actualización 21/11 — edición numérica por doble click
 
 - Todos los parámetros con valor numérico son editables con **doble click**: knobs del detector, MIX, OUTPUT master, niveles de los 8 faders, TONE/CUT/VEL SENS/GAIN, START/END/FADE IN/FADE OUT, A/D/S/R y OFFSET.
-- El valor se abre en un **input flotante** sobre el número, con su unidad (`%`, `ms`, `Hz`, `dB`, `st`). **Enter** confirma, **Esc** cancela; el blur confirma y abrir otro valor confirma el anterior.
+- El número existente se vuelve **editable en su lugar** (contenteditable), conservando posición, tipografía y unidad; no abre ninguna ventana flotante. **Enter** confirma, **Esc** cancela; el blur confirma y abrir otro valor confirma el anterior.
 - Acepta coma o punto decimal y sufijos (`1.2k` → 1200 Hz, `0.25s` → 250 ms). Clampa al rango del parámetro y redondea al step.
-- Los valores muestran cursor de texto y subrayado punteado al hover; los valores inválidos dejan el campo en rojo sin cerrarlo.
+- Los valores muestran cursor de texto y subrayado punteado al hover; el número en edición se resalta con un halo mint (rojo si el valor es inválido).
+- Los **niveles de los faders** quedan centrados y el badge de fase pasa a una segunda línea centrada.
 
 ## Actualización 21/11 — TRIGGER se estira uniformemente
 

@@ -60,39 +60,44 @@ function openNumericEditor(anchor, opts) {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return;
   const current = Number(opts.get());
   let value = Number.isFinite(current) ? clamp(current, min, max) : min;
-  const rawValue = opts.inputValue ? opts.inputValue(value) :
-    (opts.decimals != null ? value.toFixed(opts.decimals) : String(+value.toFixed(3)));
 
-  const wrap = document.createElement('div');
-  wrap.className = 'num-edit';
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.inputMode = 'decimal';
-  input.autocomplete = 'off';
-  input.spellcheck = false;
-  input.value = rawValue;
-  const unit = document.createElement('span');
-  unit.textContent = opts.unit || '';
-  wrap.appendChild(input);
-  if (opts.unit) wrap.appendChild(unit);
-  document.body.appendChild(wrap);
+  const originalText = anchor.textContent;
+  const originalEditable = anchor.getAttribute('contenteditable');
+  const originalSpellcheck = anchor.getAttribute('spellcheck');
+  const originalInputmode = anchor.getAttribute('inputmode');
 
-  const width = Math.max(84, Math.min(190, 62 + (opts.unit ? 32 : 0)));
-  wrap.style.width = width + 'px';
-  const r = anchor.getBoundingClientRect();
-  const left = clamp(r.left + r.width / 2 - width / 2, 6, innerWidth - width - 6);
-  let top = r.top - 30;
-  if (top < 6) top = r.bottom + 6;
-  if (top + 26 > innerHeight) top = innerHeight - 30;
-  wrap.style.left = Math.round(left) + 'px';
-  wrap.style.top = Math.round(top) + 'px';
+  anchor.contentEditable = 'true';
+  anchor.spellcheck = false;
+  anchor.setAttribute('inputmode', 'decimal');
+  anchor.classList.add('num-editing');
+
+  const selectAll = () => {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(anchor);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) {}
+  };
+  anchor.focus();
+  selectAll();
 
   let alive = true;
   const cleanup = () => {
+    if (!alive) return;
     alive = false;
-    input.removeEventListener('blur', onBlur);
-    window.removeEventListener('resize', cancel);
-    wrap.remove();
+    anchor.removeEventListener('blur', onBlur);
+    anchor.removeEventListener('keydown', onKeydown);
+    anchor.removeEventListener('paste', onPaste);
+    anchor.classList.remove('num-editing', 'invalid');
+    if (originalEditable == null) anchor.removeAttribute('contenteditable');
+    else anchor.setAttribute('contenteditable', originalEditable);
+    if (originalSpellcheck == null) anchor.removeAttribute('spellcheck');
+    else anchor.setAttribute('spellcheck', originalSpellcheck);
+    if (originalInputmode == null) anchor.removeAttribute('inputmode');
+    else anchor.setAttribute('inputmode', originalInputmode);
+    anchor.textContent = originalText;
     numericEditor = null;
   };
   const apply = n => {
@@ -100,36 +105,49 @@ function openNumericEditor(anchor, opts) {
     cleanup();
     opts.set(snapNumeric(n, opts.step, min, max));
   };
+  const parse = () => parseNumericText(anchor.textContent, opts.unit);
   const commit = () => {
-    const n = parseNumericText(input.value, opts.unit);
+    const n = parse();
     if (!Number.isFinite(n)) {
-      wrap.classList.add('invalid');
-      input.focus();
-      input.setSelectionRange(0, input.value.length);
+      anchor.classList.add('invalid');
+      anchor.focus();
+      selectAll();
       return;
     }
     apply(n);
   };
   const cancel = () => { if (alive) cleanup(); };
   const commitOrCancel = () => {
-    const n = parseNumericText(input.value, opts.unit);
+    const n = parse();
     if (Number.isFinite(n)) apply(n); else cancel();
   };
   const onBlur = () => {
-    const n = parseNumericText(input.value, opts.unit);
+    const n = parse();
     if (Number.isFinite(n)) apply(n); else cancel();
   };
-  input.addEventListener('blur', onBlur);
-  window.addEventListener('resize', cancel);
-  input.addEventListener('keydown', e => {
+  const onKeydown = e => {
     e.stopPropagation();
     if (e.key === 'Enter') { e.preventDefault(); commit(); }
     else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-  });
-  wrap.addEventListener('mousedown', e => e.stopPropagation());
+    else if (e.key === 'Tab') { e.preventDefault(); commit(); }
+  };
+  const onPaste = e => {
+    e.preventDefault();
+    const text = ((e.clipboardData || window.clipboardData) || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : '';
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(document.createTextNode(text));
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+  anchor.addEventListener('blur', onBlur);
+  anchor.addEventListener('keydown', onKeydown);
+  anchor.addEventListener('paste', onPaste);
   numericEditor = { cancel, commitOrCancel };
-  input.focus();
-  input.select();
+  selectAll();
 }
 
 function bindNumericEdit(el, opts) {
@@ -137,6 +155,7 @@ function bindNumericEdit(el, opts) {
   el.classList.add('num-editable');
   if (!el.title && !el.dataset.tip) el.title = 'Double-click to edit';
   el.addEventListener('dblclick', e => {
+    if (el.classList.contains('num-editing')) return;
     e.preventDefault();
     e.stopPropagation();
     if (opts.enabled && !opts.enabled()) {
