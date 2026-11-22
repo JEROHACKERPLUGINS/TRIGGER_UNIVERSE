@@ -601,6 +601,7 @@ AAX **no** se necesita.
 26. **Edición numérica por doble click**: todos los valores numéricos editables (8 knobs del detector, MIX, OUTPUT master, 8 niveles de fader, TONE/CUT/VEL SENS/GAIN, START/END/FADE IN/FADE OUT, A/D/S/R y OFFSET) se vuelven editables en su lugar con doble click, sin ventana flotante. Enter confirma, Esc cancela, el blur confirma y abrir otro valor confirma el anterior. Acepta coma o punto decimal y sufijos `%`, `ms`, `s`, `Hz`, `k`, `dB` y `st`; clampa al rango del parámetro y redondea al step.
 27. **Faders centrados**: el nivel en dB de cada fader queda centrado bajo el track y el badge de fase pasa a una segunda línea centrada; el número editable conserva exactamente esa posición.
 28. **Doble click en faders**: el click sobre un valor numérico ya no se propaga al contenedor, así el fader no se re-renderiza entre los dos clicks y la edición in-place funciona en los 8 niveles. Se auditaron los 31 valores numéricos (detector, MIX, OUTPUT, faders, tone, waveform, ADSR y offset) con la secuencia de click completa.
+29. **Editor numérico neutro**: se quitó el halo mint, el subrayado punteado y el cambio de color al hover. El valor editable se indica solo con un recuadro gris de 1 px y fondo apenas más claro; la selección de texto también usa gris. El estado inválido mantiene un borde rojo tenue.
 
 ---
 

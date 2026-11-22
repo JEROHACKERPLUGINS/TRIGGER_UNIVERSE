@@ -1127,17 +1127,20 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 
 /* ---------- inline numeric editor (double-click a value) ---------- */
 .num-editable{cursor:text;-webkit-user-select:none;user-select:none}
-.num-editable:hover{color:var(--mint);text-decoration:underline dotted rgba(45,226,197,.55);
-  text-underline-offset:2px}
+.num-editable:hover{
+  background:rgba(255,255,255,.028);
+  box-shadow:0 0 0 1px rgba(210,220,235,.12);
+  border-radius:3px}
 .num-editable.num-editing{
-  color:#fff;background:rgba(8,14,18,.78);
-  box-shadow:0 0 0 1px rgba(45,226,197,.55),0 0 12px rgba(45,226,197,.18);
+  color:inherit;background:rgba(255,255,255,.035);
+  box-shadow:0 0 0 1px rgba(190,200,215,.40);
   border-radius:3px;outline:none;text-decoration:none;cursor:text;
-  caret-color:var(--mint);white-space:nowrap;
+  caret-color:currentColor;white-space:nowrap;
   -webkit-user-select:text;user-select:text}
+.num-editable.num-editing::selection{background:rgba(180,190,205,.28);color:inherit}
 .num-editable.num-editing.invalid{
-  background:rgba(36,8,11,.78);
-  box-shadow:0 0 0 1px rgba(255,107,107,.8),0 0 12px rgba(255,107,107,.18)}
+  background:rgba(255,107,107,.045);
+  box-shadow:0 0 0 1px rgba(255,107,107,.45)}
 
 /* center the fader level readout */
 .sf-foot{flex-direction:column;align-items:center;justify-content:center;gap:1px;text-align:center}

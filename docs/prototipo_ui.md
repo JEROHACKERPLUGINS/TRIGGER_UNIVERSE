@@ -108,7 +108,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - Todos los parámetros con valor numérico son editables con **doble click**: knobs del detector, MIX, OUTPUT master, niveles de los 8 faders, TONE/CUT/VEL SENS/GAIN, START/END/FADE IN/FADE OUT, A/D/S/R y OFFSET.
 - El número existente se vuelve **editable en su lugar** (contenteditable), conservando posición, tipografía y unidad; no abre ninguna ventana flotante. **Enter** confirma, **Esc** cancela; el blur confirma y abrir otro valor confirma el anterior.
 - Acepta coma o punto decimal y sufijos (`1.2k` → 1200 Hz, `0.25s` → 250 ms). Clampa al rango del parámetro y redondea al step.
-- Los valores muestran cursor de texto y subrayado punteado al hover; el número en edición se resalta con un halo mint (rojo si el valor es inválido).
+- Los valores muestran cursor de texto; al hover y en edición aparece un **recuadro gris neutro**, sin glow ni cambio de color (rojo tenue solo si el valor es inválido). La selección de texto dentro del editor también es gris.
 - Los **niveles de los faders** quedan centrados y el badge de fase pasa a una segunda línea centrada.
 - Los valores numéricos detienen el click para que el contenedor (por ejemplo el fader) no se re-renderice entre los dos clicks; el doble click funciona igual en los 8 niveles.
 
