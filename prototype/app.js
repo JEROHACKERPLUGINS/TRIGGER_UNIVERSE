@@ -339,7 +339,7 @@ function buildSlots() {
     mute: false, solo: false,
     polarity: false, shift: 0, offset: 0,
     autoPhase: false, corr: 0, suggestedLag: 0,
-    adsr: { a: 0, d: 120, r: 80, s: .5, p: 1 },
+    adsr: { a: 0, d: 120, end: 800, s: .5, p: 1, e: 0 },
     start: 0, end: 1, fadeIn: 0, fadeOut: 0,
     reverse: false,
     tone: 0, cut: 50, velSens: 50, gain: 0,
@@ -1550,14 +1550,14 @@ function assignSample(i, smp) {
   s.label = `SLOT ${String(i + 1).padStart(2, '0')}`;
   s.mute = false; s.solo = false;
   s.tune = 0;
-  s.adsr = { a: 0, d: 120, r: 80, s: .5, p: 1 };
-  fitAdsrToSample(s);
+  s.adsr = { a: 0, d: 120, end: 0, s: .5, p: 1, e: 0 };
   s.start = 0; s.end = 1; s.fadeIn = 0; s.fadeOut = 0;
   s.reverse = false;
   s.tone = 0; s.cut = 50; s.velSens = 50; s.gain = 0;
   s.playback = 'one-shot'; s.loop = false;
   s.polarity = false; s.shift = 0; s.offset = 0;
   s.autoPhase = false; s.corr = 0; s.suggestedLag = 0;
+  fitAdsrToSample(s);
   selectSlot(i);
   applyAutoPhase(i, state.autoRef, true);
   if (state.selectedSlot === i && $('.inspector').classList.contains('show')) updateInspector();
@@ -2290,45 +2290,54 @@ $('#wave').addEventListener('pointerdown', e => {
   window.addEventListener('pointerup', up);
 });
 
-// ---------- ADR envelope (free decay point, release anchored to the sample end) ----------
+// ---------- ADR envelope (three free points, no hold) ----------
 function adsrGeom() { return { W: 360, H: 140, x0: 14, x1: 346, y0: 18, y1: 120 }; }
 
 function envTotalMs() {
-  const smp = currentSlotSample();
-  return Math.max(40, smp ? smp.dur : 800);
+  const slot = currentSlot();
+  const smp = slotSample(slot);
+  return Math.max(40, smp ? (slot.end - slot.start) * smp.dur : 800);
 }
 
 function fitAdsrToSample(slot) {
   const smp = slotSample(slot);
-  const total = Math.max(40, smp ? smp.dur : 800);
-  let { a, d, r } = slot.adsr;
-  const sum = a + d + r;
-  if (sum > total) {
-    const k = total / sum;
-    a = Math.round(a * k); d = Math.round(d * k); r = Math.round(r * k);
-    let over = a + d + r - total;
+  const total = Math.max(40, smp ? (slot.end - slot.start) * smp.dur : 800);
+  let a = Math.max(0, slot.adsr.a || 0);
+  let d = Math.max(0, slot.adsr.d || 0);
+  let end = Number.isFinite(slot.adsr.end) && slot.adsr.end > 0 ? slot.adsr.end : total;
+  end = clamp(end, 0, total);
+  if (a + d > end) {
+    const k = end / Math.max(1, a + d);
+    a = Math.round(a * k); d = Math.round(d * k);
+    let over = a + d - end;
     while (over > 0) {
-      if (r > 0) { r--; over--; }
-      else if (d > 0) { d--; over--; }
+      if (d > 0) { d--; over--; }
       else if (a > 0) { a--; over--; }
       else break;
     }
-    slot.adsr.a = a; slot.adsr.d = d; slot.adsr.r = r;
   }
+  const level = clamp(slot.adsr.s ?? .5, 0, 1);
+  const peak = clamp(slot.adsr.p ?? 1, level, 1);
+  const releaseLevel = clamp(slot.adsr.e ?? 0, 0, level);
+  slot.adsr.a = Math.round(a);
+  slot.adsr.d = Math.round(d);
+  slot.adsr.end = Math.round(end);
+  slot.adsr.s = level; slot.adsr.p = peak; slot.adsr.e = releaseLevel;
 }
 
 function renderADSR() {
   const slot = currentSlot();
   if (!slot) return;
-  const { a, d, r, s, p } = slot.adsr;
+  const { a, d, end, s, p, e } = slot.adsr;
   const { x0, x1, y0, y1 } = adsrGeom();
   const total = envTotalMs();
-  const releaseStart = Math.min(total, Math.max(a + d, total - r));
+  const endX = clamp(end, 0, total);
+  const decayX = Math.min(endX, a + d);
   const X = t => x0 + (t / total) * (x1 - x0);
   const Y = v => y1 - v * (y1 - y0);
-  const pts = [[X(0), Y(0)], [X(a), Y(p)], [X(a + d), Y(s)], [X(releaseStart), Y(s)], [X(total), Y(0)]];
-  const line = pts.map((p, i) => `${i ? 'L' : 'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
-  const area = `${line} L ${X(total).toFixed(1)} ${y1} L ${x0} ${y1} Z`;
+  const pts = [[X(0), Y(0)], [X(a), Y(p)], [X(decayX), Y(s)], [X(endX), Y(e)]];
+  const line = pts.map((pt, i) => `${i ? 'L' : 'M'} ${pt[0].toFixed(1)} ${pt[1].toFixed(1)}`).join(' ');
+  const area = `${line} L ${X(endX).toFixed(1)} ${y1} L ${x0} ${y1} Z`;
   const c = '#2DE2C5';
 
   $('#adsr').innerHTML = `
@@ -2343,21 +2352,21 @@ function renderADSR() {
     <path d="${area}" fill="url(#ag)"/>
     <path d="${line}" fill="none" stroke="${c}" stroke-width="1.8" stroke-linejoin="round"/>
     <circle data-h="attack" cx="${X(a)}" cy="${Y(p)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:move"/>
-    <circle data-h="decay" cx="${X(a + d)}" cy="${Y(s)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:move"/>
-    <circle data-h="release" cx="${X(releaseStart)}" cy="${Y(s)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:move"/>
+    <circle data-h="decay" cx="${X(decayX)}" cy="${Y(s)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:move"/>
+    <circle data-h="release" cx="${X(endX)}" cy="${Y(e)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:move"/>
   `;
   $('#aVal').textContent = fmtMs(a);
   $('#dVal').textContent = fmtMs(d);
-  $('#rVal').textContent = fmtMs(r);
+  $('#rVal').textContent = fmtMs(Math.max(0, endX - a - d));
 }
 
 const envMax = key => {
   const slot = currentSlot();
   if (!slot) return 0;
   const total = envTotalMs();
-  if (key === 'a') return Math.max(0, total - slot.adsr.d - slot.adsr.r);
-  if (key === 'd') return Math.max(0, total - slot.adsr.a - slot.adsr.r);
-  return Math.max(0, total - slot.adsr.a - slot.adsr.d);
+  if (key === 'a') return Math.max(0, slot.adsr.end - (slot.adsr.d || 0));
+  if (key === 'd') return Math.max(0, slot.adsr.end - (slot.adsr.a || 0));
+  return Math.max(0, total - (slot.adsr.a || 0) - (slot.adsr.d || 0));
 };
 bindNumericEdit($('#aVal'), {
   get: () => currentSlot().adsr.a,
@@ -2370,8 +2379,17 @@ bindNumericEdit($('#dVal'), {
   min: 0, max: () => envMax('d'), step: 1, unit: 'ms', decimals: 0,
 });
 bindNumericEdit($('#rVal'), {
-  get: () => currentSlot().adsr.r,
-  set: v => { currentSlot().adsr.r = clamp(v, 0, envMax('r')); renderADSR(); },
+  get: () => {
+    const a = currentSlot().adsr;
+    return Math.max(0, a.end - a.a - a.d);
+  },
+  set: v => {
+    const slot = currentSlot();
+    const total = envTotalMs();
+    const start = slot.adsr.a + slot.adsr.d;
+    slot.adsr.end = clamp(start + clamp(v, 0, envMax('r')), start, total);
+    renderADSR();
+  },
   min: 0, max: () => envMax('r'), step: 1, unit: 'ms', decimals: 0,
 });
 
@@ -2384,25 +2402,25 @@ $('#adsr').addEventListener('pointerdown', e => {
   const rect = $('#adsr').getBoundingClientRect();
   const { x0, x1 } = adsrGeom();
   const startY = e.clientY;
-  const startP = slot.adsr.p, startS = slot.adsr.s;
+  const startP = slot.adsr.p, startS = slot.adsr.s, startE = slot.adsr.e;
   const move = ev => {
     const nx = clamp((ev.clientX - rect.left) / rect.width, 0, 1);
     const sx = x0 + nx * (x1 - x0);
-    const { a, d, r, p } = slot.adsr;
+    const { a, d, end, s, p, e } = slot.adsr;
     const total = envTotalMs();
     const t = ((sx - x0) / (x1 - x0)) * total;
     const level = (startY - ev.clientY) / Math.max(1, rect.height);
     if (h.dataset.h === 'attack') {
-      slot.adsr.a = clamp(t, 0, total - d - r);
-      slot.adsr.p = clamp(startP + level, slot.adsr.s, 1);
+      slot.adsr.a = clamp(t, 0, end - d);
+      slot.adsr.p = clamp(startP + level, s, 1);
     }
     if (h.dataset.h === 'decay') {
-      slot.adsr.d = clamp(t - a, 0, total - a - r);
-      slot.adsr.s = clamp(startS + level, 0, p);
+      slot.adsr.d = clamp(t - a, 0, end - a);
+      slot.adsr.s = clamp(startS + level, e, p);
     }
     if (h.dataset.h === 'release') {
-      slot.adsr.r = clamp(total - t, 0, total - a - d);
-      slot.adsr.s = clamp(startS + level, 0, p);
+      slot.adsr.end = clamp(t, a + d, total);
+      slot.adsr.e = clamp(startE + level, 0, s);
     }
     renderADSR();
   };
@@ -2415,7 +2433,7 @@ $('#adsr').addEventListener('pointerdown', e => {
 });
 
 $('#envReset').onclick = () => {
-  currentSlot().adsr = { a: 0, d: 120, r: 80, s: .5, p: 1 };
+  currentSlot().adsr = { a: 0, d: 120, end: 0, s: .5, p: 1, e: 0 };
   fitAdsrToSample(currentSlot());
   renderADSR(); toast('ADR reset');
 };
@@ -2989,22 +3007,21 @@ function scheduleSlot(ctx, i, when) {
   const total = len / rate;
   let a = Math.max(0.001, s.adsr.a / 1000);
   let d = Math.max(0.001, s.adsr.d / 1000);
-  let r = Math.max(0.001, s.adsr.r / 1000);
-  const sum = a + d + r;
-  if (sum > total) {
-    const k = total / sum;
-    a *= k; d *= k; r *= k;
+  if (a + d > total) {
+    const k = total / (a + d);
+    a *= k; d *= k;
   }
+  const envEndSec = clamp((s.adsr.end || (a + d) * 1000) / 1000, a + d, total);
   const base = clamp(dbToAmp(s.gain), 0, 4);
   const peak = base * clamp(s.adsr.p ?? 1, 0, 1);
   const level = base * clamp(s.adsr.s ?? .5, 0, 1);
-  const releaseStart = Math.max(a + d, total - r);
+  const releaseLevel = base * clamp(s.adsr.e ?? 0, 0, 1);
   const g = env.gain;
   g.setValueAtTime(0, t0);
   g.linearRampToValueAtTime(peak, t0 + a);
   g.linearRampToValueAtTime(level, t0 + a + d);
-  if (releaseStart > a + d) g.setValueAtTime(level, t0 + releaseStart);
-  g.linearRampToValueAtTime(0, t0 + total);
+  g.linearRampToValueAtTime(releaseLevel, t0 + envEndSec);
+  g.linearRampToValueAtTime(0, t0 + envEndSec + 0.004);
   const f = fade.gain;
   const fi = Math.min(s.fadeIn / 1000, total * .9);
   const fo = Math.min(s.fadeOut / 1000, total * .9);
@@ -3016,7 +3033,7 @@ function scheduleSlot(ctx, i, when) {
   }
   const playLen = s.loop ? Math.min(2, total + 1) : len;
   src.start(t0, startSec, playLen);
-  src.stop(t0 + (s.loop ? 2 : total) + 0.12);
+  src.stop(t0 + (s.loop ? Math.min(2, envEndSec) : envEndSec) + 0.006);
   src.onended = () => {
     try { src.disconnect(); env.disconnect(); fade.disconnect(); } catch (e) {}
     const idx = activeSlotSources.indexOf(src); if (idx >= 0) activeSlotSources.splice(idx, 1);

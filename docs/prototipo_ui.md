@@ -21,7 +21,7 @@ El editor vive dentro de la página TRIGGER y corresponde al slot seleccionado (
 
 - **SLOT**: Level, Pan, Tune, Mute/Solo/Ø, Auto Phase (REF INPUT / SLOT 1), Timing, Offset, Shift 0°/90°/180°/260°.
 - **SAMPLE**: waveform, start/end, fade in/out, reverse, normalize, audition.
-- **ENVELOPE**: A/D/R editable con los tres handles libres en X e Y (attack: tiempo + pico; decay: tiempo + hold; release: duración + hold) y final del release anclado al sample; sin control separado de sustain.
+- **ENVELOPE**: A/D/R editable con tres puntos libres en X e Y (attack: tiempo + pico; decay: tiempo + nivel; release: punto final libre en tiempo + nivel), sin hold ni sustain. El release cae por defecto al final del sample.
 - **TONE**: tone, cut, velocity sensitivity, gain, playback one-shot/gate, loop.
 
 El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: buscar → **ALT + drag** a un slot del dock → **doble click** en el slot para abrir TRIGGER y editar. Un click simple en un slot lleno audiciona su sample.
@@ -106,10 +106,10 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 ## Actualización 21/11 — envelope A/D/R
 
 - Se eliminó **Sustain** del envelope. Quedan **Attack, Decay y Release**, cada uno con su handle y su readout editable.
-- Los **tres handles son libres en X e Y**: Attack ajusta tiempo y pico; Decay ajusta tiempo y hold; Release ajusta duración y hold. No hay un control S separado.
-- El **release queda anclado al final del sample**: su handle está al inicio del release y el extremo en cero no se mueve.
-- El eje del gráfico usa la duración del sample; A, D y R se limitan entre sí para que las tres etapas entren completas.
-- El panel pasa a llamarse **ENVELOPE · ADR** y el reset a **Reset ADR** (A 0 / D 120 / R 80, pico 100%, hold 50%).
+- Los **tres puntos son libres en X e Y**: Attack ajusta tiempo y pico; Decay ajusta tiempo y nivel; Release es el punto final y se mueve en tiempo y nivel.
+- No hay meseta de hold: el release sale directamente del decay. Por defecto el punto de release cae al final del sample.
+- El readout **R** es la duración desde el decay hasta el punto de release; editarlo mueve ese punto. El eje del gráfico usa la duración del sample.
+- El panel se llama **ENVELOPE · ADR** y el reset deja A 0 / D 120, release al final del sample, pico 100%, nivel de decay 50% y nivel final 0%.
 
 ## Actualización 21/11 — edición numérica por doble click
 
