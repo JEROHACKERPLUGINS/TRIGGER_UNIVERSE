@@ -153,10 +153,40 @@ function openNumericEditor(anchor, opts) {
 function bindNumericEdit(el, opts) {
   if (!el) return;
   el.classList.add('num-editable');
-  if (!el.title && !el.dataset.tip) el.title = 'Double-click to edit';
-  el.addEventListener('click', e => e.stopPropagation());
+  if (!el.title && !el.dataset.tip) el.title = 'Double-click to edit · Alt+click resets';
+  const read = key => typeof opts[key] === 'function' ? opts[key]() : opts[key];
+  const reset = () => {
+    const def = read('default');
+    if (!Number.isFinite(def)) return false;
+    if (numericEditor) numericEditor.commitOrCancel();
+    el.classList.remove('num-editing', 'invalid');
+    if (el.getAttribute('contenteditable') === 'true') el.removeAttribute('contenteditable');
+    if (document.activeElement === el) el.blur();
+    const min = read('min'), max = read('max');
+    opts.set(snapNumeric(def, opts.step, min, max));
+    el.classList.add('num-reset');
+    clearTimeout(el._numResetTimer);
+    el._numResetTimer = setTimeout(() => el.classList.remove('num-reset'), 180);
+    return true;
+  };
+  el._numReset = reset;
+  el.addEventListener('mousedown', e => {
+    if (!e.altKey) return;
+    e.preventDefault(); e.stopPropagation();
+    reset();
+  });
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    if (e.altKey) { e.preventDefault(); reset(); }
+  });
   el.addEventListener('dblclick', e => {
-    if (el.classList.contains('num-editing')) return;
+    if (e.altKey) { e.preventDefault(); e.stopPropagation(); reset(); return; }
+    if (el.classList.contains('num-editing')) {
+      if (numericEditor) return;
+      // Recover from a stale editing class left by a failed cleanup.
+      el.classList.remove('num-editing', 'invalid');
+      el.removeAttribute('contenteditable');
+    }
     e.preventDefault();
     e.stopPropagation();
     if (opts.enabled && !opts.enabled()) {
@@ -395,7 +425,7 @@ const state = {
   popoverSlot: null,
   autoRef: 'INPUT',
   autoTiming: false,
-  detector: { attack: .5, hold: 4, release: 450, sens: 51, retrig: 16, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 50, gate: true },
+  detector: { attack: .5, hold: 4, release: 450, sens: 51, retrig: 16, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: true },
 };
 
 function pickByCategory(cat, offset = 0) {
@@ -406,7 +436,7 @@ function buildSlots() {
   state.slots = Array.from({ length: 8 }, (_, i) => ({
     id: i, label: `SLOT ${String(i + 1).padStart(2, '0')}`,
     sampleId: null,
-    level: -3, pan: 0, tune: 0,
+    level: 0, pan: 0, tune: 0,
     mute: false, solo: false,
     polarity: false, shift: 0, offset: 0,
     autoPhase: false, corr: 0, suggestedLag: 0,
@@ -1522,13 +1552,8 @@ function renderFaders() {
     const i = +el.id.replace('slotLevel-', '');
     bindNumericEdit(el, {
       get: () => state.slots[i].level,
-      set: v => {
-        state.slots[i].level = v;
-        const r = $(`#fader-${i}`); if (r) r.value = v;
-        const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(v);
-        syncSlotAudio(i);
-      },
-      min: -60, max: 6, step: .1, unit: 'dB', decimals: 1,
+      set: v => setFaderLevel(i, v),
+      min: -60, max: 6, step: .1, unit: 'dB', decimals: 1, default: 0,
     });
   });
 }
@@ -1595,16 +1620,32 @@ $('#slots').addEventListener('dblclick', e => {
   openTriggerPage();
 });
 
+function setFaderLevel(i, v) {
+  const s = state.slots[i];
+  s.level = clamp(v, -60, 6);
+  const r = $(`#fader-${i}`); if (r) r.value = s.level;
+  const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(s.level);
+  syncSlotAudio(i);
+}
 $('#faderBank').addEventListener('input', e => {
   const r = e.target.closest('.sf-range');
   if (!r) return;
-  const i = +r.dataset.slot, s = state.slots[i];
-  s.level = +r.value;
-  const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(s.level);
-  syncSlotAudio(i);
+  setFaderLevel(+r.dataset.slot, +r.value);
+});
+$('#faderBank').addEventListener('pointerdown', e => {
+  const r = e.target.closest('.sf-range');
+  if (!r || !e.altKey) return;
+  e.preventDefault(); e.stopPropagation();
+  setFaderLevel(+r.dataset.slot, 0);
 });
 
 $('#faderBank').addEventListener('click', e => {
+  const range = e.target.closest('.sf-range');
+  if (range && e.altKey) {
+    e.preventDefault(); e.stopPropagation();
+    setFaderLevel(+range.dataset.slot, 0);
+    return;
+  }
   const btn = e.target.closest('button[data-act]');
   if (btn) {
     e.stopPropagation();
@@ -1833,7 +1874,7 @@ function openSlotPopover(i, anchor, keepPosition) {
       const mt = $(`#meter-${i}`); if (mt) mt.style.height = meterW(v) + '%';
       syncSlotAudio(i);
     },
-    min: -60, max: 6, step: .1, unit: 'dB', decimals: 1,
+    min: -60, max: 6, step: .1, unit: 'dB', decimals: 1, default: 0,
   });
   bindNumericEdit($('#spPanVal'), {
     get: () => s.pan,
@@ -1844,7 +1885,7 @@ function openSlotPopover(i, anchor, keepPosition) {
       const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(v)} · ${s.tune.toFixed(2)}`;
       syncSlotAudio(i);
     },
-    min: -100, max: 100, step: 1, decimals: 0,
+    min: -100, max: 100, step: 1, decimals: 0, default: 0,
   });
   bindNumericEdit($('#spTuneVal'), {
     get: () => s.tune,
@@ -1855,7 +1896,7 @@ function openSlotPopover(i, anchor, keepPosition) {
       const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(s.pan)} · ${v.toFixed(2)}`;
       syncSlotAudio(i);
     },
-    min: -24, max: 24, step: .01, unit: 'st', decimals: 2,
+    min: -24, max: 24, step: .01, unit: 'st', decimals: 2, default: 0,
   });
   bindNumericEdit($('#spOffsetVal'), {
     get: () => s.offset,
@@ -1866,7 +1907,7 @@ function openSlotPopover(i, anchor, keepPosition) {
       const lab = $('#spOffsetVal'); if (lab) lab.textContent = `${v.toFixed(1)} ms`;
       renderSlots();
     },
-    min: -5, max: 50, step: .1, unit: 'ms', decimals: 1,
+    min: -5, max: 50, step: .1, unit: 'ms', decimals: 1, default: 0,
   });
 }
 
@@ -2312,158 +2353,133 @@ function updateInspector() {
   $('#reverseBtn').classList.toggle('on', !!slot.reverse);
   $$('#playbackSeg button').forEach(b => b.classList.toggle('active', b.dataset.pb === slot.playback));
 
-  renderWaveform();
-  renderADSR();
+  renderSampleEditor();
 }
 
 function waveGeom() {
-  const W = 600, H = 140, padX = 12, top = 16, bottom = 124;
+  const W = 600, H = 170, padX = 14, top = 20, bottom = 150;
   return { W, H, padX, top, bottom, mid: (top + bottom) / 2, amp: (bottom - top) / 2 };
 }
 
-function renderWaveform() {
+function renderSampleEditor() {
   const svg = $('#wave');
+  if (!svg) return;
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
   const slot = currentSlot();
-  const smp = slotSample(slot);
-  if (!smp) { svg.innerHTML = ''; return; }
+  const smp = slot ? slotSample(slot) : null;
+  if (!slot || !smp) {
+    svg.innerHTML = '';
+    ['startVal', 'endVal', 'fadeInVal', 'fadeOutVal', 'aVal', 'dVal', 'rVal'].forEach(id => set(id, '—'));
+    return;
+  }
   const { W, H, padX, top, bottom, mid, amp } = waveGeom();
+  const waveAmp = amp * .82;
   let arr = sampleWave(smp);
   if (slot.reverse) arr = arr.slice().reverse();
   const color = CAT[smp.category].color;
   const startX = padX + slot.start * (W - 2 * padX);
   const endX = padX + slot.end * (W - 2 * padX);
-  const outside = W - 2 * padX;
-
+  const span = Math.max(1, endX - startX);
+  const denom = Math.max(1, arr.length - 1);
   const topPts = [], botPts = [];
   for (let i = 0; i < arr.length; i++) {
-    const x = padX + (i / (arr.length - 1)) * outside;
-    const v = arr[i] * amp;
+    const x = padX + (i / denom) * (W - 2 * padX);
+    const v = arr[i] * waveAmp;
     topPts.push([x, mid - v]);
     botPts.push([x, mid + v]);
   }
   const d = `M ${topPts.map(p => p.join(' ')).join(' L ')} L ${botPts.reverse().map(p => p.join(' ')).join(' L ')} Z`;
 
-  const fadeInPx = smp.dur > 0 ? (slot.fadeIn / smp.dur) * (endX - startX) : 0;
-  const fadeOutPx = smp.dur > 0 ? (slot.fadeOut / smp.dur) * (endX - startX) : 0;
-  const fIn = clamp(fadeInPx, 0, endX - startX);
-  const fOut = clamp(fadeOutPx, 0, endX - startX);
+  const total = envTotalMs();
+  const a = clamp(slot.adsr.a, 0, total);
+  const dd = clamp(slot.adsr.d, 0, Math.max(0, total - a));
+  const endMs = clamp(slot.adsr.end, a + dd, total);
+  const sLvl = clamp(slot.adsr.s, 0, 1);
+  const pLvl = clamp(slot.adsr.p, sLvl, 1);
+  const eLvl = clamp(slot.adsr.e, 0, sLvl);
+  const fadeIn = clamp(slot.fadeIn, 0, total);
+  const fadeOut = clamp(slot.fadeOut, 0, total);
+  const envX = t => startX + (clamp(t, 0, total) / total) * span;
+  const envY = v => bottom - clamp(v, 0, 1) * (bottom - top);
+  const baseAt = t => {
+    if (t <= 0) return a > 0 ? 0 : pLvl;
+    if (a > 0 && t < a) return pLvl * (t / a);
+    if (t < a + dd) return pLvl + (sLvl - pLvl) * ((t - a) / Math.max(1, dd));
+    if (t <= endMs) return sLvl + (eLvl - sLvl) * ((t - a - dd) / Math.max(1, endMs - a - dd));
+    return 0;
+  };
+  const fadeAt = t => {
+    let g = 1;
+    if (fadeIn > 0) g *= clamp(t / fadeIn, 0, 1);
+    if (fadeOut > 0) g *= clamp((total - t) / fadeOut, 0, 1);
+    return g;
+  };
+  const gainAt = t => clamp(baseAt(t) * fadeAt(t), 0, 1);
+  const times = new Set();
+  const N = 160;
+  for (let i = 0; i <= N; i++) times.add(total * i / N);
+  [0, a, a + dd, endMs, Math.min(total, endMs + .5), fadeIn, total - fadeOut].forEach(t => {
+    if (t >= 0 && t <= total) times.add(t);
+  });
+  const pts = [...times].sort((x, y) => x - y).map(t => [envX(t), envY(gainAt(t))]);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const area = `${line} L ${endX.toFixed(1)} ${bottom} L ${startX.toFixed(1)} ${bottom} Z`;
+  const basePts = [
+    [envX(0), envY(0)],
+    [envX(a), envY(pLvl)],
+    [envX(a + dd), envY(sLvl)],
+    [envX(endMs), envY(eLvl)]
+  ];
+  const baseLine = basePts.map((p, i) => `${i ? 'L' : 'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const fInX = envX(fadeIn), fOutX = envX(total - fadeOut);
+  const fadeY = top + 13;
+  const trimY = Math.max(4, top - 12);
 
   svg.innerHTML = `
     <defs>
       <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="${color}" stop-opacity=".92"/>
-        <stop offset="1" stop-color="${color}" stop-opacity=".20"/>
+        <stop offset="0" stop-color="${color}" stop-opacity=".46"/>
+        <stop offset="1" stop-color="${color}" stop-opacity=".07"/>
       </linearGradient>
-      <clipPath id="trim"><rect x="${startX}" y="0" width="${Math.max(0, endX - startX)}" height="${H}"/></clipPath>
+      <linearGradient id="eg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2DE2C5" stop-opacity=".32"/>
+        <stop offset="1" stop-color="#2DE2C5" stop-opacity=".035"/>
+      </linearGradient>
+      <clipPath id="trim"><rect x="${startX}" y="0" width="${Math.max(0, span)}" height="${H}"/></clipPath>
     </defs>
-    <line x1="${padX}" y1="${mid}" x2="${W - padX}" y2="${mid}" stroke="rgba(255,255,255,.07)" stroke-width="1"/>
-    <path d="${d}" fill="rgba(255,255,255,.055)"/>
+    <line x1="${padX}" y1="${mid}" x2="${W - padX}" y2="${mid}" stroke="rgba(255,255,255,.06)"/>
+    <line x1="${startX}" y1="${bottom}" x2="${endX}" y2="${bottom}" stroke="rgba(255,255,255,.08)"/>
+    <path d="${d}" fill="rgba(255,255,255,.045)"/>
     <path d="${d}" fill="url(#wg)" clip-path="url(#trim)"/>
-    <rect x="${padX}" y="0" width="${Math.max(0, startX - padX)}" height="${H}" fill="rgba(4,6,10,.66)"/>
-    <rect x="${endX}" y="0" width="${Math.max(0, W - padX - endX)}" height="${H}" fill="rgba(4,6,10,.66)"/>
-    <path d="M ${startX} ${bottom} L ${startX + fIn} ${top}" stroke="${color}" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>
-    <path d="M ${endX - fOut} ${top} L ${endX} ${bottom}" stroke="${color}" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>
-    <line x1="${startX}" y1="${top - 2}" x2="${startX}" y2="${bottom + 2}" stroke="${color}" stroke-width="1.4"/>
-    <line x1="${endX}" y1="${top - 2}" x2="${endX}" y2="${bottom + 2}" stroke="${color}" stroke-width="1.4"/>
-    <circle data-handle="start" cx="${startX}" cy="${top - 2}" r="5" fill="#fff" stroke="${color}" stroke-width="2" style="cursor:ew-resize"/>
-    <circle data-handle="end" cx="${endX}" cy="${top - 2}" r="5" fill="#fff" stroke="${color}" stroke-width="2" style="cursor:ew-resize"/>
-    <circle data-handle="fadeIn" cx="${startX + fIn}" cy="${top}" r="4" fill="${color}" stroke="#0B0E14" stroke-width="1.5" style="cursor:ew-resize"/>
-    <circle data-handle="fadeOut" cx="${endX - fOut}" cy="${top}" r="4" fill="${color}" stroke="#0B0E14" stroke-width="1.5" style="cursor:ew-resize"/>
+    <rect x="${padX}" y="0" width="${Math.max(0, startX - padX)}" height="${H}" fill="rgba(4,6,10,.64)"/>
+    <rect x="${endX}" y="0" width="${Math.max(0, W - padX - endX)}" height="${H}" fill="rgba(4,6,10,.64)"/>
+    <path d="${area}" fill="url(#eg)"/>
+    <path d="${line}" fill="none" stroke="#2DE2C5" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="${baseLine}" fill="none" stroke="rgba(45,226,197,.38)" stroke-width="1" stroke-dasharray="3 3"/>
+    ${fadeIn > 0 ? `<line x1="${fInX}" y1="${top}" x2="${fInX}" y2="${bottom}" stroke="${color}" stroke-opacity=".35" stroke-dasharray="3 3"/>` : ''}
+    ${fadeOut > 0 ? `<line x1="${fOutX}" y1="${top}" x2="${fOutX}" y2="${bottom}" stroke="${color}" stroke-opacity=".35" stroke-dasharray="3 3"/>` : ''}
+    <line x1="${startX}" y1="${trimY}" x2="${startX}" y2="${bottom + 2}" stroke="${color}" stroke-width="1.4"/>
+    <line x1="${endX}" y1="${trimY}" x2="${endX}" y2="${bottom + 2}" stroke="${color}" stroke-width="1.4"/>
+    <circle data-handle="start" cx="${startX}" cy="${trimY}" r="5" fill="#fff" stroke="${color}" stroke-width="2" style="cursor:ew-resize"/>
+    <circle data-handle="end" cx="${endX}" cy="${trimY}" r="5" fill="#fff" stroke="${color}" stroke-width="2" style="cursor:ew-resize"/>
+    <circle data-handle="fadeIn" cx="${fInX}" cy="${fadeY}" r="3.8" fill="${color}" stroke="#0B0E14" stroke-width="1.4" style="cursor:ew-resize"/>
+    <circle data-handle="fadeOut" cx="${fOutX}" cy="${fadeY}" r="3.8" fill="${color}" stroke="#0B0E14" stroke-width="1.4" style="cursor:ew-resize"/>
+    <circle data-h="attack" cx="${envX(a)}" cy="${envY(pLvl)}" r="4.3" fill="#fff" stroke="#2DE2C5" stroke-width="2" style="cursor:move"/>
+    <circle data-h="decay" cx="${envX(a + dd)}" cy="${envY(sLvl)}" r="4.3" fill="#fff" stroke="#2DE2C5" stroke-width="2" style="cursor:move"/>
+    <circle data-h="release" cx="${envX(endMs)}" cy="${envY(eLvl)}" r="4.3" fill="#fff" stroke="#2DE2C5" stroke-width="2" style="cursor:move"/>
   `;
-  updateWaveReadout();
+
+  set('startVal', fmtMs(slot.start * smp.dur));
+  set('endVal', fmtMs(slot.end * smp.dur));
+  set('fadeInVal', fmtMs(slot.fadeIn));
+  set('fadeOutVal', fmtMs(slot.fadeOut));
+  set('aVal', fmtMs(slot.adsr.a));
+  set('dVal', fmtMs(slot.adsr.d));
+  set('rVal', fmtMs(Math.max(0, endMs - a - dd)));
 }
 
-function updateWaveReadout() {
-  const slot = currentSlot();
-  const smp = slotSample(slot);
-  if (!smp) return;
-  $('#startVal').textContent = fmtMs(slot.start * smp.dur);
-  $('#endVal').textContent = fmtMs(slot.end * smp.dur);
-  $('#fadeInVal').textContent = fmtMs(slot.fadeIn);
-  $('#fadeOutVal').textContent = fmtMs(slot.fadeOut);
-}
-const waveDur = () => { const smp = currentSlotSample(); return smp ? smp.dur : 0; };
-const waveEditEnabled = () => !!currentSlotSample();
-const waveEditDisabled = 'Drop a sample in this slot first';
-const waveEditOpts = { step: .1, unit: 'ms', decimals: 1, enabled: waveEditEnabled, disabledMsg: waveEditDisabled };
-
-bindNumericEdit($('#startVal'), Object.assign({
-  get: () => currentSlot().start * waveDur(),
-  set: v => {
-    const smp = currentSlotSample(); if (!smp) return;
-    const slot = currentSlot();
-    slot.start = clamp(v / smp.dur, 0, slot.end - .02);
-    renderWaveform();
-  },
-  min: 0, max: () => currentSlot().end * waveDur(),
-}, waveEditOpts));
-
-bindNumericEdit($('#endVal'), Object.assign({
-  get: () => currentSlot().end * waveDur(),
-  set: v => {
-    const smp = currentSlotSample(); if (!smp) return;
-    const slot = currentSlot();
-    slot.end = clamp(v / smp.dur, slot.start + .02, 1);
-    renderWaveform();
-  },
-  min: () => currentSlot().start * waveDur(), max: () => waveDur(),
-}, waveEditOpts));
-
-bindNumericEdit($('#fadeInVal'), Object.assign({
-  get: () => currentSlot().fadeIn,
-  set: v => {
-    const smp = currentSlotSample(); if (!smp) return;
-    const slot = currentSlot();
-    slot.fadeIn = clamp(v, 0, (slot.end - slot.start) * smp.dur);
-    renderWaveform();
-  },
-  min: 0, max: () => { const slot = currentSlot(); return (slot.end - slot.start) * waveDur(); },
-}, waveEditOpts));
-
-bindNumericEdit($('#fadeOutVal'), Object.assign({
-  get: () => currentSlot().fadeOut,
-  set: v => {
-    const smp = currentSlotSample(); if (!smp) return;
-    const slot = currentSlot();
-    slot.fadeOut = clamp(v, 0, (slot.end - slot.start) * smp.dur);
-    renderWaveform();
-  },
-  min: 0, max: () => { const slot = currentSlot(); return (slot.end - slot.start) * waveDur(); },
-}, waveEditOpts));
-
-$('#wave').addEventListener('pointerdown', e => {
-  const h = e.target.closest('[data-handle]');
-  if (!h) {
-    const smp = currentSlotSample();
-    if (smp) beginDrag(smp, e, { keepTrigger: true, openTrigger: true });
-    return;
-  }
-  e.preventDefault();
-  const svg = $('#wave');
-  const rect = svg.getBoundingClientRect();
-  const slot = currentSlot();
-  const smp = slotSample(slot);
-  if (!smp) return;
-  const { W, padX } = waveGeom();
-  const move = ev => {
-    const sx = clamp((ev.clientX - rect.left) / rect.width, 0, 1) * W;
-    const tn = clamp((sx - padX) / (W - 2 * padX), 0, 1);
-    if (h.dataset.handle === 'start') slot.start = clamp(tn, 0, slot.end - .02);
-    if (h.dataset.handle === 'end') slot.end = clamp(tn, slot.start + .02, 1);
-    if (h.dataset.handle === 'fadeIn') slot.fadeIn = clamp((tn - slot.start) * smp.dur, 0, (slot.end - slot.start) * smp.dur);
-    if (h.dataset.handle === 'fadeOut') slot.fadeOut = clamp((slot.end - tn) * smp.dur, 0, (slot.end - slot.start) * smp.dur);
-    renderWaveform();
-  };
-  const up = () => {
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', up);
-  };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', up);
-});
-
-// ---------- ADR envelope (three free points, no hold) ----------
-function adsrGeom() { return { W: 360, H: 140, x0: 14, x1: 346, y0: 18, y1: 120 }; }
+function renderWaveform() { renderSampleEditor(); }
+function renderADSR() { renderSampleEditor(); }
 
 function envTotalMs() {
   const slot = currentSlot();
@@ -2497,64 +2513,111 @@ function fitAdsrToSample(slot) {
   slot.adsr.s = level; slot.adsr.p = peak; slot.adsr.e = releaseLevel;
 }
 
-function renderADSR() {
-  const slot = currentSlot();
-  if (!slot) return;
-  const { a, d, end, s, p, e } = slot.adsr;
-  const { x0, x1, y0, y1 } = adsrGeom();
-  const total = envTotalMs();
-  const endX = clamp(end, 0, total);
-  const decayX = Math.min(endX, a + d);
-  const X = t => x0 + (t / total) * (x1 - x0);
-  const Y = v => y1 - v * (y1 - y0);
-  const pts = [[X(0), Y(0)], [X(a), Y(p)], [X(decayX), Y(s)], [X(endX), Y(e)]];
-  const line = pts.map((pt, i) => `${i ? 'L' : 'M'} ${pt[0].toFixed(1)} ${pt[1].toFixed(1)}`).join(' ');
-  const area = `${line} L ${X(endX).toFixed(1)} ${y1} L ${x0} ${y1} Z`;
-  const c = '#2DE2C5';
+const waveDur = () => { const smp = currentSlotSample(); return smp ? smp.dur : 0; };
+const waveEditEnabled = () => !!currentSlotSample();
+const waveEditDisabled = 'Drop a sample in this slot first';
+const waveEditOpts = { step: .1, unit: 'ms', decimals: 1, enabled: waveEditEnabled, disabledMsg: waveEditDisabled };
 
-  // Ghost waveform of the trimmed sample behind the envelope.
-  let waveEl = '';
-  const smp = slotSample(slot);
-  if (smp) {
-    let arr = sampleWave(smp);
-    if (slot.reverse) arr = arr.slice().reverse();
-    const i0 = clamp(Math.floor(slot.start * (arr.length - 1)), 0, arr.length - 2);
-    const i1 = clamp(Math.ceil(slot.end * (arr.length - 1)), i0 + 1, arr.length - 1);
-    const count = i1 - i0 + 1;
-    const mid = (y0 + y1) / 2;
-    const amp = (y1 - y0) * .46;
-    const top = [], bot = [];
-    for (let i = 0; i < count; i++) {
-      const v = arr[i0 + i] * amp;
-      const px = x0 + (i / (count - 1)) * (x1 - x0);
-      top.push(`${px.toFixed(1)} ${(mid - v).toFixed(1)}`);
-      bot.push(`${px.toFixed(1)} ${(mid + v).toFixed(1)}`);
-    }
-    const wavePath = `M ${top.join(' L ')} L ${bot.reverse().join(' L ')} Z`;
-    const waveColor = CAT[smp.category].color;
-    waveEl = `<path d="${wavePath}" fill="${waveColor}" fill-opacity=".10" stroke="${waveColor}" stroke-opacity=".30" stroke-width=".7"/>`;
+bindNumericEdit($('#startVal'), Object.assign({
+  get: () => currentSlot().start * waveDur(),
+  set: v => {
+    const smp = currentSlotSample(); if (!smp) return;
+    const slot = currentSlot();
+    slot.start = clamp(v / smp.dur, 0, slot.end - .02);
+    renderWaveform();
+  },
+  min: 0, max: () => currentSlot().end * waveDur(), default: 0,
+}, waveEditOpts));
+
+bindNumericEdit($('#endVal'), Object.assign({
+  get: () => currentSlot().end * waveDur(),
+  set: v => {
+    const smp = currentSlotSample(); if (!smp) return;
+    const slot = currentSlot();
+    slot.end = clamp(v / smp.dur, slot.start + .02, 1);
+    renderWaveform();
+  },
+  min: () => currentSlot().start * waveDur(), max: () => waveDur(), default: () => waveDur(),
+}, waveEditOpts));
+
+bindNumericEdit($('#fadeInVal'), Object.assign({
+  get: () => currentSlot().fadeIn,
+  set: v => {
+    const smp = currentSlotSample(); if (!smp) return;
+    const slot = currentSlot();
+    slot.fadeIn = clamp(v, 0, (slot.end - slot.start) * smp.dur);
+    renderWaveform();
+  },
+  min: 0, max: () => { const slot = currentSlot(); return (slot.end - slot.start) * waveDur(); }, default: 0,
+}, waveEditOpts));
+
+bindNumericEdit($('#fadeOutVal'), Object.assign({
+  get: () => currentSlot().fadeOut,
+  set: v => {
+    const smp = currentSlotSample(); if (!smp) return;
+    const slot = currentSlot();
+    slot.fadeOut = clamp(v, 0, (slot.end - slot.start) * smp.dur);
+    renderWaveform();
+  },
+  min: 0, max: () => { const slot = currentSlot(); return (slot.end - slot.start) * waveDur(); }, default: 0,
+}, waveEditOpts));
+
+$('#wave').addEventListener('pointerdown', e => {
+  const trimH = e.target.closest('[data-handle]');
+  const envH = e.target.closest('[data-h]');
+  const smp = currentSlotSample();
+  if (!trimH && !envH) {
+    if (smp) beginDrag(smp, e, { keepTrigger: true, openTrigger: true });
+    return;
   }
-
-  $('#adsr').innerHTML = `
-    <defs>
-      <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="${c}" stop-opacity=".35"/>
-        <stop offset="1" stop-color="${c}" stop-opacity=".02"/>
-      </linearGradient>
-    </defs>
-    <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="rgba(255,255,255,.08)"/>
-    <line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="rgba(255,255,255,.08)"/>
-    <path d="${area}" fill="url(#ag)"/>
-    ${waveEl}
-    <path d="${line}" fill="none" stroke="${c}" stroke-width="1.8" stroke-linejoin="round"/>
-    <circle data-h="attack" cx="${X(a)}" cy="${Y(p)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:move"/>
-    <circle data-h="decay" cx="${X(decayX)}" cy="${Y(s)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:move"/>
-    <circle data-h="release" cx="${X(endX)}" cy="${Y(e)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:move"/>
-  `;
-  $('#aVal').textContent = fmtMs(a);
-  $('#dVal').textContent = fmtMs(d);
-  $('#rVal').textContent = fmtMs(Math.max(0, endX - a - d));
-}
+  e.preventDefault();
+  const svg = $('#wave');
+  const rect = svg.getBoundingClientRect();
+  const slot = currentSlot();
+  if (!slot || !smp) return;
+  const { W, padX } = waveGeom();
+  const total = envTotalMs();
+  const startX = padX + slot.start * (W - 2 * padX);
+  const endX = padX + slot.end * (W - 2 * padX);
+  const span = Math.max(1, endX - startX);
+  const startY = e.clientY;
+  const startP = slot.adsr.p, startS = slot.adsr.s, startE = slot.adsr.e;
+  const move = ev => {
+    const px = clamp((ev.clientX - rect.left) / rect.width, 0, 1) * W;
+    if (trimH) {
+      const full = clamp((px - padX) / (W - 2 * padX), 0, 1);
+      const trim = clamp((px - startX) / span, 0, 1);
+      const key = trimH.dataset.handle;
+      if (key === 'start') slot.start = clamp(full, 0, slot.end - .02);
+      if (key === 'end') slot.end = clamp(full, slot.start + .02, 1);
+      if (key === 'fadeIn') slot.fadeIn = clamp(trim * total, 0, total);
+      if (key === 'fadeOut') slot.fadeOut = clamp((1 - trim) * total, 0, total);
+    } else {
+      const t = clamp((px - startX) / span, 0, 1) * total;
+      const { a, d, end } = slot.adsr;
+      const level = (startY - ev.clientY) / Math.max(1, rect.height);
+      if (envH.dataset.h === 'attack') {
+        slot.adsr.a = clamp(t, 0, Math.max(0, end - d));
+        slot.adsr.p = clamp(startP + level, slot.adsr.s, 1);
+      }
+      if (envH.dataset.h === 'decay') {
+        slot.adsr.d = clamp(t - a, 0, Math.max(0, end - a));
+        slot.adsr.s = clamp(startS + level, slot.adsr.e, slot.adsr.p);
+      }
+      if (envH.dataset.h === 'release') {
+        slot.adsr.end = clamp(t, a + d, total);
+        slot.adsr.e = clamp(startE + level, 0, slot.adsr.s);
+      }
+    }
+    renderSampleEditor();
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+});
 
 const envMax = key => {
   const slot = currentSlot();
@@ -2567,12 +2630,12 @@ const envMax = key => {
 bindNumericEdit($('#aVal'), {
   get: () => currentSlot().adsr.a,
   set: v => { currentSlot().adsr.a = clamp(v, 0, envMax('a')); renderADSR(); },
-  min: 0, max: () => envMax('a'), step: 1, unit: 'ms', decimals: 0,
+  min: 0, max: () => envMax('a'), step: 1, unit: 'ms', decimals: 0, default: 0,
 });
 bindNumericEdit($('#dVal'), {
   get: () => currentSlot().adsr.d,
   set: v => { currentSlot().adsr.d = clamp(v, 0, envMax('d')); renderADSR(); },
-  min: 0, max: () => envMax('d'), step: 1, unit: 'ms', decimals: 0,
+  min: 0, max: () => envMax('d'), step: 1, unit: 'ms', decimals: 0, default: 120,
 });
 bindNumericEdit($('#rVal'), {
   get: () => {
@@ -2586,46 +2649,7 @@ bindNumericEdit($('#rVal'), {
     slot.adsr.end = clamp(start + clamp(v, 0, envMax('r')), start, total);
     renderADSR();
   },
-  min: 0, max: () => envMax('r'), step: 1, unit: 'ms', decimals: 0,
-});
-
-$('#adsr').addEventListener('pointerdown', e => {
-  const h = e.target.closest('[data-h]');
-  if (!h) return;
-  e.preventDefault();
-  const slot = currentSlot();
-  if (!slot) return;
-  const rect = $('#adsr').getBoundingClientRect();
-  const { x0, x1 } = adsrGeom();
-  const startY = e.clientY;
-  const startP = slot.adsr.p, startS = slot.adsr.s, startE = slot.adsr.e;
-  const move = ev => {
-    const nx = clamp((ev.clientX - rect.left) / rect.width, 0, 1);
-    const sx = x0 + nx * (x1 - x0);
-    const { a, d, end, s, p, e } = slot.adsr;
-    const total = envTotalMs();
-    const t = ((sx - x0) / (x1 - x0)) * total;
-    const level = (startY - ev.clientY) / Math.max(1, rect.height);
-    if (h.dataset.h === 'attack') {
-      slot.adsr.a = clamp(t, 0, end - d);
-      slot.adsr.p = clamp(startP + level, s, 1);
-    }
-    if (h.dataset.h === 'decay') {
-      slot.adsr.d = clamp(t - a, 0, end - a);
-      slot.adsr.s = clamp(startS + level, e, p);
-    }
-    if (h.dataset.h === 'release') {
-      slot.adsr.end = clamp(t, a + d, total);
-      slot.adsr.e = clamp(startE + level, 0, s);
-    }
-    renderADSR();
-  };
-  const up = () => {
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', up);
-  };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', up);
+  min: 0, max: () => envMax('r'), step: 1, unit: 'ms', decimals: 0, default: () => envMax('r'),
 });
 
 // ---------- SLOT tab ----------
@@ -2643,7 +2667,7 @@ $('#slotAuto').onclick = () => {
   setTimeout(() => {
     applyAutoPhase(state.selectedSlot, state.autoRef);
     btn.classList.remove('running');
-    btn.textContent = 'RE-ANALYZE & ALIGN';
+    btn.textContent = 'RE-ANALYZE';
   }, 550);
 };
 function setSlotOffset(v) {
@@ -2659,7 +2683,7 @@ $('#slotOffset').addEventListener('input', e => setSlotOffset(+e.target.value));
 bindNumericEdit($('#slotOffsetVal'), {
   get: () => currentSlot().offset,
   set: setSlotOffset,
-  min: -5, max: 50, step: .1, unit: 'ms', decimals: 1,
+  min: -5, max: 50, step: .1, unit: 'ms', decimals: 1, default: 0,
 });
 $('#slotShift').addEventListener('click', e => {
   const b = e.target.closest('button[data-shift]');
@@ -2695,10 +2719,10 @@ function bindToneNumeric(id, key, fmt, opts) {
     },
   }, opts));
 }
-bindToneNumeric('#tone', 'tone', v => (v > 0 ? '+' : '') + v, { min: -100, max: 100, step: 1, decimals: 0 });
-bindToneNumeric('#cut', 'cut', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0 });
-bindToneNumeric('#velSens', 'velSens', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0 });
-bindToneNumeric('#gain', 'gain', v => fmtDb(v), { min: -24, max: 24, step: .1, unit: 'dB', decimals: 1 });
+bindToneNumeric('#tone', 'tone', v => (v > 0 ? '+' : '') + v, { min: -100, max: 100, step: 1, decimals: 0, default: 0 });
+bindToneNumeric('#cut', 'cut', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0, default: 50 });
+bindToneNumeric('#velSens', 'velSens', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0, default: 50 });
+bindToneNumeric('#gain', 'gain', v => fmtDb(v), { min: -24, max: 24, step: .1, unit: 'dB', decimals: 1, default: 0 });
 
 $('#playbackSeg').addEventListener('click', e => {
   const b = e.target.closest('button[data-pb]');
@@ -2759,12 +2783,12 @@ const DET = [
     tip: 'LOWCUT · detection filter only; does not alter the dry audio' },
   { key: 'high',      label: 'HIGHCUT',   min: 20,  max: 20000, val: 20000, log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'filter',
     tip: 'HIGHCUT · detection filter only; does not alter the dry audio' },
-  { key: 'sens',      label: 'SENSITIVITY',min: 0,  max: 100, val: 51,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
-    tip: 'SENSITIVITY · helps catch ghost notes and soft hits' },
-  { key: 'retrig',    label: 'RETRIGGER', min: 0,   max: 1000, val: 16,    unit: 'ms', fmt: v => Math.round(v) + ' ms', group: 'detect',
-    tip: 'RETRIGGER · blind window after each hit (audio only, no graphic)' },
   { key: 'detail',    label: 'DETAIL',    min: 0,   max: 100, val: 14,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
     tip: 'DETAIL · detection threshold. Higher = ignores bleed; lower = catches ghost notes' },
+  { key: 'retrig',    label: 'RETRIGGER', min: 0,   max: 1000, val: 16,    unit: 'ms', fmt: v => Math.round(v) + ' ms', group: 'detect',
+    tip: 'RETRIGGER · blind window after each hit (audio only, no graphic)' },
+  { key: 'sens',      label: 'SENSITIVITY',min: 0,  max: 100, val: 51,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
+    tip: 'SENSITIVITY · helps catch ghost notes and soft hits' }
 ];
 
 function makeKnob(cfg) {
@@ -2797,11 +2821,18 @@ function makeKnob(cfg) {
     step: cfg.step != null ? cfg.step : (cfg.unit === 'dB' ? .1 : 1),
     unit: cfg.unit,
     decimals: cfg.decimals != null ? cfg.decimals : (cfg.unit === 'dB' ? 1 : 0),
+    default: cfg.val,
   });
   let sy = 0, sn = 0;
   dial.addEventListener('pointerdown', e => {
+    if (e.altKey) return;
     e.preventDefault(); sy = e.clientY; sn = toNorm(v);
     dial.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener('click', e => {
+    if (!e.altKey) return;
+    e.preventDefault(); e.stopPropagation();
+    if (val._numReset) val._numReset();
   });
   dial.addEventListener('pointermove', e => {
     if (!dial.hasPointerCapture(e.pointerId)) return;
@@ -2849,8 +2880,14 @@ function applyMix() {
   set(state.detector.mix);
   let sy = 0, sn = 0;
   knob.addEventListener('pointerdown', e => {
+    if (e.altKey) return;
     e.preventDefault(); sy = e.clientY; sn = state.detector.mix / 100;
     knob.setPointerCapture(e.pointerId);
+  });
+  knob.addEventListener('click', e => {
+    if (!e.altKey) return;
+    e.preventDefault(); e.stopPropagation();
+    if (val._numReset) val._numReset();
   });
   knob.addEventListener('pointermove', e => {
     if (!knob.hasPointerCapture(e.pointerId)) return;
@@ -2859,7 +2896,7 @@ function applyMix() {
   bindNumericEdit(val, {
     get: () => state.detector.mix,
     set: v => set(v),
-    min: 0, max: 100, step: 1, unit: '%', decimals: 0,
+    min: 0, max: 100, step: 1, unit: '%', decimals: 0, default: 100,
   });
 })();
 
@@ -2904,8 +2941,7 @@ function filterDetection(data, sr) {
   return out;
 }
 function detailThreshold() {
-  const d = clamp(state.detector.detail, 0, 100) / 100;
-  return 0.02 + 0.58 * Math.pow(d, 1.25);
+  return clamp(state.detector.detail, 0, 100) / 100;
 }
 function gainReductionPct(gateV) {
   if (!state.detector.gate) return 0;
@@ -3000,7 +3036,7 @@ function drawInput(now) {
 
   const ctx = inputCanvas.getContext('2d');
   ctx.clearRect(0, 0, inW, inH);
-  const mid = inH / 2, amp = inH * .34;
+  const mid = inH / 2, amp = Math.max(10, mid - 6);
   const volAmp = dbToAmp(state.detector.input);
   const detailThr = detailThreshold();
   const gateOn = state.detector.gate;
@@ -3148,8 +3184,14 @@ let masterOut = 0;
   set(0);
   let sy = 0, sv = 0;
   knob.addEventListener('pointerdown', e => {
+    if (e.altKey) return;
     e.preventDefault(); sy = e.clientY; sv = masterOut;
     knob.setPointerCapture(e.pointerId);
+  });
+  knob.addEventListener('click', e => {
+    if (!e.altKey) return;
+    e.preventDefault(); e.stopPropagation();
+    if (val._numReset) val._numReset();
   });
   knob.addEventListener('pointermove', e => {
     if (!knob.hasPointerCapture(e.pointerId)) return;
@@ -3158,7 +3200,7 @@ let masterOut = 0;
   bindNumericEdit(val, {
     get: () => masterOut,
     set: v => set(v),
-    min: -24, max: 6, step: .1, unit: 'dB', decimals: 1,
+    min: -24, max: 6, step: .1, unit: 'dB', decimals: 1, default: 0,
   });
 })();
 
@@ -3630,7 +3672,7 @@ function drawRealInput(now) {
   if (!realInputPeaks) return;
   const ctx = inputCanvas.getContext('2d');
   ctx.clearRect(0, 0, inW, inH);
-  const mid = inH / 2, amp = inH * .38;
+  const mid = inH / 2, amp = Math.max(10, mid - 6);
   const volAmp = dbToAmp(state.detector.input);
   const gateOn = state.detector.gate && !!realGateEnv;
   const detailThr = detailThreshold();

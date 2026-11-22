@@ -5,7 +5,7 @@ Fecha: 20/11/2026. Prototipo navegable en `prototype/` (`index.html`, `style.css
 ## Layout elegido (Opción A)
 
 - **HOME / File Search / TRIGGER full-bleed**: las tres páginas ocupan toda el área principal. HOME es la vista del mapa (ex Universe).
-- **Página TRIGGER**: INPUT DETECTOR estilo Slate en cinco columnas (GATE · INPUT · FILTER · waveform · DETECT) + sample view angosto con SAMPLE+ENVELOPE + tira TONE full-width + banco de 8 faders con Auto Phase, sin fila de título/INPUT/HITS/MASTER. OUTPUT y MIX están en la cápsula master superior. Se abre desde el corchete vertical TRIGGER (izquierda).
+- **Página TRIGGER**: INPUT DETECTOR estilo Slate en cinco columnas (GATE · INPUT · FILTER · waveform · DETECT) + sample view angosto con una sola waveform SAMPLE + ENVELOPE + tira TONE full-width + banco de 8 faders con Auto Phase, sin fila de título/INPUT/HITS/MASTER. OUTPUT y MIX están en la cápsula master superior. Se abre desde el corchete vertical TRIGGER (izquierda).
 - **Dock fijo de 8 slots cuadrados** abajo, centrado y visible en todas las vistas: recuadros de glass vacíos donde se arrastran los samples.
 - **Search flotante** arriba de HOME, centrado, estilo XO.
 - **Similarity bar** flotante arriba del dock, estilo XO.
@@ -39,7 +39,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - Al comenzar un drag, los 8 se encienden con un glow mint más brillante y se magnifican con caída por proximidad, estilo Dock de macOS; sin contorno general. El slot magnetizado mantiene un glow más fuerte.
 - Arrancan **vacíos**: muestran `+` / `DROP`.
 - Al llenarse muestran dot de categoría, nombre y duración; el × los vacía.
-- En la página TRIGGER, arriba de cada slot hay un **fader vertical** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna. **AUTO PHASE** vive en una tira horizontal sobre el banco de faders. El sample view angosto tiene **SAMPLE + ENVELOPE** y **TONE** es una tira full-width.
+- En la página TRIGGER, arriba de cada slot hay un **fader vertical** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna. **AUTO PHASE** vive en un panel vertical al lado del banco de faders. El sample view angosto tiene **SAMPLE + ENVELOPE en una sola waveform** y **TONE** es una tira full-width.
 
 ## FILE SEARCH
 
@@ -64,7 +64,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - **La app es HOME**: logo y título centrados, search con toggle folder/HOME, OUTPUT + VU vertical a la derecha y corchetes verticales TRIGGER/SETTINGS en los bordes. No hay topbar separado.
 - **Search centrado** arriba, sin contorno de panel; **Similarity** flotante abajo.
 - **TRIGGER** es un corchete vertical glass a la izquierda; **SETTINGS** es su simétrico a la derecha. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/A-D-R + banco de faders. **Esc vuelve siempre a HOME**, desde cualquier vista.
-- **Editor de sample**: **SAMPLE + ENVELOPE** comparten el sample view angosto (waveform a la izquierda, ADR con waveform fantasma a la derecha); **TONE** va en una tira full-width debajo del detector. **AUTO PHASE** (REF, re-analizar, TIMING, OFFSET, SHIFT) está en la tira sobre los faders.
+- **Editor de sample**: **SAMPLE + ENVELOPE** comparten **una sola waveform**: sample completo, trim/fades, curva A/D/R × fades en mint y handles de start/end/fades + A/D/R. **TONE** va en una tira full-width debajo del detector. **AUTO PHASE** (REF, re-analizar, TIMING, OFFSET, SHIFT) está en la tira sobre los faders.
 - **Fase**: 0/90/180/260; **180 = Ø**. Los badges se mantienen en el editor.
 - **Slots**: solo números 01–08, sin faders.
 - **Audio real**: `prototype/samples/SNARE.cm.wav` se decodifica con Web Audio y el archivo completo es el **INPUT** del trigger. El botón **▶ INPUT** dispara los slots cargados en cada transiente detectado. Los slots arrancan vacíos; se llenan con ALT + drag.
@@ -103,6 +103,22 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
 
+## Actualización 21/11 — layout TRIGGER ampliado
+
+- El detector creció a ~68–70% del ancho y ganó altura al achicar el título/OUTPUT/MIX, reducir TONE a 38 px y mover **AUTO PHASE** a un **panel vertical** al lado de los faders.
+- En el detector: el ON de GATE ocupa todo el ancho de la columna, el **VU GR rojo** vive junto a los knobs del gate, INPUT quedó centrado con su medidor y sus knobs, FILTER y DETECT quedaron centrados, y los knobs/labels subieron a 30 px / 9 px.
+- El banco de faders y el dock quedan centrados en su posición original; el panel de Auto Phase ocupa el margen derecho sin moverlos (98 px en 1076, 180 px desde 1280; arriba de los faders en <=1000).
+- MIX abre en **100%** y los faders en **0 dB**.
+
+## Actualización 21/11 — SAMPLE + ENVELOPE unificados
+
+- **SAMPLE + ENVELOPE** pasaron a **una sola waveform**. El sample completo, el trim (start/end), los fades y la curva **A/D/R** se dibujan en el mismo SVG.
+- La curva mint final es la **combinación del envelope ADR con los fades**; la curva base ADR queda como guía dashed y los tres puntos A/D/R se editan sobre el mismo gráfico.
+- Handles: start/end en la parte superior, fade in/out en una lane superior, y attack/decay/release sobre la curva. Los readouts se ordenaron en dos filas: **START / END / FADE IN / FADE OUT** y **A / D / R**, con Reverse en el header.
+- El sample view sigue angosto (~30–32%) y ahora aprovecha todo el ancho para una sola waveform.
+- **Alt+click** resetea cualquier valor numérico a su default; los faders arrancan en **0 dB**.
+- Se corrigió el estado de edición para que después de un reset el doble click vuelva a abrir el editor.
+
 ## Actualización 21/11 — detector Slate (flujo final)
 
 - El detector quedó en **cinco columnas**: GATE (ON/OFF + ATTACK/HOLD/RELEASE), INPUT (medidor + VOLUME + SUPPRESS + ▶ INPUT), FILTER (LOWCUT/HIGHCUT), waveform central y DETECT (SENSITIVITY/RETRIGGER/DETAIL).
@@ -110,10 +126,10 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - **OUTPUT y MIX salieron del detector**: están en la cápsula master superior. **MIX** es el blend entre input original (0%) y samples disparados (100%) y está conectado al grafo de audio dry/wet. El gate solo procesa el input original; se escucha bajando MIX de 100%.
 - **Jerarquía:** INPUT VOLUME escala la waveform/detección; **DETAIL es el threshold** (línea dashed mint, independiente del volumen); SENSITIVITY ayuda con ghost notes; RETRIGGER es una **ventana ciega audible**, sin gráfica.
 - La waveform central muestra una **ventana de 2 s** (~6 transientes) que sigue al playhead, con el input en azul limpio, la línea de cero, la línea dashed de DETAIL con su label y las líneas naranjas de hit hasta el pico de cada transiente. **No dibuja el gate**: la atenuación se ve en el **VU GR rojo** al lado del medidor INPUT. El LED junto a GATE indica open/closed.
-- El **GATE es transient-driven**: no tiene threshold; ON/OFF + ATTACK/HOLD/RELEASE moldean el input original y no cambian la detección. Su reducción se ve en el **VU GR** rojo (bottom-up, 0–24 dB) al lado de INPUT.
+- El **GATE es transient-driven**: no tiene threshold; ON/OFF + ATTACK/HOLD/RELEASE moldean el input original y no cambian la detección. Su reducción se ve en el **VU GR** rojo (bottom-up, 0–24 dB) junto a los knobs del GATE.
 - **Todo el detector corre en vivo**: los slots se disparan hit por hit mientras suena el input; mover Detail/Sens/Retrigger/Suppress/filtros cambia los próximos disparos, y Gate/Volume/MIX/OUTPUT responden en el momento.
 - Cada knob del detector tiene tooltip con su rol; la waveform también explica sus colores/líneas al hover.
-- El **sample view** se angostó a ~34–36%; el detector ocupa ~64–66% (66/34 en ventanas angostas).
+- El **sample view** quedó en ~30–32%; el detector ocupa ~68–70% (70/30 en ventanas angostas).
 - **TONE** sigue como tira full-width debajo del detector/editor.
 - El diseño se verificó de 900×1200 a 1920×1080 sin overflow.
 
@@ -144,7 +160,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 
 ## Actualización 21/11 — edición numérica por doble click
 
-- Todos los parámetros con valor numérico son editables con **doble click**: knobs del detector, MIX, OUTPUT master, niveles de los 8 faders, TONE/CUT/VEL SENS/GAIN, START/END/FADE IN/FADE OUT, A/D/R y OFFSET.
+- Todos los parámetros con valor numérico son editables con **doble click**: knobs del detector, MIX, OUTPUT master, niveles de los 8 faders, TONE/CUT/VEL SENS/GAIN, START/END/FADE IN/FADE OUT, A/D/R y OFFSET. **Alt+click resetea el valor a su default** (faders/OUTPUT 0 dB, MIX 100%, detector de fábrica, etc.).
 - El número existente se vuelve **editable en su lugar** (contenteditable), conservando posición, tipografía y unidad; no abre ninguna ventana flotante. **Enter** confirma, **Esc** cancela; el blur confirma y abrir otro valor confirma el anterior.
 - Acepta coma o punto decimal y sufijos (`1.2k` → 1200 Hz, `0.25s` → 250 ms). Clampa al rango del parámetro y redondea al step.
 - Los valores muestran cursor de texto; al hover y en edición aparece un **recuadro gris neutro**, sin glow ni cambio de color (rojo tenue solo si el valor es inválido). La selección de texto dentro del editor también es gris.

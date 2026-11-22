@@ -1471,3 +1471,189 @@ html.reduce-transparency .liquid-glass::after{display:none}
 html.reduce-transparency .universe.files-mode #universeView{opacity:.15 !important;filter:none !important}
 html.cat-shapes :is(.fdot,.slot-dot,.sim-dots i).cat-mark{box-shadow:none;width:9px;height:9px}
 html.cat-shapes .sim-dots i.cat-mark.active{width:11px;height:11px}
+
+/* Alt+click reset feedback: neutral grey, no glow. */
+.num-editable.num-reset{background:rgba(255,255,255,.09);
+  box-shadow:0 0 0 1px rgba(210,220,235,.28);border-radius:3px}
+
+/* ---------- unified SAMPLE + ENVELOPE editor ---------- */
+.trigger-view .panel[data-panel="sample"]{padding-bottom:6px}
+.trigger-view .panel[data-panel="sample"]::before{content:"SAMPLE + ENVELOPE"}
+.unified-editor{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;gap:4px}
+.unified-head{display:flex;align-items:center;gap:6px;flex:none;min-width:0}
+.unified-head .sample-meta{flex:1;min-width:0;margin:0;font-size:10.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.unified-head .chip{flex:none;font-size:9px;padding:2px 6px;line-height:1.15}
+.unified-wave-wrap{flex:1;min-height:96px;position:relative;min-width:0;overflow:hidden}
+.unified-wave-wrap #wave{width:100%;height:100%;display:block}
+.unified-readouts{display:flex;flex-direction:column;gap:2px;flex:none}
+.u-readout-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px 6px;min-width:0}
+.u-readout-row>span{font-size:9.5px;letter-spacing:.07em;color:var(--muted-2);min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.u-readout-row b{display:block;font-family:var(--mono);font-size:9.5px;color:#D8E0EE;
+  font-weight:500;letter-spacing:0;margin-top:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.u-env-row>span{color:var(--mint);opacity:.88}
+.u-env-row b{color:#E9EEF7}
+.u-env-tag{display:flex;align-items:center;justify-content:flex-end;gap:4px;
+  font-size:8px!important;letter-spacing:.12em;color:var(--muted-2)!important;opacity:1!important}
+.u-env-tag .live-dot{width:4px;height:4px}
+
+/* =====================================================================
+   TRIGGER layout pass: bigger detector/editor, compact chrome, upright
+   Auto Phase panel beside the faders.
+   ===================================================================== */
+:root{
+  --phase-gap:4px;
+  --fader-width:calc(8 * var(--slot-size) + 7 * var(--slot-gap));
+  --phase-w:min(180px, calc((100% - var(--fader-width)) / 2 - var(--phase-gap)));
+  --fader-h:clamp(136px,calc(var(--slot-size) * 1.5),210px);
+}
+
+/* smaller top chrome on the TRIGGER page */
+.universe.trigger-mode .chrome{top:6px}
+.universe.trigger-mode .brand .logo{width:22px;height:22px}
+.universe.trigger-mode .brand-text b{font-size:10px;letter-spacing:.16em}
+.universe.trigger-mode .brand-text span{font-size:8.5px;letter-spacing:.3em;margin-top:2px}
+.universe.trigger-mode .top-master{padding:3px 7px;gap:4px}
+.universe.trigger-mode .top-master .top-knob{width:22px;height:22px}
+.universe.trigger-mode .top-master span,
+.universe.trigger-mode .top-master b{font-size:10px}
+.universe.trigger-mode .out-vu{height:20px}
+.universe.trigger-mode .top-mix{padding-left:6px;gap:4px}
+.universe.trigger-mode .top-mix .top-knob{width:20px;height:20px}
+.trigger-page{padding-top:48px;gap:8px}
+
+/* more room for both the detector and the unified sample editor */
+.trigger-page-grid{grid-template-columns:minmax(0,68fr) minmax(0,32fr)}
+@media (max-width:1100px){
+  .trigger-page-grid{grid-template-columns:minmax(0,70fr) minmax(0,30fr)}
+}
+
+/* detector columns: wider gate for knobs + GR, centered input/filter/detect */
+.trigger-view .detector{grid-template-columns:112px 76px 66px minmax(0,1fr) 86px;gap:6px}
+.trigger-view .dc-head{justify-content:center;width:100%}
+.trigger-view .dc-knobs{width:100%}
+.trigger-view .dc-knobs .knob-dial{width:30px;height:30px}
+.trigger-view .dc-knobs .knob-label{font-size:9px;letter-spacing:.02em}
+.trigger-view .dc-knobs .knob-val{font-size:9px}
+
+/* GATE: full-width ON and a red GR VU beside the three knobs */
+.trigger-view .gate-col{gap:5px;align-items:stretch}
+.trigger-view .gate-col .dc-head{justify-content:center;gap:5px}
+.trigger-view .gate-toggle{width:100%;height:24px;font-size:8.5px;padding:0;margin:0;flex:none}
+.trigger-view .gate-body{display:flex;align-items:center;justify-content:center;gap:7px;flex:1;min-height:0;width:100%}
+.trigger-view .gate-knobs{flex:none;width:auto;display:flex;flex-direction:column;justify-content:center;
+  align-items:center;gap:7px;min-height:0;min-width:0}
+.trigger-view .gate-gr{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  width:18px;flex:none;min-height:0;padding:0 0 2px}
+.trigger-view .gate-gr .gr-label{margin:0;color:#FF6B6B;font-size:7px;font-weight:650;
+  letter-spacing:.08em;line-height:1;opacity:.9;flex:none}
+.trigger-view .gate-gr .dm-track{flex:none;width:10px;height:160px;min-height:0;max-height:160px;
+  background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,76,76,.20)}
+.trigger-view .gate-gr .dm-track>i{background:linear-gradient(to top,#FF3B3B,#FF8A6B);
+  box-shadow:0 0 7px rgba(255,59,59,.28);z-index:1}
+.trigger-view .gate-gr .dm-track::after{display:none}
+
+/* INPUT: meter centered, knobs centered below it */
+.trigger-view .input-col{align-items:center;gap:4px}
+.trigger-view .input-col .dc-head{justify-content:center}
+.trigger-view .input-col .det-meter{height:72px;justify-content:center;align-items:stretch;
+  gap:4px;width:100%}
+.trigger-view .input-col .dc-knobs{justify-content:center;gap:5px;align-items:center;flex:1}
+.trigger-view .input-play{width:100%;font-size:8px;padding:2px 1px;margin-top:0}
+
+/* FILTER: closer, centered under the word */
+.trigger-view .filter-col{align-items:center}
+.trigger-view .filter-col .dc-head{justify-content:center}
+.trigger-view .filter-col .dc-knobs{justify-content:center;gap:4px;align-items:center;flex:1}
+
+/* DETECT: centered, order DETAIL / RETRIGGER / SENSITIVITY */
+.trigger-view .detect-col{align-items:center}
+.trigger-view .detect-col .dc-head{justify-content:center}
+.trigger-view .detect-col .dc-knobs{justify-content:space-evenly;align-items:center}
+
+/* compact knobs on shorter windows, but still bigger than before */
+@media (max-height:820px){
+  .trigger-view .dc-knobs .knob-dial{width:30px;height:30px}
+  .trigger-view .dc-knobs .knob-label{font-size:9px}
+  .trigger-view .dc-knobs .knob-val{font-size:9px}
+  .trigger-view .input-col .det-meter{height:72px}
+  .trigger-view .gate-toggle{height:24px;font-size:8.5px}
+}
+
+/* TONE strip: shorter and lighter */
+.tone-strip{min-height:38px;padding:3px 10px;gap:8px}
+.tone-strip-head{font-size:8px}
+.tone-strip .tone-grid{gap:1px 10px}
+.tone-strip .tone-grid label{font-size:8px}
+.tone-strip .tone-grid b{font-size:8.5px}
+.tone-strip .pb-label{font-size:7.5px}
+.tone-strip .seg button{font-size:8px;padding:2px 4px}
+.tone-strip .chip{font-size:8px;padding:2px 5px}
+
+/* Faders + upright Auto Phase panel in one centered row. The dock below is
+   shifted by half the phase panel width so its slots stay under the faders. */
+.trigger-bottom{position:relative;display:flex;align-items:flex-start;justify-content:center;
+  flex:none;width:100%;height:var(--fader-h);min-width:0}
+.trigger-bottom .fader-bank{flex:none;height:var(--fader-h);margin:0}
+.auto-phase-panel{position:absolute;top:0;left:calc(50% + (var(--fader-width) / 2) + var(--phase-gap));
+  width:var(--phase-w);height:var(--fader-h);flex:none;display:flex;
+  flex-direction:column;justify-content:center;gap:3px;min-width:0;min-height:0;
+  padding:6px 7px;border:1px solid var(--line);border-radius:12px;
+  background:rgba(8,12,20,.34);overflow:hidden}
+.auto-phase-panel .ap-head{display:flex;align-items:baseline;gap:4px;min-width:0;flex:none}
+.auto-phase-panel .ap-badge{font-family:var(--mono);font-size:7.5px;letter-spacing:.05em;
+  color:var(--mint);flex:none}
+.auto-phase-panel .ap-name{font-size:8.5px;font-weight:600;color:var(--text);min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.auto-phase-panel .ap-row{display:flex;align-items:center;gap:4px;flex:none;min-width:0}
+.auto-phase-panel .ap-ref{display:flex;align-items:center;gap:3px;flex:1;min-width:0;
+  font-size:7.5px;letter-spacing:.08em;color:var(--muted-2)}
+.auto-phase-panel .ap-ref select{flex:1;min-width:0;font-size:8px;padding:1px 2px;
+  background:rgba(255,255,255,.03);color:var(--text);border:1px solid var(--line);border-radius:3px}
+.auto-phase-panel .sp-timing{height:18px;font-size:7.5px;padding:0 5px;flex:none}
+.auto-phase-panel .sp-auto{width:100%;height:20px;font-size:7.5px;padding:0 4px;
+  letter-spacing:.05em;flex:none}
+.auto-phase-panel .ap-offset{display:flex;align-items:center;gap:3px;flex:none;min-width:0;
+  font-size:7.5px;letter-spacing:.06em;color:var(--muted-2)}
+.auto-phase-panel .ap-offset input{flex:1;min-width:0;width:auto;-webkit-appearance:none;
+  height:3px;border-radius:3px;background:rgba(255,255,255,.1);outline:none}
+.auto-phase-panel .ap-offset input::-webkit-slider-thumb{-webkit-appearance:none;width:8px;
+  height:8px;border-radius:50%;background:#fff;border:2px solid var(--panel-solid);
+  box-shadow:0 0 0 1px rgba(255,255,255,.3)}
+.auto-phase-panel .ap-offset b{font-family:var(--mono);font-size:7.5px;color:#D8E0EE;
+  font-weight:500;min-width:34px;text-align:right}
+.auto-phase-panel .ap-shift{display:flex;align-items:center;gap:3px;flex:none;
+  font-size:7.5px;letter-spacing:.06em;color:var(--muted-2);min-width:0}
+.auto-phase-panel .ap-shift .seg{display:flex;gap:2px;flex:1;min-width:0}
+.auto-phase-panel .ap-shift .seg button{font-size:7.5px;padding:1px 3px;min-width:0;flex:1}
+.auto-phase-panel .ap-result{font-size:7.5px;color:var(--muted-2);min-height:9px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;flex:none}
+.slot-dock .slots{transform:none}
+
+/* Narrow side phase panel: compact stacked controls. */
+@media (max-width:1120px){
+  .auto-phase-panel{padding:4px;gap:2px}
+  .auto-phase-panel .ap-head{gap:2px}
+  .auto-phase-panel .ap-badge{font-size:6.5px}
+  .auto-phase-panel .ap-name{font-size:7px}
+  .auto-phase-panel .ap-row{flex-wrap:wrap;gap:2px}
+  .auto-phase-panel .ap-ref{flex:1 1 100%;font-size:6.5px}
+  .auto-phase-panel .ap-ref select{font-size:7px}
+  .auto-phase-panel .sp-timing{width:100%;height:14px;font-size:6.5px}
+  .auto-phase-panel .sp-auto{height:16px;font-size:6.5px}
+  .auto-phase-panel .ap-offset{font-size:6.5px;gap:2px}
+  .auto-phase-panel .ap-offset b{font-size:6.5px;min-width:24px}
+  .auto-phase-panel .ap-shift{flex-wrap:wrap;gap:2px;font-size:6.5px}
+  .auto-phase-panel .ap-shift .seg{display:grid;grid-template-columns:1fr 1fr;gap:2px;flex:1 1 100%}
+  .auto-phase-panel .ap-shift .seg button{font-size:6.5px;padding:1px 0}
+  .auto-phase-panel .ap-result{font-size:6.5px;max-height:8px}
+}
+
+/* Very narrow: no room beside the centered faders, keep the phase panel above. */
+@media (max-width:1000px){
+  .trigger-bottom{flex-direction:column-reverse;align-items:center;justify-content:flex-start;
+    height:auto;gap:8px}
+  .trigger-bottom .fader-bank{height:var(--fader-h)}
+  .auto-phase-panel{position:static;width:min(100%,440px);height:auto;min-height:0}
+}

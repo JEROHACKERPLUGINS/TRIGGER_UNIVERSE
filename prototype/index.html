@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=139">
+<link rel="stylesheet" href="style.css?v=146">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -36,7 +36,7 @@
               <div class="out-vu" id="outVu" title="Output level"><i id="outVuBar"></i></div>
               <div class="top-mix">
                 <div class="top-knob" id="mixKnob" title="MIX: 0% = original input · 100% = triggered samples"><div class="knob-ind"></div></div>
-                <span>MIX<b id="mixVal">50%</b></span>
+                <span>MIX<b id="mixVal">100%</b></span>
               </div>
             </div>
           </div>
@@ -98,15 +98,20 @@
         <section class="det-col gate-col">
           <div class="dc-head">GATE<i class="gate-led" id="gateLed" title="Gate open/closed"></i></div>
           <button class="chip toggle gate-toggle" id="gateBtn" title="Gate on the original input; lower MIX to hear it">ON</button>
-          <div class="dc-knobs" id="detKnobsGate"></div>
+          <div class="gate-body">
+            <div class="dc-knobs gate-knobs" id="detKnobsGate"></div>
+            <div class="gate-gr" title="Gain reduction · gate attenuation of the original input (0–24 dB)">
+              <span class="gr-label">GR</span>
+              <div class="dm-track gr-track"><i id="grMeterBar"></i></div>
+            </div>
+          </div>
         </section>
 
         <section class="det-col input-col">
-          <div class="dc-head">INPUT<span class="gr-label" title="Gain reduction: gate attenuation of the original input">GR</span></div>
+          <div class="dc-head">INPUT</div>
           <div class="det-meter">
             <div class="dm-scale"><span>-0</span><span>-3</span><span>-6</span><span>-12</span><span>-24</span><span>-48</span></div>
             <div class="dm-track"><i id="inputMeterBar"></i></div>
-            <div class="dm-track gr-track" title="Gain reduction · gate attenuation of the original input (0–24 dB)"><i id="grMeterBar"></i></div>
           </div>
           <div class="dc-knobs" id="detKnobsInput"></div>
           <button class="chip input-play" id="inputPlay" data-kbd="Space" title="Play input">▶ INPUT</button>
@@ -143,28 +148,26 @@
 
       <div class="inspector-body">
         <div class="panel active" data-panel="sample">
-          <div class="sample-env-grid">
-            <div class="sample-side">
-              <div class="sample-meta" id="sampleMeta">—</div>
-              <div class="wave-wrap"><svg id="wave" viewBox="0 0 600 140" preserveAspectRatio="none"></svg></div>
-              <div class="wave-readout">
+          <div class="unified-editor">
+            <div class="unified-head">
+              <span class="sample-meta" id="sampleMeta">—</span>
+              <button class="chip reverse" id="reverseBtn" title="Reverse sample">Reverse</button>
+            </div>
+            <div class="unified-wave-wrap">
+              <svg id="wave" viewBox="0 0 600 170" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="unified-readouts">
+              <div class="u-readout-row u-sample-row">
                 <span>START <b id="startVal">0.0 ms</b></span>
                 <span>END <b id="endVal">0.0 ms</b></span>
                 <span>FADE IN <b id="fadeInVal">0.0 ms</b></span>
                 <span>FADE OUT <b id="fadeOutVal">0.0 ms</b></span>
               </div>
-              <div class="row-btns sample-tools">
-                <button class="chip reverse" id="reverseBtn" title="Reverse sample">Reverse</button>
-              </div>
-            </div>
-
-            <div class="env-side">
-              <div class="env-note">ENVELOPE · A / D / R <span class="live-dot"></span></div>
-              <svg id="adsr" viewBox="0 0 360 140" preserveAspectRatio="none"></svg>
-              <div class="env-readout">
+              <div class="u-readout-row u-env-row">
                 <span>A <b id="aVal">0 ms</b></span>
                 <span>D <b id="dVal">120 ms</b></span>
                 <span>R <b id="rVal">—</b></span>
+                <span class="u-env-tag"><i class="live-dot"></i> ENV</span>
               </div>
             </div>
           </div>
@@ -189,16 +192,18 @@
                 <button class="chip toggle" id="loopBtn">LOOP</button>
               </div>
             </div>
-            <div class="auto-phase-bar" id="autoPhaseBar">
-              <div class="ap-slot">
-                <span class="ap-badge" id="apSlotBadge">SLOT 01</span>
-                <span class="ap-name" id="apSampleName">empty slot</span>
-              </div>
-              <div class="ap-result sp-result" id="slotResult">Select a sample in this slot.</div>
-              <div class="ap-controls">
-                <span class="ap-ref">REF <select id="slotRef"><option>INPUT</option><option>SLOT 1</option></select></span>
-                <button class="sp-auto" id="slotAuto">RE-ANALYZE &amp; ALIGN</button>
-                <button class="sp-timing" id="slotTiming">TIMING</button>
+            <div class="trigger-bottom">
+              <div class="fader-bank" id="faderBank"></div>
+              <aside class="auto-phase-panel" id="autoPhaseBar">
+                <div class="ap-head">
+                  <span class="ap-badge" id="apSlotBadge">SLOT 01</span>
+                  <span class="ap-name" id="apSampleName">empty slot</span>
+                </div>
+                <div class="ap-row">
+                  <span class="ap-ref">REF <select id="slotRef"><option>INPUT</option><option>SLOT 1</option></select></span>
+                  <button class="sp-timing" id="slotTiming">TIMING</button>
+                </div>
+                <button class="sp-auto" id="slotAuto" title="Re-analyze and align">RE-ANALYZE</button>
                 <label class="ap-offset">OFFSET <input id="slotOffset" type="range" min="-5" max="50" step="0.1" value="0"><b id="slotOffsetVal">0.0 ms</b></label>
                 <div class="ap-shift"><span class="lbl">SHIFT</span>
                   <div class="seg" id="slotShift">
@@ -208,9 +213,9 @@
                     <button data-shift="260">260°</button>
                   </div>
                 </div>
-              </div>
+                <div class="ap-result sp-result" id="slotResult">Select a sample in this slot.</div>
+              </aside>
             </div>
-            <div class="fader-bank" id="faderBank"></div>
           </div>
         </div>
 
@@ -299,6 +304,6 @@
 <div class="toast" id="toast"></div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=138"></script>
+<script src="app.js?v=146"></script>
 </body>
 </html>
