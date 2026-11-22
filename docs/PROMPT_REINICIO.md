@@ -62,13 +62,14 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (
 - **Auto-phase:** corre al cargar un sample. Por defecto solo polaridad; offset en 0 salvo **TIMING** activo.
 - **Trigger Slots:** dock fijo de 8 recuadros de glass `01`–`08`, cuadrados y centrados, vacíos al inicio, con la misma textura glass que search/TRIGGER/Settings/OUTPUT. Al arrancar un drag se encienden con glow mint y se magnifican tipo Dock de macOS. Click en un slot lleno **audiciona** su sample; doble click lo abre en TRIGGER; click en uno vacío abre TRIGGER.
 - **Faders:** 8 faders verticales (≈136 px) alineados arriba de los slots, con meter, M/S/Ø y nivel. La tira de **AUTO PHASE** va arriba del banco y sigue al slot seleccionado.
-- **Editor:** sample view angosto (~36%) en la página TRIGGER. **SAMPLE + ENVELOPE** comparten un panel (waveform + ADR) y **TONE** es una tira full-width debajo.
+- **Editor:** sample view angosto (~34–36%) en la página TRIGGER. **SAMPLE + ENVELOPE** comparten un panel (waveform + ADR) y **TONE** es una tira full-width debajo.
 - **Paneles del editor:** **SAMPLE + ENVELOPE** en el sample view y **TONE** en una tira full-width. **AUTO PHASE** queda sobre los faders.
 - **Auto Phase:** tira horizontal sobre los faders con REF, re-analizar, TIMING, OFFSET y SHIFT; sin Level/Pan/Tune/Mute/Solo/Pol en el editor.
-- **TRIGGER:** corchete vertical glass a la izquierda; abre la página full-screen con detector Slate en columnas (GATE/INPUT/FILTER/waveform/DETECT/OUTPUT), sample view con SAMPLE+ENVELOPE, tira TONE y faders con Auto Phase. **Esc vuelve siempre a HOME**; el corchete vuelve a la vista anterior.
+- **TRIGGER:** corchete vertical glass a la izquierda; abre la página full-screen con detector Slate en cinco columnas (GATE/INPUT/FILTER/waveform/DETECT), sample view con SAMPLE+ENVELOPE, tira TONE y faders con Auto Phase. OUTPUT y MIX están en la cápsula master superior. **Esc vuelve siempre a HOME**; el corchete vuelve a la vista anterior.
+- **Detector:** GATE pre-INPUT con THRESHOLD/ATTACK/HOLD/RELEASE; VOLUME como trim hacia la waveform/detección; LOWCUT/HIGHCUT solo en la detección; SUPPRESS en INPUT. El gate procesa solo el input original: hay que bajar MIX de 100% para escucharlo. MIX 0% = input original, 100% = samples.
 - **HOME** (ex Universe): vista principal full-bleed, nube de puntos 3D abstracta, sin ejes. Search arriba, similitud abajo. **Esc vuelve acá desde cualquier vista.**
 - **FILE SEARCH:** árbol tipo Finder con root en la carpeta elegida por el usuario; subcarpetas reales; samples reales primero.
-- **OUTPUT** arriba a la derecha, cápsula glass. **TRIGGER** es un corchete vertical glass a la izquierda y **SETTINGS** otro a la derecha. **AUTO PHASE ALL** vive en Settings.
+- **OUTPUT + MIX** arriba a la derecha, en una cápsula glass. **TRIGGER** es un corchete vertical glass a la izquierda y **SETTINGS** otro a la derecha. **AUTO PHASE ALL** vive en Settings.
 - **Fuera de alcance:** step sequencer, patrones, groove, swing, BPM sync, preset browser.
 - **XO:** solo referencia funcional/UX. **No copiar código, assets ni diseño propietario.**
 

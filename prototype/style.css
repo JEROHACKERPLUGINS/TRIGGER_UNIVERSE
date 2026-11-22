@@ -1279,7 +1279,7 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 .trigger-view .dc-knobs{display:flex;flex-direction:column;align-items:center;justify-content:space-evenly;
   gap:3px;flex:1;min-height:0;min-width:0}
 .trigger-view .dc-knobs.single{flex:0 0 auto;justify-content:flex-start;padding-top:1px}
-.trigger-view .dc-knobs .knob{gap:1px;min-width:0;max-width:100%}
+.trigger-view .dc-knobs .knob{gap:1px;min-width:0;max-width:100%;flex:none}
 .trigger-view .dc-knobs .knob-dial{width:24px;height:24px}
 .trigger-view .dc-knobs .knob-label{font-size:7.5px;letter-spacing:.02em;max-width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1337,3 +1337,39 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 
 /* Give the Slate-style detector more room; the sample view can be narrower. */
 .trigger-page-grid{grid-template-columns:minmax(0,16fr) minmax(0,9fr)}
+
+/* ---------- Slate detector: gate threshold pre-input, master MIX ---------- */
+.top-mix{display:flex;align-items:center;gap:6px;padding-left:8px;margin-left:2px;
+  border-left:1px solid rgba(255,255,255,.10)}
+.top-mix .top-knob{width:24px;height:24px}
+.top-mix b{white-space:nowrap}
+.trigger-view .detector{grid-template-columns:96px 78px 64px minmax(0,1fr) 80px}
+.trigger-view .dc-head{display:flex;align-items:center;gap:4px}
+.trigger-view .gate-led{width:5px;height:5px;border-radius:50%;flex:none;
+  background:rgba(255,255,255,.14);transition:background .06s,box-shadow .06s}
+.trigger-view .gate-led.on{background:var(--mint);box-shadow:0 0 6px rgba(45,226,197,.75)}
+.trigger-view .input-col .dc-knobs{justify-content:space-evenly}
+.trigger-view .filter-col .dc-knobs{justify-content:space-evenly}
+
+@media (max-height:820px){
+  .trigger-view .dc-knobs{gap:1px}
+  .trigger-view .dc-knobs .knob{gap:0}
+  .trigger-view .dc-knobs .knob-dial{width:20px;height:20px}
+  .trigger-view .dc-knobs .knob-label{font-size:7px;line-height:1.15}
+  .trigger-view .dc-knobs .knob-val{font-size:7px;line-height:1.15}
+  .trigger-view .det-meter{height:50px}
+  .trigger-view .gate-col{gap:3px}
+  .trigger-view .gate-toggle{font-size:7px;padding:1px}
+  .trigger-view .input-play{font-size:7px;padding:1px}
+}
+@media (max-height:700px){
+  .trigger-view .dc-knobs .knob-dial{width:18px;height:18px}
+  .trigger-view .dc-knobs .knob-label{font-size:6.5px;line-height:1.1}
+  .trigger-view .dc-knobs .knob-val{font-size:6.5px;line-height:1.1}
+  .trigger-view .gate-col{gap:2px}
+}
+
+/* Narrow windows: give the Slate detector a little more width; the sample view can shrink. */
+@media (max-width:1100px){
+  .trigger-page-grid{grid-template-columns:minmax(0,33fr) minmax(0,17fr)}
+}

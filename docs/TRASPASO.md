@@ -48,9 +48,10 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8765/
 
 1. Click en el corchete **TRIGGER** (izquierda).
 2. Click en **▶ INPUT** dentro de INPUT DETECTOR.
-3. Se escucha `SNARE.cm.wav` y se disparan los slots cargados.
-4. El meter MASTER de la página y el mini VU de OUTPUT se mueven.
-5. Para cargar capas, volvé a HOME o FILE SEARCH y hacé **ALT + drag** de un sample a un slot.
+3. Se disparan los slots cargados. Con **MIX 100%** se escuchan solo los samples; el input original queda reemplazado.
+4. El **mini VU de OUTPUT** se mueve y el medidor **INPUT** muestra el nivel que pasa por el gate y el VOLUME.
+5. Para escuchar el **input original y el GATE**, bajá **MIX** por debajo de 100% (**0% = solo input original**). El LED junto a GATE indica open/closed.
+6. Para cargar capas, volvé a HOME o FILE SEARCH y hacé **ALT + drag** de un sample a un slot.
 
 Si no se escucha nada:
 
@@ -66,7 +67,9 @@ En la consola del prototipo:
 ```js
 window.__TU          // estado completo (slots, samples, filtros)
 window.__audio       // contexto, hits, buffer, playInput, stopInput, playSlot
-window.__audio.hits  // 22 hits detectados por el detector JS
+window.__audio.hits  // hits detectados por el detector JS
+window.__audio.gateEnv // envolvente del gate (5 ms por bloque)
+window.__audio.gains   // ganancias dry / wet / gate / input
 window.__selectSample(sampleObj)
 window.__setTriggerOpen(true)
 ```
@@ -88,7 +91,7 @@ window.__setTriggerOpen(true)
 | 9 | Editor | Vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre con doble click en un slot (o click en uno vacío); el click en un slot lleno audiciona |
 | 10 | Paneles del editor | **SAMPLE + ENVELOPE** en un solo panel grande (waveform + ADR) y **TONE** a todo el ancho; **AUTO PHASE** vive sobre el banco de faders |
 | 11 | Auto Phase | Tira horizontal sobre el banco de faders, atada al slot seleccionado: REF, re-analizar, TIMING, OFFSET y SHIFT |
-| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR estilo Slate en columnas (GATE · INPUT · FILTER · waveform · DETECT · OUTPUT) + sample view angosto con SAMPLE+ENVELOPE + tira TONE full-width + banco de 8 faders con Auto Phase. El corchete vuelve a la vista anterior; **Esc siempre vuelve a HOME** |
+| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR estilo Slate en cinco columnas (GATE · INPUT · FILTER · waveform · DETECT) + sample view angosto con SAMPLE+ENVELOPE + tira TONE full-width + banco de 8 faders con Auto Phase. OUTPUT y MIX están en la cápsula master superior. El corchete vuelve a la vista anterior; **Esc siempre vuelve a HOME** |
 | 13 | HOME | Vista principal (ex Universe). Full-bleed, nube de puntos 3D abstracta, sin ejes de frecuencia/ms. Search arriba, similitud abajo. **Esc vuelve acá desde cualquier vista** |
 | 14 | FILE SEARCH | Árbol tipo Finder con root en la carpeta elegida por el usuario. Subcarpetas reales. Samples reales primero |
 | 15 | OUTPUT | Knob arriba a la derecha. Settings funcional. AUTO PHASE ALL vive en Settings |
@@ -267,8 +270,10 @@ Paneles (visibles a la vez en la página TRIGGER):
 
 - Tercera página full-screen, como HOME o FILE SEARCH. Se abre con el **corchete TRIGGER** izquierdo; se vuelve con el mismo corchete (recuerda la vista anterior).
 - Sin fila de header: se quitaron título, INPUT, HITS y MASTER. El contenido arranca arriba; el corchete TRIGGER activo identifica la página.
-- **INPUT DETECTOR** a la izquierda (~64% del ancho), en columnas estilo Slate: **GATE** (ON/OFF, ATTACK, HOLD, RELEASE), **INPUT** (medidor + VOLUME + ▶ INPUT), **FILTER** (LOWCUT, HIGHCUT, SUPPRESS), **waveform central**, **DETECT** (SENSITIVITY, RETRIGGER, DETAIL) y **OUTPUT** (medidor + VOLUME + MIX).
-- **Sample view** a la derecha (~36% del ancho): **SAMPLE + ENVELOPE** en un solo panel (waveform a la izquierda, ADR con waveform fantasma a la derecha). **TONE** es una tira full-width debajo del detector/editor.
+- **INPUT DETECTOR** a la izquierda (~64–66% del ancho; ~66/34 en ventanas angostas), en columnas estilo Slate: **GATE** (ON/OFF + THRESHOLD, ATTACK, HOLD, RELEASE), **INPUT** (medidor + VOLUME + SUPPRESS + ▶ INPUT), **FILTER** (LOWCUT, HIGHCUT), **waveform central** y **DETECT** (SENSITIVITY, RETRIGGER, DETAIL).
+- **Flujo del detector:** el **GATE** está antes del **VOLUME** y compara el pico del input original; el VOLUME aplica el trim que llega a la waveform y a la detección; LOWCUT/HIGHCUT filtran **solo la señal de detección** (no el audio seco). El gate solo procesa el input original, nunca los samples disparados.
+- **OUTPUT + MIX** están en la cápsula master superior, no dentro del detector. **MIX** es el blend seco/húmedo: **0% = input original**, **100% = samples disparados**; arranca en 50/50. **OUTPUT** es el volumen final del plugin (master gain). Para escuchar el gate hay que bajar MIX de 100%.
+- **Sample view** a la derecha (~34–36% del ancho): **SAMPLE + ENVELOPE** en un solo panel (waveform a la izquierda, ADR con waveform fantasma a la derecha). **TONE** es una tira full-width debajo del detector/editor.
 - **Banco de 8 faders** arriba del dock, alineado columna a columna con los slots:
   - Fader vertical (≈136 px), meter real, M/S/Ø, nivel dB y badge de fase.
   - **AUTO PHASE** en una tira horizontal arriba de los faders, atada al slot seleccionado.
@@ -281,7 +286,7 @@ Paneles (visibles a la vez en la página TRIGGER):
 
 ### 7.6 Settings / OUTPUT
 
-- **OUTPUT knob** al extremo derecho: arrastrar verticalmente, −24…+6 dB, aplica al master gain real. Al lado tiene un **mini VU vertical** de salida, alimentado por el analizador master.
+- **OUTPUT + MIX** en la cápsula master al extremo derecho. **OUTPUT** (−24…+6 dB) aplica al master gain real y tiene un **mini VU vertical** alimentado por el analizador master. **MIX** (0–100%) hace el blend entre input original (0%) y samples disparados (100%).
 - **Settings**: se abre desde el corchete vertical derecho; el menú aparece a su izquierda y el corchete se resalta mientras está abierto. Contiene AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS…, AUDIO / MIDI…
   - AUTO PHASE ALL re-analiza las 8 capas.
   - FLIP ALL invierte polaridad en los 8 slots.
@@ -379,7 +384,7 @@ Con defaults detecta los golpes principales y también ghosts/flams. Con **Sens 
 
 **Polaridad 180°:** correlación offline con la señal original **−0.9999999999993**, peak 1.0. Verificado.
 
-**Detector JS:** 22 hits con defaults (el C++ detecta 23; difiere en el transiente final 8.141 s). Con Retrig 250: 16. Con Sens 20: 12.
+**Detector JS:** 20 hits con defaults (gate ON, threshold −18 dB; el C++ detecta 23 y difiere en el transiente final 8.141 s). Con gate OFF: 22. Con Retrig 250: 16. Con Sens 20: 12.
 
 ### 9.4 Cómo repetir los tests C++
 
@@ -603,6 +608,7 @@ AAX **no** se necesita.
 32. **SAMPLE limpio**: se quitaron los botones Audition y Normalize del panel SAMPLE. Audition queda en el click de un Trigger Slot lleno o una fila de FILE SEARCH; Reverse queda junto a los readouts de start/end/fades y se marca en mint cuando está activo. Se eliminó el playhead de audition.
 33. **TRIGGER 2.0**: el detector se dividió en **PRE-TRIGGER** (input, filtros, suppress, gate) y **POST-TRIGGER** (sens, retrig, detail, output, mix). SAMPLE y ENVELOPE se fusionaron en un solo panel grande, con la waveform a la izquierda y el ADR con waveform fantasma a la derecha. TONE pasó a todo el ancho. AUTO PHASE salió del editor y vive en una tira horizontal arriba de los faders, atada al slot seleccionado; el banco de faders se acortó para dar más alto al editor.
 34. **TRIGGER 2.1 — detector Slate**: el detector pasó a seis columnas (GATE con ON/OFF + ATTACK/HOLD/RELEASE; INPUT con medidor + VOLUME + ▶ INPUT; FILTER con LOWCUT/HIGHCUT/SUPPRESS; waveform central; DETECT con SENSITIVITY/RETRIGGER/DETAIL; OUTPUT con medidor + VOLUME + MIX). Se agregaron los medidores verticales de INPUT/OUTPUT, los volúmenes de entrada/salida quedaron conectados al audio y el sample view se angostó a ~36%. TONE pasó a una tira full-width; el split del detector es ~64/36.
+35. **TRIGGER 2.2 — flujo real del detector**: el GATE quedó **antes del VOLUME** con **THRESHOLD** (además de ATTACK/HOLD/RELEASE) y ahora cierra de verdad el input seco y la señal de detección; el VOLUME regula el nivel que llega a la waveform/detector y también al path seco; LOWCUT/HIGHCUT filtran solo la detección. SUPPRESS se movió a INPUT y FILTER quedó con LOWCUT/HIGHCUT. OUTPUT y MIX salieron del detector: viven en la cápsula master superior. **MIX 0% = input original, 100% = samples disparados** y ahora está conectado al grafo de audio (dry/wet), por lo que el gate se escucha al bajar MIX. La waveform del detector muestra el material gateado en azul oscuro y el que pasa en azul claro, con la línea de threshold y el LED open/closed.
 
 ---
 

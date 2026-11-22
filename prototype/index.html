@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=113">
+<link rel="stylesheet" href="style.css?v=124">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -34,6 +34,10 @@
               <div class="top-knob" id="masterOutKnob" title="Master output"><div class="knob-ind"></div></div>
               <span>OUTPUT<b id="masterOutVal">+0.0 dB</b></span>
               <div class="out-vu" id="outVu" title="Output level"><i id="outVuBar"></i></div>
+              <div class="top-mix">
+                <div class="top-knob" id="mixKnob" title="MIX: 0% = original input · 100% = triggered samples"><div class="knob-ind"></div></div>
+                <span>MIX<b id="mixVal">50%</b></span>
+              </div>
             </div>
           </div>
         </div>
@@ -92,8 +96,8 @@
       </div>
       <div class="detector">
         <section class="det-col gate-col">
-          <div class="dc-head">GATE</div>
-          <button class="chip toggle gate-toggle" id="gateBtn">ON</button>
+          <div class="dc-head">GATE<i class="gate-led" id="gateLed" title="Gate open/closed"></i></div>
+          <button class="chip toggle gate-toggle" id="gateBtn" title="Gate on the original input; lower MIX to hear it">ON</button>
           <div class="dc-knobs" id="detKnobsGate"></div>
         </section>
 
@@ -103,31 +107,23 @@
             <div class="dm-scale"><span>-0</span><span>-3</span><span>-6</span><span>-12</span><span>-24</span><span>-48</span></div>
             <div class="dm-track"><i id="inputMeterBar"></i></div>
           </div>
-          <div class="dc-knobs single" id="detKnobsInput"></div>
+          <div class="dc-knobs" id="detKnobsInput"></div>
           <button class="chip input-play" id="inputPlay" title="Play input">▶ INPUT</button>
         </section>
 
         <section class="det-col filter-col">
+          <div class="dc-head">FILTER</div>
           <div class="dc-knobs" id="detKnobsFilter"></div>
         </section>
 
         <div class="det-wave">
           <canvas id="inputWave"></canvas>
-          <span class="det-wave-label">INPUT</span>
+          <span class="det-wave-label" id="inputWaveLabel">INPUT</span>
         </div>
 
         <section class="det-col detect-col">
+          <div class="dc-head">DETECT</div>
           <div class="dc-knobs" id="detKnobsDetect"></div>
-        </section>
-
-        <section class="det-col output-col">
-          <div class="dc-head">OUTPUT</div>
-          <div class="det-meter">
-            <div class="dm-scale"><span>-0</span><span>-3</span><span>-6</span><span>-12</span><span>-24</span><span>-48</span></div>
-            <div class="dm-track"><i id="outputMeterBar"></i></div>
-          </div>
-          <div class="dc-knobs single" id="detKnobsOutput"></div>
-          <label class="det-mix">MIX <input type="range" id="mix" min="0" max="100" value="100"><b id="mixVal">100%</b></label>
         </section>
       </div>
     </aside>
@@ -265,6 +261,6 @@
 <div class="toast" id="toast"></div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=113"></script>
+<script src="app.js?v=124"></script>
 </body>
 </html>
