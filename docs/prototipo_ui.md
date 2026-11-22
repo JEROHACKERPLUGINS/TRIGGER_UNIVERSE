@@ -278,6 +278,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - **SENSITIVITY = rango dinámico:** 0% aplasta la velocity hacia un nivel fijo; 100% la expande (0.35×…2.0×). El control **VELOCITY** de TONE mezcla esa respuesta por slot. **INPUT VOLUME** escala la velocity, así que el nivel del input cambia el nivel de los samples disparados.
 - El detector ahora captura el **pico real del transiente** y su `peakTime`; antes reiniciaba el capture en cada sample por encima del threshold y la velocity terminaba en el nivel del final del ataque. **VEL** junto a DETECT muestra el último valor.
 - **ATTACK 0** abre el gate un bloque (1 ms) antes del cruce de threshold, así el primer sample del transiente pasa con ganancia 1.
+- **Detector del gate:** peak follower de **8 ms** + **4 dB de histéresis** + release mínimo **5 ms**, inspirado en el estilo CLEAN de Slate. Defaults **HOLD 30 / RELEASE 150** para no moldear el cuerpo del golpe ni generar flams.
 - Medido en el prototipo: input 0 dB → velocity 100%, OUTPUT peak 54%; input −12 dB → velocity 25%, OUTPUT peak 10%; SENSITIVITY 0 vs 100 con velocity 0.5 → OUTPUT 43% vs 14%; Detail 100 → 0 hits; Detail 46 → 12 hits.
 
 ## Actualización 22/11 — auditoría funcional
@@ -288,6 +289,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - Se quitaron **ONE SHOT / GATE** y **LOOP** de la tira TONE; el disparo es one-shot sin loop. **Reverse** invierte el audio y abre la envolvente completa para que el transiente invertido se escuche; al volver restaura la envolvente forward.
 - **OFFSET** negativo se aplica dentro del lookahead; si cae en el pasado se clampa al próximo bloque.
 - **GATE ON/OFF** hace un glide de 8 ms para no clickear al cambiar la ganancia del input seco.
+- **Release:** se probaron 5/15/50/150/450 ms; con el detector de 8 ms y 4 dB de histéresis no aparecen flams en ningún valor. HOLD 30 ms protege los primeros 30 ms del golpe.
 - **Salir de TRIGGER** (Esc, corchete, F, view toggle) detiene el INPUT y los disparos. Los modales SETTINGS/VISUAL se cierran al cambiar de vista o clickear afuera; **Esc desde VISUAL vuelve a HOME**.
 - **Space** sobre un botón enfocado activa el botón, no el INPUT. La selección de slot actualiza clases en lugar de reconstruir el DOM, así el **double-click** es confiable; M/S/Ø refrescan su estado visual.
 - La escala **VISUAL** se limitó a **90/100%**: los valores >100% hacían que el layout fijo de TRIGGER se solapara con el dock.

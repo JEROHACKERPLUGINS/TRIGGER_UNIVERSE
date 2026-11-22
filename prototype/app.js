@@ -437,7 +437,7 @@ const state = {
   popoverSlot: null,
   autoRef: 'INPUT',
   autoTiming: false,
-  detector: { attack: .5, hold: 4, release: 450, sens: 51, retrig: 16, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: true, gateThreshold: -24 },
+  detector: { attack: .5, hold: 30, release: 150, sens: 51, retrig: 16, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: true, gateThreshold: -24 },
 };
 
 function pickByCategory(cat, offset = 0) {
@@ -2809,9 +2809,9 @@ function animateMaster() {
 const DET = [
   { key: 'attack',    label: 'ATTACK',    min: 0,   max: 200, val: .5,    unit: 'ms', fmt: v => fmtMs(v), step: .1, decimals: 1, group: 'gate',
     tip: 'GATE ATTACK · time for the gate to open on each detected hit' },
-  { key: 'hold',      label: 'HOLD',      min: 0,   max: 500, val: 4,     unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate',
+  { key: 'hold',      label: 'HOLD',      min: 0,   max: 500, val: 30,     unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate',
     tip: 'GATE HOLD · time the gate stays open after attack' },
-  { key: 'release',   label: 'RELEASE',   min: 0,   max: 2000, val: 450,   unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate',
+  { key: 'release',   label: 'RELEASE',   min: 5,   max: 2000, val: 150,   unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate',
     tip: 'GATE RELEASE · time for the gate to close after hold' },
   { key: 'input',     label: 'VOLUME',    min: -24, max: 24,  val: 0,     unit: 'dB', fmt: v => fmtDb(v), step: .1, decimals: 1, group: 'input',
     tip: 'INPUT VOLUME · level that feeds the meter, the detector and the sample velocity' },
@@ -3040,18 +3040,34 @@ function computeGateEnvFromInput() {
   const block = realInputPeakBlock;
   const n = peaks.length;
   const env = new Float32Array(n);
+  // Peak detector with an 8 ms release (Slate CLEAN-style). Raw 1 ms peak
+  // blocks chatter on the body of a drum when RELEASE is short; this keeps the
+  // detector open through the hit without adding latency.
+  const det = new Float32Array(n);
+  const detDecay = Math.exp(-(block / sr) / 0.008);
+  let detLevel = 0;
+  for (let b = 0; b < n; b++) {
+    detLevel = Math.max(peaks[b], detLevel * detDecay);
+    det[b] = detLevel;
+  }
   const atk = Math.max(0, state.detector.attack / 1000);
   const hold = Math.max(0, state.detector.hold / 1000);
-  const rel = Math.max(0, state.detector.release / 1000);
+  // Slate clamps its release to a 5 ms minimum; a 0 ms release would step the
+  // gain to zero and read as a click/flam.
+  const rel = Math.max(0.005, state.detector.release / 1000);
   const dt = block / sr;
-  let gain = 0, holdLeft = 0;
+  // 4 dB of hysteresis: once open, the detector must fall this far below the
+  // threshold before the gate can start closing. Removes flutter around it.
+  const closeThr = thr * dbToAmp(-4);
+  let gain = 0, holdLeft = 0, openLatch = false;
   for (let b = 0; b < n; b++) {
-    // Open one block early: the 1 ms curve then starts at 1 before the
-    // transient, so ATTACK 0 never clips the first samples of the hit.
-    const open = peaks[b] >= thr || (b + 1 < n && peaks[b + 1] >= thr);
-    if (open) holdLeft = hold;
-    const target = (open || holdLeft > 0) ? 1 : 0;
-    if (!open && holdLeft > 0) holdLeft = Math.max(0, holdLeft - dt);
+    // Open one block early so ATTACK 0 never clips the first samples.
+    const next = b + 1 < n ? det[b + 1] : 0;
+    const open = det[b] >= (openLatch ? closeThr : thr) || next >= thr;
+    if (open) { openLatch = true; holdLeft = hold; }
+    else openLatch = false;
+    const target = (openLatch || holdLeft > 0) ? 1 : 0;
+    if (!openLatch && holdLeft > 0) holdLeft = Math.max(0, holdLeft - dt);
     if (target > 0 && atk <= 0) gain = 1;
     else if (target <= 0 && rel <= 0) gain = 0;
     else {

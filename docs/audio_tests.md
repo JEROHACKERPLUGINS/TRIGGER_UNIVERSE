@@ -140,6 +140,8 @@ El detector ahora captura el **pico real** del transiente y su `peakTime`; antes
 
 **ONE SHOT / GATE y LOOP se retiraron de la tira TONE; los disparos son one-shot sin loop.**
 
+**Gate (referencia Slate open source):** detector peak 8 ms, 4 dB de histéresis, release mínimo 5 ms, defaults HOLD 30 / RELEASE 150. Con RELEASE 5/15/50/150/450: **0 flams**, ganancia mínima en los primeros 30 ms **0.997**. Con el algoritmo anterior (HOLD 4, sin detector smoothing): 60/42/7 flams con RELEASE 0/5/15.
+
 | Prueba | Resultado |
 | --- | --- |
 | Detail 100 con Input +24 dB | **0 hits** (detección normalizada a 0 dBFS) |
