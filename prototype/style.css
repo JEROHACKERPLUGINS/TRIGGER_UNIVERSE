@@ -912,7 +912,7 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 .name-bar.show{opacity:1;transform:none}
 .name-bar.hide{display:none}
 .name-bar span{font-size:12px;letter-spacing:.04em;color:rgba(233,238,247,.72);white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 40px);text-align:center}
+  overflow:hidden;text-overflow:ellipsis;max-width:min(calc(100% - 40px),24vw);text-align:center}
 @media (max-width:700px){.name-bar{left:14px;right:14px}}
 
 /* ---------- Trigger Slots: macOS-Dock-style magnification while dragging ---------- */

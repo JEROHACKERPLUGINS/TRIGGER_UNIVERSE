@@ -124,10 +124,10 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - El detector quedó en **cinco columnas**: GATE (ON/OFF + ATTACK/HOLD/RELEASE + **VU GR**), INPUT (medidor pre-gate + **flecha de GATE THRESHOLD** + VOLUME + SUPPRESS + ▶ INPUT), FILTER (LOWCUT/HIGHCUT), waveform central y DETECT (DETAIL/RETRIGGER/SENSITIVITY).
 - **GATE C1-style:** el threshold es la **flecha naranja arrastrable sobre el medidor INPUT** (el medidor muestra el input pre-gate) y se combina con ATTACK/HOLD/RELEASE. El gate es **post-VOLUME**, su envolvente se calcula a 1 ms con lookahead y **ATTACK 0 es realmente instantáneo** (no recorta el transiente). La detección usa la señal **post-gate**; el gate solo procesa el input original, nunca los samples.
 - **VOLUME** es el trim que regula el medidor, la waveform, la detección y la velocity. **INPUT y OUTPUT/MASTER muestran pico real, no RMS**, con hold corto y lectura numérica de pico en INPUT. LOWCUT/HIGHCUT filtran solo la detección. SUPPRESS vive en INPUT.
-- **DETAIL** es el threshold de detección (línea dashed mint, independiente del volumen) y tiene **1.5× de headroom**: a 100% la línea queda por encima de los transientes y no dispara. **SENSITIVITY** controla el **rango dinámico** de la velocity (0% nivel fijo, 100% amplio), como Dynamics en Trigger 2; **RETRIGGER** es la ventana ciega (sin gráfica).
+- **DETAIL** es el threshold de detección (línea dashed mint, independiente del volumen) y tiene **1.5× de headroom**: a 100% la línea queda por encima de los transientes y no dispara, incluso con Input Volume al máximo (la detección se normaliza a 0 dBFS). **SENSITIVITY** controla el **rango dinámico** de la velocity (0% nivel fijo, 100% amplio), como Dynamics en Trigger 2; **RETRIGGER** es la ventana ciega (sin gráfica).
 - La waveform central muestra una **ventana de 2 s** (~6 transientes en SN TOP 1) que sigue al playhead: **post-gate en azul** con un **fantasma rojo suave** del input pre-gate, la línea de cero, la línea dashed de DETAIL y los hits naranjas hasta el pico. El LED junto a GATE marca open/closed.
 - **OUTPUT y MIX** están en la cápsula master superior: **0% = input original**, **100% = samples disparados** (arranca en 100%). El gate se escucha bajando MIX.
-- **Todo el detector corre en vivo**: los slots se disparan hit por hit mientras suena el input; mover Detail/Retrigger/Suppress/filtros, Sensitivity (dinámica), el threshold/attack/hold/release del gate, Volume, MIX u OUTPUT actualiza los próximos disparos y el audio sin reiniciar. VEL junto a DETECT muestra la velocity del último hit.
+- **Todo el detector corre en vivo**: los slots se disparan hit por hit mientras suena el input; mover Detail/Retrigger/Suppress/filtros, Sensitivity (dinámica), el threshold/attack/hold/release del gate, Volume, MIX u OUTPUT actualiza los próximos disparos y el audio sin reiniciar. VEL junto a DETECT muestra la velocity del último hit. **Salir de TRIGGER detiene el INPUT** y sus disparos.
 - Cada knob del detector tiene tooltip con su rol; la waveform también explica sus colores/líneas al hover.
 - El **sample view** quedó en ~30–32%; el detector ocupa ~68–70% (70/30 en ventanas angostas).
 - **TONE** sigue como tira full-width debajo del detector/editor.
@@ -279,3 +279,16 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - El detector ahora captura el **pico real del transiente** y su `peakTime`; antes reiniciaba el capture en cada sample por encima del threshold y la velocity terminaba en el nivel del final del ataque. **VEL** junto a DETECT muestra el último valor.
 - **ATTACK 0** abre el gate un bloque (1 ms) antes del cruce de threshold, así el primer sample del transiente pasa con ganancia 1.
 - Medido en el prototipo: input 0 dB → velocity 100%, OUTPUT peak 54%; input −12 dB → velocity 25%, OUTPUT peak 10%; SENSITIVITY 0 vs 100 con velocity 0.5 → OUTPUT 43% vs 14%; Detail 100 → 0 hits; Detail 46 → 12 hits.
+
+## Actualización 22/11 — auditoría funcional
+
+- **DETAIL 100 = 0 hits a cualquier Input Volume:** la señal de detección se normaliza a 0 dBFS; la velocity conserva el nivel pre-clamp para que los samples sigan respondiendo.
+- **Detail 0** ya no queda trabado en un solo hit: el rearm usa un piso absoluto (`0.01`) además de `thr * 0.5`.
+- Los **marcadores naranjas** usan la velocity real del hit y el `peakTime` del detector; en la versión actual caen dentro de pocos píxeles del pico.
+- **PLAYBACK GATE** sigue la envolvente del gate del INPUT en los disparos en vivo; **ONE SHOT** reproduce el sample completo. **LOOP** repite hasta 2 s con la envolvente abierta. **Reverse** invierte el audio y abre la envolvente completa para que el transiente invertido se escuche; al volver restaura la envolvente forward.
+- **OFFSET** negativo se aplica dentro del lookahead; si cae en el pasado se clampa al próximo bloque.
+- **Salir de TRIGGER** (Esc, corchete, F, view toggle) detiene el INPUT y los disparos. Los modales SETTINGS/VISUAL se cierran al cambiar de vista o clickear afuera; **Esc desde VISUAL vuelve a HOME**.
+- **Space** sobre un botón enfocado activa el botón, no el INPUT. La selección de slot actualiza clases en lugar de reconstruir el DOM, así el **double-click** es confiable; M/S/Ø refrescan su estado visual.
+- La escala **VISUAL** se limitó a **90/100%**: los valores >100% hacían que el layout fijo de TRIGGER se solapara con el dock.
+- La barra de nombre reserva espacio para los **key hints** (máx. 24vw), evitando superposición con nombres largos.
+- Verificado a **900×1200, 1076×717, 1280×800 y 1920×1080**: sin overflow de página ni solapamientos entre detector, sample view, TONE, faders, Auto Phase, slots y side tabs.

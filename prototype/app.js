@@ -262,8 +262,14 @@ const PALETTES = {
 };
 function loadVisualPrefs() {
   const d = { palette: 'standard', shapes: false, scale: 100, reduceMotion: false, reduceTransparency: false };
-  try { return Object.assign(d, JSON.parse(localStorage.getItem('tu-visual') || '{}')); }
-  catch (e) { return d; }
+  let prefs;
+  try { prefs = Object.assign(d, JSON.parse(localStorage.getItem('tu-visual') || '{}')); }
+  catch (e) { prefs = d; }
+  // >100% zoom makes the fixed trigger page taller than the viewport and the
+  // fader bank overlaps the slot dock. The trigger page is a 100vh layout, so
+  // only 90/100 are safe at every viewport.
+  prefs.scale = prefs.scale === 90 ? 90 : 100;
+  return prefs;
 }
 const visualPrefs = loadVisualPrefs();
 function setCategoryPalette(name) {
@@ -1317,6 +1323,7 @@ function setTriggerOpen(open) {
 }
 
 function setSettingsOpen(open) {
+  if (open) $('#visualPanel').classList.remove('show');
   $('#settingsMenu').classList.toggle('show', open);
   $('#settingsBtn').classList.toggle('active', open);
 }
@@ -1566,7 +1573,11 @@ function renderFaders() {
 
 function selectSlot(i) {
   state.selectedSlot = i;
-  renderSlots();
+  // Update selection in place instead of rebuilding the slot/fader DOM on
+  // every click. Rebuilding here used to replace the node between the two
+  // clicks of a double-click.
+  $$('#slots .slot').forEach(el => el.classList.toggle('selected', +el.dataset.slot === i));
+  $$('#faderBank .slot-fader').forEach(el => el.classList.toggle('selected', +el.dataset.slot === i));
   updateInspector();
   if (state.viewMode === 'trigger') setSlotNameBar(i);
 }
@@ -1577,6 +1588,7 @@ function clearSlot(i) {
   s.label = `SLOT ${String(i + 1).padStart(2, '0')}`;
   s.mute = false; s.solo = false;
   s.autoPhase = false; s.corr = 0; s.suggestedLag = 0;
+  delete s._forwardEnv;
   s.polarity = false; s.shift = 0; s.offset = 0;
   syncSlotAudio(i);
   renderSlots();
@@ -1597,6 +1609,7 @@ $('#slots').addEventListener('click', e => {
   }
   const slot = e.target.closest('.slot[data-slot]');
   if (!slot) return;
+  if (e.detail > 1) return; // do not audition twice on the way to a double-click
   const i = +slot.dataset.slot;
   selectSlot(i);
   const smp = slotSample(state.slots[i]);
@@ -1663,6 +1676,7 @@ $('#faderBank').addEventListener('click', e => {
       s.shift = s.polarity ? 180 : 0;
     }
     selectSlot(i);
+    renderSlots();
     syncAllSlotAudio();
     updateInspector();
     return;
@@ -1684,6 +1698,7 @@ function assignSample(i, smp) {
   s.reverse = false;
   s.tone = 0; s.cut = 50; s.velSens = 100; s.gain = 0;
   s.playback = 'one-shot'; s.loop = false;
+  delete s._forwardEnv;
   s.polarity = false; s.shift = 0; s.offset = 0;
   s.autoPhase = false; s.corr = 0; s.suggestedLag = 0;
   fitAdsrToSample(s);
@@ -2121,6 +2136,9 @@ function closeTriggerPage() {
 }
 
 function setView(mode) {
+  stopHoverPreview();
+  setSettingsOpen(false);
+  if ($('#visualPanel').classList.contains('show')) setVisualOpen(false);
   if (mode === 'trigger' && state.viewMode !== 'trigger') state.prevView = state.viewMode;
   state.viewMode = mode;
   const isUni = mode === 'universe';
@@ -2150,6 +2168,9 @@ function setView(mode) {
       });
     });
   } else {
+    // Leaving TRIGGER stops the input and its live triggers; otherwise audio
+    // would keep playing with no transport visible.
+    if (inputPlaying) stopInput();
     stopInputLoop();
     setNameBar(state.selectedSample);
     if (isUni) {
@@ -2166,7 +2187,7 @@ function setView(mode) {
 $('#triggerBack').onclick = closeTriggerPage;
 
 function goHome() {
-  if ($('#visualPanel').classList.contains('show')) { setVisualOpen(false); return; }
+  if ($('#visualPanel').classList.contains('show')) setVisualOpen(false);
   stopScrub();
   hideSimilarity();
   setSettingsOpen(false);
@@ -2248,6 +2269,9 @@ window.addEventListener('keydown', e => {
   const k = e.key;
   const inTrigger = state.viewMode === 'trigger';
   if (k === ' ') {
+    // Let a focused button/link receive its normal Space activation instead of
+    // also starting/stopping the trigger input.
+    if (/^(BUTTON|A)$/.test(e.target && e.target.tagName)) return;
     e.preventDefault();
     if (inTrigger) playInput();
     else if (state.selectedSample) playHoverPreview(state.selectedSample);
@@ -2668,10 +2692,12 @@ $('#slotTiming').onclick = () => {
 };
 $('#slotAuto').onclick = () => {
   const btn = $('#slotAuto');
+  const target = state.selectedSlot;
+  const ref = state.autoRef;
   btn.classList.add('running');
   btn.textContent = 'ANALYZING…';
   setTimeout(() => {
-    applyAutoPhase(state.selectedSlot, state.autoRef);
+    applyAutoPhase(target, ref);
     btn.classList.remove('running');
     btn.textContent = 'RE-ANALYZE';
   }, 550);
@@ -2753,10 +2779,29 @@ $$('.tab').forEach(t => t.addEventListener('click', () => {
 $('#reverseBtn').onclick = () => {
   const slot = currentSlot();
   slot.reverse = !slot.reverse;
+  if (slot.reverse) {
+    // The original A/D/R decays before the reversed transient (which lives at
+    // the end of the buffer), so a reversed one-shot would be almost silent.
+    // Open the whole reversed buffer at full level; keep the forward envelope
+    // so toggling back does not change the sound.
+    slot._forwardEnv = {
+      adsr: { ...slot.adsr },
+      fadeIn: slot.fadeIn,
+      fadeOut: slot.fadeOut,
+    };
+    const total = envTotalMs();
+    slot.adsr = { a: 0, d: 0, end: total, s: 1, p: 1, e: 1 };
+    slot.fadeIn = 0; slot.fadeOut = 0;
+  } else if (slot._forwardEnv) {
+    slot.adsr = { ...slot._forwardEnv.adsr };
+    slot.fadeIn = slot._forwardEnv.fadeIn;
+    slot.fadeOut = slot._forwardEnv.fadeOut;
+    delete slot._forwardEnv;
+  }
   $('#reverseBtn').classList.toggle('on', slot.reverse);
   renderWaveform();
   renderADSR();
-  toast(slot.reverse ? 'Sample reversed' : 'Sample forward');
+  toast(slot.reverse ? 'Sample reversed · full envelope' : 'Sample forward');
 };
 
 function animateMaster() {
@@ -3054,6 +3099,7 @@ function setGateThreshold(v) {
   if (!btn) return;
   setGateThreshold(state.detector.gateThreshold);
   btn.addEventListener('pointerdown', e => {
+    if (e.altKey) return;
     e.preventDefault(); e.stopPropagation();
     const wrap = btn.parentElement;
     const rect = wrap.getBoundingClientRect();
@@ -3067,6 +3113,11 @@ function setGateThreshold(v) {
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+  });
+  btn.addEventListener('click', e => {
+    if (!e.altKey) return;
+    e.preventDefault(); e.stopPropagation();
+    setGateThreshold(-24);
   });
   bindNumericEdit($('#gateThreshVal'), {
     get: () => state.detector.gateThreshold,
@@ -3282,6 +3333,7 @@ $('#flipAll').onclick = () => {
   });
   renderSlots();
   syncAllSlotAudio();
+  if ($('.inspector').classList.contains('show')) updateInspector();
   setSettingsOpen(false);
   toast('Polarity flipped on all 8 slots (180°)');
 };
@@ -3324,6 +3376,11 @@ let masterOut = 0;
 
 $('#settingsBtn').onclick = () => {
   hideSimilarity();
+  if ($('#visualPanel').classList.contains('show')) {
+    setVisualOpen(false);
+    setSettingsOpen(true);
+    return;
+  }
   setSettingsOpen(!$('#settingsMenu').classList.contains('show'));
 };
 // ---------- VISUAL panel (Settings → VISUAL…) ----------
@@ -3362,6 +3419,21 @@ function setVisualOpen(open) {
   if (open) { setSettingsOpen(false); renderVisualPanel(); }
   $('#visualPanel').classList.toggle('show', open);
 }
+// Clicking anywhere outside the VISUAL dialog closes it before the underlying
+// control acts, so it can never sit on top of the trigger page.
+document.addEventListener('pointerdown', e => {
+  const vp = $('#visualPanel');
+  if (!vp || !vp.classList.contains('show')) return;
+  if (vp.contains(e.target) || e.target.closest('#settingsBtn') || e.target.closest('#menuVisual')) return;
+  setVisualOpen(false);
+}, true);
+
+document.addEventListener('pointerdown', e => {
+  const menu = $('#settingsMenu');
+  if (!menu || !menu.classList.contains('show')) return;
+  if (menu.contains(e.target) || e.target.closest('#settingsBtn')) return;
+  setSettingsOpen(false);
+}, true);
 $('#menuVisual').onclick = () => setVisualOpen(true);
 $('#visualClose').onclick = () => setVisualOpen(false);
 $('#scaleSeg').addEventListener('click', e => {
@@ -3583,7 +3655,7 @@ function getReversedBuffer(smp) {
   return out;
 }
 
-function scheduleSlot(ctx, i, when, velocity = 1) {
+function scheduleSlot(ctx, i, when, velocity = 1, gateStartSec = null) {
   const s = state.slots[i];
   const smp = slotSample(s);
   if (!smp) return null;
@@ -3603,10 +3675,15 @@ function scheduleSlot(ctx, i, when, velocity = 1) {
   if (s.loop) { src.loopStart = startSec; src.loopEnd = endSec; }
   const env = ctx.createGain();
   const fade = ctx.createGain();
-  src.connect(env).connect(fade);
+  const playGate = ctx.createGain();
+  src.connect(env).connect(fade).connect(playGate);
   const node = slotNodes[i];
-  if (node) fade.connect(node.cut); else fade.connect(masterGain);
-  const t0 = ctx.currentTime + 0.02 + (when || 0) + Math.max(0, s.offset) / 1000;
+  if (node) playGate.connect(node.cut); else playGate.connect(masterGain);
+  // Negative offset means "play earlier": live triggers are scheduled with
+  // lookahead, so the shift can be applied as long as we do not start in the
+  // past. Manual auditions clamp to the next audio block.
+  const wantedT0 = ctx.currentTime + 0.02 + (when || 0) + s.offset / 1000;
+  const t0 = Math.max(ctx.currentTime + 0.002, wantedT0);
   const total = len / rate;
   let a = Math.max(0.001, s.adsr.a / 1000);
   let d = Math.max(0.001, s.adsr.d / 1000);
@@ -3615,6 +3692,11 @@ function scheduleSlot(ctx, i, when, velocity = 1) {
     a *= k; d *= k;
   }
   const envEndSec = clamp((s.adsr.end || (a + d) * 1000) / 1000, a + d, total);
+  // Loop mode repeats the trimmed sample for up to two seconds. The envelope
+  // must stay open across the loop; using envEndSec would silence it after the
+  // first pass.
+  const envStopSec = s.loop ? Math.max(envEndSec, 2) : envEndSec;
+  const stopSec = s.loop ? 2 : envEndSec;
   // Sensitivity controls the dynamic range (like Trigger 2): 0% squeezes
   // soft and hard hits together, 100% spreads them apart. The slot VELOCITY
   // blends that response with a fixed level.
@@ -3630,33 +3712,52 @@ function scheduleSlot(ctx, i, when, velocity = 1) {
   g.setValueAtTime(0, t0);
   g.linearRampToValueAtTime(peak, t0 + a);
   g.linearRampToValueAtTime(level, t0 + a + d);
-  g.linearRampToValueAtTime(releaseLevel, t0 + envEndSec);
-  g.linearRampToValueAtTime(0, t0 + envEndSec + 0.004);
+  g.linearRampToValueAtTime(releaseLevel, t0 + envStopSec);
+  g.linearRampToValueAtTime(0, t0 + envStopSec + 0.004);
+  // PLAYBACK GATE follows the input gate envelope for live triggers; a manual
+  // audition (no gateStartSec) still plays the full sample.
+  if (s.playback === 'gate' && gateStartSec != null && realGateEnv && realInputBuffer) {
+    const blockDur = realGateBlock / realInputBuffer.sampleRate;
+    const startIdx = clamp(Math.floor(gateStartSec / blockDur), 0, realGateEnv.length - 1);
+    const gateDurTarget = s.loop ? stopSec : total;
+    const curveLen = Math.max(2, Math.min(realGateEnv.length - startIdx, Math.ceil(gateDurTarget / blockDur) + 1));
+    const curve = realGateEnv.slice(startIdx, startIdx + curveLen);
+    const curveDur = curve.length * blockDur;
+    try {
+      playGate.gain.setValueCurveAtTime(curve, t0, curveDur);
+      if (curveDur < gateDurTarget) playGate.gain.setValueAtTime(0, t0 + curveDur);
+    } catch (e) {
+      playGate.gain.setValueAtTime(1, t0);
+    }
+  } else {
+    playGate.gain.setValueAtTime(1, t0);
+  }
   const f = fade.gain;
   const fi = Math.min(s.fadeIn / 1000, total * .9);
   const fo = Math.min(s.fadeOut / 1000, total * .9);
+  const fadeStop = s.loop ? stopSec : total;
   f.setValueAtTime(fi > 0 ? 0 : 1, t0);
   if (fi > 0) f.linearRampToValueAtTime(1, t0 + fi);
   if (fo > 0) {
-    f.setValueAtTime(1, Math.max(t0 + fi, t0 + total - fo));
-    f.linearRampToValueAtTime(0, t0 + total);
+    f.setValueAtTime(1, Math.max(t0 + fi, t0 + fadeStop - fo));
+    f.linearRampToValueAtTime(0, t0 + fadeStop);
   }
-  const playLen = s.loop ? Math.min(2, total + 1) : len;
+  const playLen = s.loop ? 2 : len;
   src.start(t0, startSec, playLen);
-  src.stop(t0 + (s.loop ? Math.min(2, envEndSec) : envEndSec) + 0.006);
+  src.stop(t0 + stopSec + 0.006);
   src.onended = () => {
-    try { src.disconnect(); env.disconnect(); fade.disconnect(); } catch (e) {}
+    try { src.disconnect(); env.disconnect(); fade.disconnect(); playGate.disconnect(); } catch (e) {}
     const idx = activeSlotSources.indexOf(src); if (idx >= 0) activeSlotSources.splice(idx, 1);
   };
   activeSlotSources.push(src);
   return src;
 }
 
-function playSlot(i, when = 0, velocity = 1) {
+function playSlot(i, when = 0, velocity = 1, gateStartSec = null) {
   const ctx = ensureAudio();
   if (!ctx) return null;
   syncSlotAudio(i);
-  return scheduleSlot(ctx, i, when, velocity);
+  return scheduleSlot(ctx, i, when, velocity, gateStartSec);
 }
 
 // Real peak from the analyser. Float data keeps the meter honest; the
@@ -3797,6 +3898,9 @@ function detectInputHits() {
   const volAmp = dbToAmp(state.detector.input);
   const normGain = volAmp / (realInputMax || 1);
   const detailThr = detailThreshold();
+  // With Detail at 0 the threshold is 0; without a floor the rearm test
+  // (fast < thr*0.5) never becomes true and only the first hit fires.
+  const rearmLevel = Math.max(0.01, detailThr * 0.5);
   const supp = state.detector.supp / 100;
   const retrig = Math.round(state.detector.retrig * 0.001 * sr);
   const k = 2.5;
@@ -3804,12 +3908,17 @@ function detectInputHits() {
   const slowCoef = 1 - Math.exp(-1 / (0.05 * sr));
   const win = Math.round(0.005 * sr);
   let fast = 0, slow = 0, supTh = 0, hold = 0, capturing = false, peak = 0, cap = 0, armed = true;
-  let capStart = 0, peakAt = 0;
+  let capStart = 0, peakAt = 0, velPeak = 0;
   const hits = [];
   const gateOn = state.detector.gate && realGateEnv;
   for (let i = 0; i < data.length; i++) {
     let x = Math.abs(data[i]) * normGain;
     if (gateOn) x *= realGateEnv[Math.min(realGateEnv.length - 1, Math.floor(i / realGateBlock))];
+    // Detection is normalized to 0 dBFS: boosting INPUT above 0 dB cannot
+    // push the signal past Detail 100. The pre-clamp level is kept as the
+    // hit velocity so the samples can still get louder.
+    const velLevel = Math.min(2, x);
+    x = Math.min(1, x);
     fast = Math.max(x, fast * fastRel);
     slow += (x - slow) * slowCoef;
     supTh *= Math.exp(-1 / (0.05 * sr));
@@ -3818,13 +3927,14 @@ function detectInputHits() {
     // sample while the transient is above the threshold, so the captured
     // velocity collapses to the level at the end of the attack.
     if (!capturing && armed && fast > thr && fast > slow * k) {
-      capturing = true; peak = 0; cap = 0; capStart = i; peakAt = i;
+      capturing = true; peak = 0; velPeak = 0; cap = 0; capStart = i; peakAt = i;
     }
     if (capturing) {
       if (fast > peak) { peak = fast; peakAt = i; }
+      if (velLevel > velPeak) velPeak = velLevel;
       cap++;
       if (cap >= win) {
-        hits.push({ time: Math.max(0, capStart / sr), peak, peakTime: peakAt / sr });
+        hits.push({ time: Math.max(0, capStart / sr), peak, peakTime: peakAt / sr, velocity: velPeak });
         capturing = false;
         armed = false;
         supTh = peak * supp;
@@ -3833,7 +3943,7 @@ function detectInputHits() {
     }
     if (!armed) {
       if (hold > 0) hold--;
-      if (hold <= 0 && fast < detailThr * 0.5) armed = true;
+      if (hold <= 0 && fast < rearmLevel) armed = true;
     }
   }
   realHits = hits;
@@ -4013,11 +4123,11 @@ function startLiveTriggers() {
       // dump a burst of samples; only schedule hits that are still ahead.
       if (abs < audioCtx.currentTime - 0.03) continue;
       const when = Math.max(0, abs - audioCtx.currentTime - 0.02);
-      const velocity = clamp(h.peak, 0, 2);
+      const velocity = clamp(h.velocity ?? h.peak, 0, 2);
       liveLastVelocity = velocity;
       const hv = $('#hitVel');
       if (hv) hv.textContent = Math.round(velocity * 100) + '%';
-      state.slots.forEach((_, i) => playSlot(i, when, velocity));
+      state.slots.forEach((_, i) => playSlot(i, when, velocity, h.time));
       liveTriggerCount++;
     }
   }, 20);
@@ -4071,6 +4181,14 @@ window.__audio = {
   get inputStart() { return inputStartCtxTime; },
   get live() { return { lastHit: liveLastHitTime, triggers: liveTriggerCount, playing: inputPlaying, velocity: liveLastVelocity }; },
   get nodes() { return { gateGain, inputGain, dryGain, wetGain }; },
+  get meter() {
+    if (!masterAnalyser) return { peak: 0, rms: 0 };
+    const buf = new Float32Array(masterAnalyser.fftSize);
+    masterAnalyser.getFloatTimeDomainData(buf);
+    let peak = 0, sum = 0;
+    for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > peak) peak = a; sum += buf[i] * buf[i]; }
+    return { peak, rms: Math.sqrt(sum / buf.length) };
+  },
   get gains() { return { dry: dryGain && dryGain.gain.value, wet: wetGain && wetGain.gain.value, gate: gateGain && gateGain.gain.value, input: inputGain && inputGain.gain.value }; },
   detect: detectInputHits,
   applyMix,

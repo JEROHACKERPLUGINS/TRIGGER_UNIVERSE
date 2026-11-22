@@ -277,7 +277,7 @@ Paneles (visibles a la vez en la página TRIGGER):
 - **GATE C1-style:** threshold sobre el input con **flecha naranja en el medidor INPUT** (el medidor es pre-gate) + **ATTACK/HOLD/RELEASE** y **VU GR** rojo junto a los knobs del GATE. El gate es post-VOLUME y su señal **post-gate alimenta la detección**; la waveform del detector se dibuja post-gate en azul con un **fantasma rojo suave del input pre-gate**. ATTACK 0 es instantáneo: la envolvente de 1 ms se abre un bloque antes del transiente (lookahead) para no recortar el ataque. Solo procesa el input original, nunca los samples.
 - **Medidores:** INPUT y OUTPUT/MASTER usan el **pico real** del analizador (float time-domain), no RMS, con un hold corto para que los transientes de 1 ms sean visibles. La barra de INPUT y la flecha de threshold comparten la misma escala en dB (inset 4% para que los labels 0/−48 entren en el track). INPUT muestra el pico pre-gate; el header muestra el valor numérico y el VU master el pico post-OUTPUT. VEL junto a DETECT muestra la velocity del último hit.
 - **Zoom de la waveform:** muestra una ventana de **2 s** (≈6 transientes en SN TOP 1) y sigue al playhead durante la reproducción. Las líneas naranjas de hit llegan hasta el pico post-gate de cada transiente, no hasta el borde superior. El retrigger no se dibuja: solo afecta el disparo.
-- **Detección en vivo:** el input se analiza y los slots se disparan hit por hit con un loop de 20 ms y 80 ms de lookahead. Al mover cualquier parámetro mientras suena el input se recalculan hits/gate y los próximos disparos cambian en el momento. Detail/Retrigger/Suppress/Lowcut/Highcut y el gate (threshold/attack/hold/release) afectan los disparos futuros; Sensitivity cambia el rango dinámico de los samples; Input Volume escala detección, velocity y audio seco; MIX y OUTPUT son inmediatos. Los filtros no alteran el audio seco (solo la detección).
+- **Detección en vivo:** el input se analiza y los slots se disparan hit por hit con un loop de 20 ms y 80 ms de lookahead. Al mover cualquier parámetro mientras suena el input se recalculan hits/gate y los próximos disparos cambian en el momento. Detail/Retrigger/Suppress/Lowcut/Highcut y el gate (threshold/attack/hold/release) afectan los disparos futuros; Sensitivity cambia el rango dinámico de los samples; Input Volume escala detección, velocity y audio seco; MIX y OUTPUT son inmediatos. Los filtros no alteran el audio seco (solo la detección). Salir de TRIGGER detiene el INPUT y sus disparos.
 - **OUTPUT + MIX** están en la cápsula master superior, no dentro del detector. **MIX** es el blend seco/húmedo: **0% = input original**, **100% = samples disparados**; arranca en **100%**. **OUTPUT** es el volumen final del plugin (master gain). Para escuchar el gate hay que bajar MIX de 100%.
 - **Sample view** a la derecha (~30–32% del ancho): **SAMPLE + ENVELOPE** en **una sola waveform**. El gráfico muestra el sample completo con trim/fades, la curva final A/D/R × fades en mint, los handles de start/end/fade in/out y los tres puntos A/D/R. Abajo van dos filas de readouts editables: START/END/FADE IN/FADE OUT y A/D/R. **TONE** sigue como tira full-width debajo del detector/editor.
 - **Banco de 8 faders** arriba del dock, alineado columna a columna con los slots:
@@ -344,11 +344,11 @@ Paneles (visibles a la vez en la página TRIGGER):
 - **90° y 260° no se aplican al audio**: solo se guardan y se muestran. El DSP real va en C++ (all-pass / Hilbert).
 - **180° sí se aplica** como inversión de polaridad (gain −1).
 - El **auto-phase es simulado**: lag/polaridad/confianza determinísticos por `sample.id`. La UX es real; el análisis no.
-- **Offsets negativos no se aplican** en Web Audio: `scheduleSlot` usa `Math.max(0, s.offset)`. El rango de UI es −5…+50 ms.
+- **Offsets negativos** se aplican adelantando el sample dentro del lookahead (20–80 ms); si el resultado cae en el pasado se clampa al próximo bloque de audio. El rango de UI es −5…+50 ms.
 - **Velocity:** los disparos del INPUT usan el pico real del transiente; el preview de hover/audition usa velocity 1.
 - **ALT + drag fuera de un slot** muestra el toast de export a Finder; el drag real al Finder queda para el plugin.
 - **Similitud**: usa features sintéticas (categoría, duración, brightness, druminess), no análisis tímbrico del audio. La línea y el paneo suave son efectos de navegación.
-- **ONE SHOT / GATE** se guarda pero el scheduler no distingue el modo gate.
+- **ONE SHOT / GATE** sí se distinguen: GATE sigue la envolvente del gate del INPUT en los disparos en vivo; el audition manual reproduce el sample completo. **LOOP** repite el tramo hasta 2 s y **Reverse** reabre la envolvente para que el transiente invertido sea audible (y restaura la forward al volver).
 - El motor C++ no se puede compilar como plugin (faltan SDKs); los headers DSP sí se compilan y testean.
 
 ---
@@ -476,9 +476,10 @@ AAX **no** se necesita.
 
 - Auto-phase simulado.
 - 90°/260° sin DSP.
-- Offsets negativos clampeados a 0.
+- Offsets negativos aplicados dentro del lookahead y clampeados al próximo bloque si caen en el pasado.
 - Velocity aplicada en los disparos del INPUT (pico real); el preview usa velocity 1.
-- Gate/one-shot no diferenciados en el scheduler.
+- ONE SHOT / GATE y LOOP implementados; Reverse usa envolvente completa.
+- La escala de interfaz VISUAL se limita a 90/100: los valores >100 hacían que el layout fijo de TRIGGER se solapara con el dock.
 - Folder picker / Audio-MIDI son demos.
 - Datos sintéticos: 1000 samples; el árbol no refleja una carpeta real.
 - Cache busting manual (`?v=N` en `index.html`); si se edita CSS/JS y no se ve el cambio, subir la versión.
@@ -629,6 +630,8 @@ AAX **no** se necesita.
 44. **Peak meters + dynamics**: INPUT y OUTPUT/MASTER pasaron de RMS a **pico real** (analyser float + hold corto). La barra de INPUT, los labels y la flecha de GATE THRESHOLD usan una única función `meterPct()` en dB, así que el threshold se lee contra el medidor. Se corrigió el detector: el capture ya no se reinicia en cada sample por encima del threshold y ahora guarda el **pico real** del transiente y su `peakTime`; antes la velocity caía al nivel del final del ataque. **SENSITIVITY** dejó de ser ganancia de detección y pasó a controlar el **rango dinámico** (0.35×…2.0×); el VELOCITY por slot mezcla esa respuesta con nivel fijo. INPUT VOLUME escala la velocity, así que bajar/subir el volumen cambia el nivel de los samples disparados. Además, el gate abre un bloque antes (lookahead de 1 ms) para que ATTACK 0 no recorte el transiente. Medido: SNARE con input 0 dB → velocity 100%, OUTPUT peak 54%; input −12 dB → velocity 25%, OUTPUT peak 10%; SENSITIVITY 0 vs 100 sobre velocity 0.5 → OUTPUT 43% vs 14%; Detail 100 → 0 hits; Detail 46 → 12 hits. VEL visible junto a DETECT.
 
 45. **Caso real como INPUT**: se agregó `SN_TOP_1COMMIT_17-140.wav`, recorte 0:17–2:20 (123 s, mono 48 kHz) del archivo real del usuario, normalizado a −0.5 dBFS. El detector corre sobre el archivo completo y la waveform de 2 s lo sigue; `SNARE.cm.wav` quedó como one-shot del slot 01. Con Detail 14 el detector encuentra **139 hits** en 123 s; con Detail 46, **56**; con Detail 100, **0**. La caché de block peaks de 1 ms reutiliza el análisis entre cambios de Detail/attack/hold/release: el recompute pasó de ~100 ms a ~32–47 ms sobre 5.4 M samples. En playback, el primer hit del excerpt aparece a los 2.29 s y los slots disparan con velocity real (p. ej. 64%). El INPUT se decodifica en ~0.6 s.
+
+46. **Auditoría integral (22/11)**: la detección se normaliza a 0 dBFS, así Detail 100 da 0 hits a cualquier Input Volume; la velocity conserva el nivel pre-clamp para que los samples sigan respondiendo. Se corrigió el rearm con Detail 0 (antes solo disparaba una vez porque `fast < thr*0.5` nunca se cumplía). Los marcadores usan la velocity real del hit. PLAYBACK GATE sigue la envolvente del gate del INPUT; LOOP se extendió a 2 s con envolvente abierta y fade-out; Reverse abre la envolvente completa y restaura la forward. Los offsets negativos se aplican dentro del lookahead. Al salir de TRIGGER se detiene el INPUT y los disparos. Los modales SETTINGS/VISUAL se cierran al cambiar de vista o clickear afuera; Esc desde VISUAL vuelve a HOME; Space sobre un botón enfocado no dispara el INPUT. La selección de slot ya no reconstruye el DOM (double-click confiable) y los botones M/S/Ø refrescan su estado. La escala VISUAL se limita a 90/100 para evitar que el layout fijo se solape con el dock. Se verificaron 900×1200, 1076×717, 1280×800 y 1920×1080 sin overflow ni solapamientos.
 
 ---
 
