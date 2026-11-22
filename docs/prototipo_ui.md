@@ -108,9 +108,9 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - El detector quedó en **cinco columnas**: GATE (ON/OFF + ATTACK/HOLD/RELEASE), INPUT (medidor + VOLUME + SUPPRESS + ▶ INPUT), FILTER (LOWCUT/HIGHCUT), waveform central y DETECT (SENSITIVITY/RETRIGGER/DETAIL).
 - El **GATE es pre-INPUT**: compara el pico del input original y aplica su envolvente al path seco y a la detección. El **VOLUME** es el trim que regula el nivel que llega a la waveform y a la detección. LOWCUT/HIGHCUT filtran solo la detección. SUPPRESS vive en INPUT.
 - **OUTPUT y MIX salieron del detector**: están en la cápsula master superior. **MIX** es el blend entre input original (0%) y samples disparados (100%) y está conectado al grafo de audio dry/wet. El gate solo procesa el input original; se escucha bajando MIX de 100%.
-- **Jerarquía:** INPUT VOLUME escala la waveform/detección; **DETAIL es el threshold** (línea dashed mint, independiente del volumen); SENSITIVITY ayuda con ghost notes; RETRIGGER se dibuja como **ventana roja** después de cada hit.
-- La waveform central muestra el material que pasa el gate en azul claro y el tail gateado en azul oscuro, con la línea de cero, los marcadores naranja de hit y la línea dashed de DETAIL con su label. El LED junto a GATE indica open/closed.
-- El **GATE es transient-driven**: no tiene threshold; ON/OFF + ATTACK/HOLD/RELEASE moldean el input original y no cambian la detección.
+- **Jerarquía:** INPUT VOLUME escala la waveform/detección; **DETAIL es el threshold** (línea dashed mint, independiente del volumen); SENSITIVITY ayuda con ghost notes; RETRIGGER es una **ventana ciega audible**, sin gráfica.
+- La waveform central muestra una **ventana de 2 s** (~6 transientes) que sigue al playhead, con el input en azul limpio, la línea de cero, la línea dashed de DETAIL con su label y las líneas naranjas de hit hasta el pico de cada transiente. **No dibuja el gate**: la atenuación se ve en el **VU GR rojo** al lado del medidor INPUT. El LED junto a GATE indica open/closed.
+- El **GATE es transient-driven**: no tiene threshold; ON/OFF + ATTACK/HOLD/RELEASE moldean el input original y no cambian la detección. Su reducción se ve en el **VU GR** rojo (bottom-up, 0–24 dB) al lado de INPUT.
 - Cada knob del detector tiene tooltip con su rol; la waveform también explica sus colores/líneas al hover.
 - El **sample view** se angostó a ~34–36%; el detector ocupa ~64–66% (66/34 en ventanas angostas).
 - **TONE** sigue como tira full-width debajo del detector/editor.

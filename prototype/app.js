@@ -2598,7 +2598,7 @@ const DET = [
   { key: 'sens',      label: 'SENSITIVITY',min: 0,  max: 100, val: 51,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
     tip: 'SENSITIVITY · helps catch ghost notes and soft hits' },
   { key: 'retrig',    label: 'RETRIGGER', min: 0,   max: 1000, val: 16,    unit: 'ms', fmt: v => Math.round(v) + ' ms', group: 'detect',
-    tip: 'RETRIGGER · blind window after each hit; shown as the red area' },
+    tip: 'RETRIGGER · blind window after each hit (audio only, no graphic)' },
   { key: 'detail',    label: 'DETAIL',    min: 0,   max: 100, val: 14,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
     tip: 'DETAIL · detection threshold. Higher = ignores bleed; lower = catches ghost notes' },
 ];
@@ -2743,6 +2743,11 @@ function detailThreshold() {
   const d = clamp(state.detector.detail, 0, 100) / 100;
   return 0.02 + 0.58 * Math.pow(d, 1.25);
 }
+function gainReductionPct(gateV) {
+  if (!state.detector.gate) return 0;
+  const db = -20 * Math.log10(Math.max(gateV, .001));
+  return clamp(db / 24 * 100, 0, 100);
+}
 // The gate is transient-driven: it opens on every detected hit and its
 // attack/hold/release shape the tail of the original input. It does not
 // change detection. This matches Slate Trigger's gate behavior.
@@ -2876,53 +2881,41 @@ function drawInput(now) {
     ctx.closePath();
   };
   trace();
-  ctx.fillStyle = 'rgba(110,155,255,.13)';
+  ctx.fillStyle = 'rgba(118,190,255,.42)';
   ctx.fill();
-  if (gateOn) {
-    ctx.save();
-    ctx.beginPath();
-    for (let x = 0; x <= inW; x++) if (synthGateAt(x / inW) >= .5) ctx.rect(x, 0, 1, inH);
-    ctx.clip();
-    trace();
-    ctx.fillStyle = 'rgba(118,190,255,.55)';
-    ctx.fill();
-    ctx.restore();
-  } else {
-    trace();
-    ctx.fillStyle = 'rgba(118,190,255,.42)';
-    ctx.fill();
-  }
   trace();
   ctx.strokeStyle = 'rgba(255,255,255,.22)';
   ctx.lineWidth = 1;
   ctx.stroke();
-  const retrigW = state.detector.retrig > 0 ? Math.max(4, state.detector.retrig / 1000 / 2.6 * inW) : 0;
-  if (retrigW > 0) {
-    ctx.fillStyle = 'rgba(255,90,90,.10)';
-    for (let k = 0; k < transientAt.length; k++) {
-      const x = transientAt[k] * inW;
-      ctx.fillRect(x, 0, Math.min(retrigW, inW - x), inH);
-    }
-  }
 
   const dy = mid - detailThr * amp;
   ctx.setLineDash([3, 3]);
   ctx.strokeStyle = 'rgba(45,226,197,.52)';
   ctx.beginPath(); ctx.moveTo(0, dy); ctx.lineTo(inW, dy); ctx.stroke();
   ctx.setLineDash([]);
+  ctx.font = '600 7px ui-monospace, Menlo, monospace';
   if (inW > 150) {
-    ctx.font = '600 7px ui-monospace, Menlo, monospace';
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(45,226,197,.72)';
     ctx.fillText('DETAIL', inW - 3, Math.max(9, Math.min(inH - 4, dy - 3)));
-    ctx.textAlign = 'left';
   }
 
   for (let k = 0; k < transientAt.length; k++) {
     const x = transientAt[k] * inW;
-    ctx.strokeStyle = 'rgba(255,150,90,.35)';
-    ctx.beginPath(); ctx.moveTo(x, 3); ctx.lineTo(x, inH - 3); ctx.stroke();
+    const peak = Math.max(.04, Math.min(1, envAt(transientAt[k]) * volAmp));
+    const top = mid - peak * amp;
+    const bottom = mid + peak * amp * .8;
+    ctx.strokeStyle = 'rgba(255,150,90,.4)';
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,150,90,.8)';
+    ctx.beginPath();
+    ctx.moveTo(x, top - 4); ctx.lineTo(x - 3, top + 2); ctx.lineTo(x + 3, top + 2);
+    ctx.closePath(); ctx.fill();
   }
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255,255,255,.32)';
+  ctx.fillText('2.6 s', inW - 3, inH - 4);
+  ctx.textAlign = 'left';
 
   const sx = scan * inW;
   ctx.strokeStyle = 'rgba(45,226,197,.75)';
@@ -2943,6 +2936,8 @@ function drawInput(now) {
   const gateV = synthGateAt(scan);
   const gled = $('#gateLed');
   if (gled) gled.classList.toggle('on', gateOn && gateV > .5);
+  const gr = $('#grMeterBar');
+  if (gr) gr.style.height = (gateOn ? gainReductionPct(gateV) : 0) + '%';
   const peak = Math.min(1, envAt(scan) * volAmp * gateV);
   const lvl = Math.round(20 * Math.log10(Math.max(peak, .001)));
   const il = $('#inputLevel');
@@ -3410,6 +3405,7 @@ function detectInputHits() {
   return hits;
 }
 
+const DET_WINDOW = 2.0; // seconds visible in the detector waveform (~6 transients)
 function drawRealInput(now) {
   if (!realInputPeaks) return;
   const ctx = inputCanvas.getContext('2d');
@@ -3418,8 +3414,20 @@ function drawRealInput(now) {
   const volAmp = dbToAmp(state.detector.input);
   const gateOn = state.detector.gate && !!realGateEnv;
   const detailThr = detailThreshold();
+  const winDur = Math.min(DET_WINDOW, realInputDuration || DET_WINDOW);
+  const playT = inputPlaying && audioCtx
+    ? clamp(audioCtx.currentTime - inputStartCtxTime, 0, realInputDuration)
+    : 0;
+  // While playing, the 2 s window follows the playhead; at rest it shows the
+  // first 2 s of the sample (six transients on SNARE.cm).
+  const winStart = inputPlaying
+    ? clamp(playT - winDur * .5, 0, Math.max(0, realInputDuration - winDur))
+    : 0;
+  const tAt = x => winStart + (x / inW) * winDur;
+  const xAt = t => ((t - winStart) / winDur) * inW;
   const peakAt = x => {
-    const idx = Math.min(realInputPeaks.length - 1, Math.floor(x / inW * realInputPeaks.length));
+    const t = tAt(x);
+    const idx = clamp(Math.floor(t / realInputDuration * realInputPeaks.length), 0, realInputPeaks.length - 1);
     return Math.min(1, realInputPeaks[idx] * volAmp);
   };
   const traceWave = () => {
@@ -3433,42 +3441,14 @@ function drawRealInput(now) {
     }
     ctx.closePath();
   };
-  // Full input behind the gate (dark blue).
+  // Plain input waveform: the gate is audible, not drawn here.
   traceWave();
-  ctx.fillStyle = 'rgba(110,155,255,.13)';
+  ctx.fillStyle = 'rgba(118,190,255,.42)';
   ctx.fill();
-  // Audio passing the gate (light blue).
-  if (gateOn) {
-    ctx.save();
-    ctx.beginPath();
-    for (let x = 0; x < inW; x++) {
-      const t = (x / inW) * realInputDuration;
-      if (gateValueAt(t) >= .5) ctx.rect(x, 0, 1, inH);
-    }
-    ctx.clip();
-    traceWave();
-    ctx.fillStyle = 'rgba(118,190,255,.58)';
-    ctx.fill();
-    ctx.restore();
-  } else {
-    traceWave();
-    ctx.fillStyle = 'rgba(118,190,255,.42)';
-    ctx.fill();
-  }
   traceWave();
-  ctx.strokeStyle = 'rgba(170,210,255,.22)';
+  ctx.strokeStyle = 'rgba(170,210,255,.30)';
   ctx.lineWidth = 1;
   ctx.stroke();
-  // Retrigger blind window: the red area after each hit.
-  const retrigW = state.detector.retrig > 0 ? Math.max(4, state.detector.retrig / 1000 / realInputDuration * inW) : 0;
-  if (retrigW > 0) {
-    ctx.fillStyle = 'rgba(255,90,90,.10)';
-    for (const h of realHits) {
-      const x = (h.time / realInputDuration) * inW;
-      if (x >= inW) continue;
-      ctx.fillRect(x, 0, Math.min(retrigW, inW - x), inH);
-    }
-  }
   // zero line
   ctx.strokeStyle = 'rgba(255,255,255,.18)';
   ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(inW, mid); ctx.stroke();
@@ -3478,34 +3458,45 @@ function drawRealInput(now) {
   ctx.strokeStyle = 'rgba(45,226,197,.52)';
   ctx.beginPath(); ctx.moveTo(0, dy); ctx.lineTo(inW, dy); ctx.stroke();
   ctx.setLineDash([]);
+  ctx.font = '600 7px ui-monospace, Menlo, monospace';
   if (inW > 150) {
-    ctx.font = '600 7px ui-monospace, Menlo, monospace';
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(45,226,197,.72)';
     ctx.fillText('DETAIL', inW - 3, Math.max(9, Math.min(inH - 4, dy - 3)));
-    ctx.textAlign = 'left';
   }
-  // detected hits (orange)
+  // Detected hits: orange line reaches the transient peak, not the top of the pane.
   for (const h of realHits) {
-    const x = (h.time / realInputDuration) * inW;
-    ctx.strokeStyle = 'rgba(255,150,90,.5)';
-    ctx.beginPath(); ctx.moveTo(x, 3); ctx.lineTo(x, inH - 3); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,150,90,.8)';
-    ctx.beginPath(); ctx.moveTo(x, 3); ctx.lineTo(x - 3, 9); ctx.lineTo(x + 3, 9); ctx.closePath(); ctx.fill();
+    if (h.time < winStart || h.time > winStart + winDur) continue;
+    const x = xAt(h.time);
+    const peak = Math.max(.04, peakAt(x));
+    const top = mid - peak * amp;
+    const bottom = mid + peak * amp * .65;
+    ctx.strokeStyle = 'rgba(255,150,90,.55)';
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,150,90,.85)';
+    ctx.beginPath();
+    ctx.moveTo(x, top - 4); ctx.lineTo(x - 3, top + 2); ctx.lineTo(x + 3, top + 2);
+    ctx.closePath(); ctx.fill();
   }
+  // Time scale, bottom right.
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255,255,255,.32)';
+  ctx.fillText(winDur.toFixed(1) + ' s', inW - 3, inH - 4);
+  ctx.textAlign = 'left';
   const imb = $('#inputMeterBar');
   const gled = $('#gateLed');
   if (inputPlaying && audioCtx) {
-    const t = clamp((audioCtx.currentTime - inputStartCtxTime) / realInputDuration, 0, 1);
-    const sx = t * inW;
+    const sx = clamp(xAt(playT), 0, inW);
     ctx.strokeStyle = 'rgba(45,226,197,.85)';
     ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, inH); ctx.stroke();
-    const gateV = gateValueAt(t * realInputDuration);
+    const gateV = gateValueAt(playT);
     if (gled) gled.classList.toggle('on', gateOn && gateV > .5);
+    const gr = $('#grMeterBar');
+    if (gr) gr.style.height = gainReductionPct(gateV) + '%';
     const led = $('#hitLed');
-    const near = realHits.some(h => Math.abs(h.time / realInputDuration - t) < 0.006);
+    const near = realHits.some(h => Math.abs(h.time - playT) < 0.006);
     if (led) led.classList.toggle('on', near);
-    const idx = Math.min(realInputPeaks.length - 1, Math.floor(t * realInputPeaks.length));
+    const idx = clamp(Math.floor(playT / realInputDuration * realInputPeaks.length), 0, realInputPeaks.length - 1);
     const peak = Math.min(1, realInputPeaks[idx] * volAmp * gateV);
     const db = 20 * Math.log10(Math.max(peak, .001));
     const il = $('#inputLevel');
@@ -3514,6 +3505,7 @@ function drawRealInput(now) {
   } else {
     if (imb) imb.style.height = '2%';
     if (gled) gled.classList.remove('on');
+    const gr = $('#grMeterBar'); if (gr) gr.style.height = '0%';
   }
 }
 
@@ -3530,6 +3522,7 @@ function stopInput() {
   const btn = $('#inputPlay'); if (btn) btn.textContent = '▶ INPUT';
   const led = $('#hitLed'); if (led) led.classList.remove('on');
   const gled = $('#gateLed'); if (gled) gled.classList.remove('on');
+  const gr = $('#grMeterBar'); if (gr) gr.style.height = '0%';
 }
 
 function playInput() {
