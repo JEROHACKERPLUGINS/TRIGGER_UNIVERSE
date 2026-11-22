@@ -212,6 +212,162 @@ let masterGain = null;
 let masterAnalyser = null;
 let inputGain = null;
 let gateGain = null;
+
+// ---------- multi-selection (desktop style) ----------
+// Scopes: 'env' (envelope points: 'attack' | 'decay' | 'release' | 'x<id>'),
+// 'knobs' (detector knob keys), 'faders' and 'slots' (slot indexes; the
+// fader strips and the Trigger Slots below are separate selections) and
+// faders share it). Drag a box on empty space = marquee; Cmd/Ctrl/Shift+click
+// = add/remove; Cmd/Ctrl+A = all in the active scope; moving one selected
+// item moves all of them.
+const multiSel = { env: new Set(), knobs: new Set(), faders: new Set(), slots: new Set(), scope: null };
+const SEL_SCOPES = ['env', 'knobs', 'faders', 'slots'];
+function clearAllSel() {
+  SEL_SCOPES.forEach(k => { multiSel[k] = new Set(); selAnchor[k] = null; });
+  applyKnobSelClasses(); applySlotSelClasses();
+}
+let marqueeSwallowClick = false;
+let envSelSlot = -1; // the point selection belongs to one slot's envelope
+// Every selectable item on the TRIGGER page, tagged with its scope. A marquee
+// selects across all scopes at once; each group then moves on its own.
+function allSelItems() {
+  const out = [];
+  document.querySelectorAll('#detectorPanel .knob[data-key]').forEach(el =>
+    out.push({ scope: 'knobs', el: el.querySelector('.knob-dial') || el, id: el.dataset.key }));
+  document.querySelectorAll('#faderBank .slot-fader[data-slot]').forEach(el =>
+    out.push({ scope: 'faders', el, id: +el.dataset.slot }));
+  document.querySelectorAll('#slots .slot[data-slot]').forEach(el =>
+    out.push({ scope: 'slots', el, id: +el.dataset.slot }));
+  document.querySelectorAll('#wave .we-handle[data-sid]').forEach(g =>
+    out.push({ scope: 'env', el: g.querySelector('.we-dot') || g, id: g.dataset.sid }));
+  return out;
+}
+function startMarquee(e, opts = {}) {
+  const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+  const scopes = SEL_SCOPES;
+  const base = {};
+  scopes.forEach(k => { base[k] = additive ? new Set(multiSel[k]) : new Set(); });
+  const x0 = e.clientX, y0 = e.clientY;
+  let box = null, moved = false;
+  // Faders and Trigger Slots never share a selection: the first of the two
+  // the box touches wins for the whole drag.
+  let fsLock = opts.scope === 'faders' || opts.scope === 'slots' ? opts.scope : null;
+  if (opts.scope) multiSel.scope = opts.scope;
+  const move = ev => {
+    if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+    moved = true;
+    if (!box) { box = document.createElement('div'); box.className = 'marquee'; document.body.appendChild(box); }
+    const l = Math.min(x0, ev.clientX), t = Math.min(y0, ev.clientY);
+    const r = Math.max(x0, ev.clientX), b = Math.max(y0, ev.clientY);
+    Object.assign(box.style, { left: l + 'px', top: t + 'px', width: (r - l) + 'px', height: (b - t) + 'px' });
+    const next = {}; scopes.forEach(k => { next[k] = new Set(base[k]); });
+    for (const it of allSelItems()) {
+      const rc = it.el.getBoundingClientRect();
+      if (rc.width === 0 && rc.height === 0) continue; // hidden (other view)
+      if (rc.right >= l && rc.left <= r && rc.bottom >= t && rc.top <= b) next[it.scope].add(it.id);
+    }
+    if (!fsLock) {
+      const fNew = [...next.faders].some(id => !base.faders.has(id));
+      const sNew = [...next.slots].some(id => !base.slots.has(id));
+      if (fNew && !sNew) fsLock = 'faders'; else if (sNew && !fNew) fsLock = 'slots';
+      else if (fNew && sNew) fsLock = ev.clientY < y0 ? 'faders' : 'slots';
+    }
+    if (fsLock === 'faders') next.slots = new Set();
+    if (fsLock === 'slots') next.faders = new Set();
+    const envChanged = next.env.size !== multiSel.env.size || [...next.env].some(id => !multiSel.env.has(id));
+    scopes.forEach(k => { multiSel[k] = next[k]; });
+    // the active scope (Cmd+A, Delete) is the last one that got something
+    const hit = scopes.filter(k => next[k].size);
+    if (hit.length) multiSel.scope = hit.includes(opts.scope) ? opts.scope : hit[hit.length - 1];
+    applyKnobSelClasses(); applySlotSelClasses();
+    if (envChanged) renderSampleEditor();
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    if (box) box.remove();
+    if (moved) marqueeSwallowClick = true;
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+// Marquee from any empty spot of the TRIGGER page (the dark space between
+// and around the panels too), like dragging on the Finder desktop.
+document.addEventListener('pointerdown', e => {
+  if (state.viewMode !== 'trigger' || e.button !== 0 || e.altKey) return;
+  const t = e.target;
+  if (!t.closest || !t.closest('#triggerView, .slot-dock, .universe')) return;
+  // areas with their own marquee start, and anything interactive
+  if (t.closest('#wave, #detectorPanel, #faderBank, #slots')) return;
+  if (t.closest('button, input, select, textarea, a, canvas, svg, .knob, .slot, .num-editable, label, .chrome, .side-bracket, .settings-menu, .visual-panel, .top-master, #sampleMeta')) return;
+  e.preventDefault();
+  startMarquee(e, {});
+});
+// The click that ends a marquee must not also select/audition what is under it.
+// Finder rule: a click anywhere deselects everything, EXCEPT a click on
+// something already selected (that is how you move the group) or a click
+// with Cmd/Ctrl/Shift (building the selection). Runs in the capture phase,
+// before the item handlers, and reads the event path (the editor redraws its
+// SVG during the click, so e.target can already be detached).
+document.addEventListener('pointerdown', e => {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  if (SEL_SCOPES.every(k => !multiSel[k].size)) {
+    // nothing multi-selected: a click outside the item areas forgets the anchors
+    if (!e.composedPath().some(el => el.id === 'slots' || el.id === 'faderBank' || el.id === 'wave' || el.id === 'detectorPanel'))
+      SEL_SCOPES.forEach(k => { selAnchor[k] = null; });
+    return;
+  }
+  const onSelected = e.composedPath().some(el => el.classList &&
+    (el.classList.contains('msel') || (el.classList.contains('we-handle') && el.classList.contains('sel'))));
+  if (onSelected) return;
+  clearAllSel();
+  if (state.viewMode === 'trigger') renderSampleEditor();
+}, true);
+window.addEventListener('click', e => {
+  if (!marqueeSwallowClick) return;
+  marqueeSwallowClick = false;
+  e.stopPropagation(); e.preventDefault();
+}, true);
+function toggleSel(scope, id) {
+  const set = multiSel[scope];
+  if (set.has(id)) set.delete(id); else set.add(id);
+  multiSel.scope = scope;
+}
+// Finder rules (icon view): Shift+click or Cmd/Ctrl+click adds/removes one
+// item, so you can pick them one by one. Returns true when a modifier was
+// used, so the caller skips its normal action (drag, audition).
+const selAnchor = { env: null, knobs: null, faders: null, slots: null };
+function finderClick(scope, id, e) {
+  multiSel.scope = scope;
+  const other = scope === 'faders' ? 'slots' : scope === 'slots' ? 'faders' : null;
+  if (other && multiSel[other].size) { multiSel[other] = new Set(); selAnchor[other] = null; applySlotSelClasses(); }
+  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+    // the item clicked just before (plain click) joins the selection too
+    const prev = selAnchor[scope];
+    if (!multiSel[scope].size && prev != null && prev !== id) multiSel[scope].add(prev);
+    toggleSel(scope, id); selAnchor[scope] = id; return true;
+  }
+  selAnchor[scope] = id;
+  return false;
+}
+const slotOrder = () => state.slots.map((_, i) => i);
+const knobOrder = () => DET.map(c => c.key);
+const envOrder = () => { const sl = currentSlot(); return sl && slotSample(sl) ? slotEnvPoints(sl).filter(q => q.k !== 'origin').map(q => q.sid) : []; };
+function applySlotSelClasses() {
+  document.querySelectorAll('#slots .slot[data-slot]').forEach(el =>
+    el.classList.toggle('msel', multiSel.slots.has(+el.dataset.slot)));
+  document.querySelectorAll('#faderBank .slot-fader[data-slot]').forEach(el =>
+    el.classList.toggle('msel', multiSel.faders.has(+el.dataset.slot)));
+}
+function applyKnobSelClasses() {
+  document.querySelectorAll('#detectorPanel .knob[data-key]').forEach(el =>
+    el.classList.toggle('msel', multiSel.knobs.has(el.dataset.key)));
+}
+// Real-time INPUT DETECTOR (detector-worklet.js): gate -> filters -> detect run
+// on the audio thread while the input plays. null = precomputed fallback.
+let rtNode = null;
+const RT_LOOKAHEAD = 0.1; // s · dry input delay that lets hits land on their onset
+let liveGate = null, livePeak = null, liveKnownBlock = -1, rtLate = 0;
 let dryGain = null;
 let wetGain = null;
 let slotNodes = [];
@@ -437,7 +593,7 @@ const state = {
   popoverSlot: null,
   autoRef: 'INPUT',
   autoTiming: false,
-  detector: { attack: .5, hold: 30, release: 150, sens: 51, retrig: 16, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: true, gateThreshold: -24 },
+  detector: { attack: .5, hold: 30, release: 150, sens: 51, retrig: 30, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: true, gateThreshold: -24 },
 };
 
 function pickByCategory(cat, offset = 0) {
@@ -1355,7 +1511,11 @@ window.addEventListener('mousemove', e => {
   }
 });
 
-window.addEventListener('mouseup', e => {
+// Drag end runs on mouseup AND pointerup: a pointerdown that called
+// preventDefault (sample editor, handles) suppresses the compatibility
+// mouseup, which used to leave the sample stuck to the cursor. The second
+// call finds nothing left to end.
+function onDragRelease(e) {
   if (state.scanning) stopScrub();
   if (state.drag) {
     const smp = state.drag;
@@ -1392,7 +1552,9 @@ window.addEventListener('mouseup', e => {
     state.pan = null;
     canvas.style.cursor = 'crosshair';
   }
-});
+}
+window.addEventListener('mouseup', onDragRelease);
+window.addEventListener('pointerup', onDragRelease);
 
 window.__dragPlanet = {
   get active() { return !!state.drag; },
@@ -1511,7 +1673,7 @@ function renderSlots() {
   host.innerHTML = state.slots.map((s, i) => {
     const smp = slotSample(s);
     const color = smp ? CAT[smp.category].color : '';
-    const sel = i === state.selectedSlot ? ' selected' : '';
+    const sel = (i === state.selectedSlot ? ' selected' : '') + (multiSel.slots.has(i) ? ' msel' : '');
     const stateCls = smp ? ' filled' : ' empty';
     return `
       <div class="slot${stateCls}${sel}" data-slot="${i}" data-kbd="${i + 1}"${smp ? ` style="--slot-color:${color}"` : ''} title="${smp ? `${smp.name} · click to audition · double-click to edit` : 'Drop a sample here · click to open TRIGGER'}">
@@ -1530,6 +1692,29 @@ function renderSlots() {
 
 let slotMeterVals = new Array(8).fill(-1);
 
+// ---------- fader taper (console style) ----------
+// Position 0..1 <-> dB. 0 dB sits at 75% of the travel (unity detent), the top
+// 25% is +6 dB of boost and the bottom 10% fades to -60 dB. The slot meters use
+// the same map, so the meter and the scale beside it read the same dB.
+const FADER_TAPER = [[0, -60], [.1, -48], [.25, -30], [.4, -18], [.55, -10], [.75, 0], [1, 6]];
+const FADER_TICKS = [6, 0, -6, -12, -24, -48];
+function faderPosToDb(p) {
+  p = clamp(p, 0, 1);
+  for (let k = 1; k < FADER_TAPER.length; k++) {
+    const [p1, d1] = FADER_TAPER[k], [p0, d0] = FADER_TAPER[k - 1];
+    if (p <= p1) return d0 + (d1 - d0) * (p - p0) / (p1 - p0);
+  }
+  return 6;
+}
+function faderDbToPos(db) {
+  db = clamp(db, -60, 6);
+  for (let k = 1; k < FADER_TAPER.length; k++) {
+    const [p1, d1] = FADER_TAPER[k], [p0, d0] = FADER_TAPER[k - 1];
+    if (db <= d1) return p0 + (p1 - p0) * (db - d0) / (d1 - d0);
+  }
+  return 1;
+}
+
 function renderFaders() {
   const host = $('#faderBank');
   if (!host) return;
@@ -1538,7 +1723,7 @@ function renderFaders() {
   host.innerHTML = state.slots.map((s, i) => {
     const smp = slotSample(s);
     const color = smp ? CAT[smp.category].color : '';
-    const sel = i === state.selectedSlot ? ' selected' : '';
+    const sel = (i === state.selectedSlot ? ' selected' : '') + (multiSel.faders.has(i) ? ' msel' : '');
     const dim = (anySolo && !s.solo) || s.mute ? ' dim' : '';
     const empty = smp ? '' : ' empty';
     const ph = phaseBadge(s);
@@ -1550,8 +1735,15 @@ function renderFaders() {
           <span class="sf-name">${smp ? smp.name : 'EMPTY'}</span>
         </div>
         <div class="sf-body">
+          <div class="sf-scale">${FADER_TICKS.map(db => `<span class="${db === 0 ? 'unity' : ''}" style="--p:${faderDbToPos(db).toFixed(4)}">${db > 0 ? '+' + db : db}</span>`).join('')}</div>
           <div class="sf-meter"><i id="meter-${i}" style="height:0%"></i></div>
-          <div class="sf-track"><input class="sf-range" id="fader-${i}" data-slot="${i}" type="range" min="-60" max="6" step="0.1" value="${s.level}" aria-label="Slot ${i + 1} level"></div>
+          <div class="sf-fader" id="fader-${i}" data-slot="${i}" tabindex="0" role="slider"
+            aria-label="Slot ${i + 1} level" aria-valuemin="-60" aria-valuemax="6" aria-valuenow="${s.level}"
+            style="--pos:${faderDbToPos(s.level).toFixed(4)}">
+            <div class="sf-rail"><i class="sf-fill"></i></div>
+            <div class="sf-unity" style="--p:${faderDbToPos(0).toFixed(4)}"></div>
+            <div class="sf-cap"></div>
+          </div>
         </div>
         <div class="sf-foot"><span class="sf-level" id="slotLevel-${i}">${fmtDb(s.level)}</span>${ph === '—' ? '' : `<span class="sf-phase">${ph}</span>`}</div>
         <div class="sf-btns">
@@ -1609,8 +1801,11 @@ $('#slots').addEventListener('click', e => {
   }
   const slot = e.target.closest('.slot[data-slot]');
   if (!slot) return;
+  if (finderClick('slots', +slot.dataset.slot, e, slotOrder)) { applySlotSelClasses(); return; }
   if (e.detail > 1) return; // do not audition twice on the way to a double-click
   const i = +slot.dataset.slot;
+  if (multiSel.slots.size) { multiSel.slots = new Set(); applySlotSelClasses(); }
+  multiSel.scope = 'slots';
   selectSlot(i);
   const smp = slotSample(state.slots[i]);
   if (!smp) {
@@ -1631,6 +1826,11 @@ $('#slots').addEventListener('click', e => {
 });
 
 // Double-click opens the selected slot in the TRIGGER editor.
+// Marquee from the empty space around the Trigger Slots.
+$('#slots').addEventListener('pointerdown', e => {
+  if (e.button !== 0 || e.target.closest('.slot[data-slot]')) return;
+  startMarquee(e, { scope: 'slots' });
+});
 $('#slots').addEventListener('dblclick', e => {
   if (e.target.closest('[data-clear]')) return;
   const slot = e.target.closest('.slot[data-slot]');
@@ -1642,39 +1842,87 @@ $('#slots').addEventListener('dblclick', e => {
 function setFaderLevel(i, v) {
   const s = state.slots[i];
   s.level = clamp(v, -60, 6);
-  const r = $(`#fader-${i}`); if (r) r.value = s.level;
+  const r = $(`#fader-${i}`);
+  if (r) { r.style.setProperty('--pos', faderDbToPos(s.level).toFixed(4)); r.setAttribute('aria-valuenow', s.level.toFixed(1)); }
   const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(s.level);
   syncSlotAudio(i);
 }
-$('#faderBank').addEventListener('input', e => {
-  const r = e.target.closest('.sf-range');
-  if (!r) return;
-  setFaderLevel(+r.dataset.slot, +r.value);
-});
+// Custom vertical faders: drag the cap (relative, no jump) or click the rail
+// (jump), Shift = fine, Alt+click = 0 dB, arrows = 0.5 dB (Shift 0.1 dB).
+// A small detent snaps to 0 dB.
+const FADER_CAP = 12; // px, keep in sync with --cap-h in style.css
+function faderSnap(db) { return Math.abs(db) < 0.35 ? 0 : Math.round(db * 10) / 10; }
 $('#faderBank').addEventListener('pointerdown', e => {
-  const r = e.target.closest('.sf-range');
-  if (!r || !e.altKey) return;
+  const f = e.target.closest('.sf-fader');
+  if (!f) {
+    // empty part of a strip or the gaps between strips: marquee (a plain
+    // click still selects the strip through the click handler)
+    if (e.button !== 0 || e.target.closest('button, .num-editable')) return;
+    startMarquee(e, { scope: 'faders', onChange: applySlotSelClasses, keepOnClick: true });
+    return;
+  }
+  const i = +f.dataset.slot;
   e.preventDefault(); e.stopPropagation();
-  setFaderLevel(+r.dataset.slot, 0);
+  multiSel.scope = 'faders';
+  if (finderClick('faders', i, e, slotOrder)) { applySlotSelClasses(); return; }
+  const grp = multiSel.faders.has(i) && multiSel.faders.size > 1
+    ? [...multiSel.faders].map(k => ({ k, p0: faderDbToPos(state.slots[k].level) })) : null;
+  if (!grp && multiSel.faders.size) { multiSel.faders = new Set(); applySlotSelClasses(); }
+  if (e.altKey) { (grp || [{ k: i }]).forEach(g => setFaderLevel(g.k, 0)); return; }
+  f.focus({ preventScroll: true });
+  const rect = f.getBoundingClientRect();
+  const travel = Math.max(1, rect.height - FADER_CAP);
+  const posAt = y => 1 - (y - rect.top - FADER_CAP / 2) / travel;
+  let pos = faderDbToPos(state.slots[i].level);
+  if (!e.target.closest('.sf-cap')) { pos = clamp(posAt(e.clientY), 0, 1); setFaderLevel(i, faderSnap(faderPosToDb(pos))); }
+  let lastY = e.clientY;
+  f.setPointerCapture(e.pointerId);
+  f.classList.add('dragging');
+  const pos0 = pos;
+  const move = ev => {
+    const k = ev.shiftKey ? 0.2 : 1;
+    pos = clamp(pos - (ev.clientY - lastY) / travel * k, 0, 1);
+    lastY = ev.clientY;
+    if (grp) { const dp = pos - pos0; grp.forEach(g => setFaderLevel(g.k, faderSnap(faderPosToDb(clamp(g.p0 + dp, 0, 1))))); return; }
+    setFaderLevel(i, faderSnap(faderPosToDb(pos)));
+  };
+  const up = () => {
+    f.classList.remove('dragging');
+    if (grp && Math.abs(pos - pos0) < 1e-4) { multiSel.faders = new Set(); applySlotSelClasses(); }
+    f.removeEventListener('pointermove', move);
+    f.removeEventListener('pointerup', up);
+    f.removeEventListener('pointercancel', up);
+    selectSlot(i);
+  };
+  f.addEventListener('pointermove', move);
+  f.addEventListener('pointerup', up);
+  f.addEventListener('pointercancel', up);
+});
+$('#faderBank').addEventListener('keydown', e => {
+  const f = e.target.closest('.sf-fader');
+  if (!f || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+  e.preventDefault(); e.stopPropagation();
+  const i = +f.dataset.slot;
+  const step = (e.shiftKey ? 0.1 : 0.5) * (e.key === 'ArrowUp' ? 1 : -1);
+  const ks = multiSel.faders.has(i) && multiSel.faders.size > 1 ? [...multiSel.faders] : [i];
+  ks.forEach(k => setFaderLevel(k, Math.round((state.slots[k].level + step) * 10) / 10));
 });
 
 $('#faderBank').addEventListener('click', e => {
-  const range = e.target.closest('.sf-range');
-  if (range && e.altKey) {
-    e.preventDefault(); e.stopPropagation();
-    setFaderLevel(+range.dataset.slot, 0);
-    return;
-  }
+  if (e.target.closest('.sf-fader')) { e.stopPropagation(); return; }
   const btn = e.target.closest('button[data-act]');
   if (btn) {
     e.stopPropagation();
     const i = +btn.dataset.slot, s = state.slots[i];
-    if (btn.dataset.act === 'm') s.mute = !s.mute;
-    if (btn.dataset.act === 's') s.solo = !s.solo;
-    if (btn.dataset.act === 'o') {
-      s.polarity = !s.polarity;
-      s.shift = s.polarity ? 180 : 0;
-    }
+    // M/S/Ø on a selected strip apply the same new state to every selected one.
+    const ks = multiSel.faders.has(i) && multiSel.faders.size > 1 ? [...multiSel.faders] : [i];
+    const mute = !s.mute, solo = !s.solo, pol = !s.polarity;
+    ks.forEach(k => {
+      const t = state.slots[k];
+      if (btn.dataset.act === 'm') t.mute = mute;
+      if (btn.dataset.act === 's') t.solo = solo;
+      if (btn.dataset.act === 'o') { t.polarity = pol; t.shift = pol ? 180 : 0; }
+    });
     selectSlot(i);
     renderSlots();
     syncAllSlotAudio();
@@ -1684,6 +1932,8 @@ $('#faderBank').addEventListener('click', e => {
   if (e.target.closest('.num-editable')) return;
   const strip = e.target.closest('.slot-fader[data-slot]');
   if (!strip) return;
+  if (finderClick('faders', +strip.dataset.slot, e, slotOrder)) { applySlotSelClasses(); return; }
+  if (multiSel.faders.size) { multiSel.faders = new Set(); applySlotSelClasses(); }
   selectSlot(+strip.dataset.slot);
 });
 
@@ -1694,6 +1944,7 @@ function assignSample(i, smp) {
   s.mute = false; s.solo = false;
   s.tune = 0;
   s.adsr = { a: 0, d: 120, end: 0, s: .5, p: 1, e: 0 };
+  s.envPts = [];
   s.start = 0; s.end = 1; s.fadeIn = 0; s.fadeOut = 0;
   s.reverse = false;
   s.tone = 0; s.cut = 50; s.velSens = 100; s.gain = 0;
@@ -2137,6 +2388,7 @@ function closeTriggerPage() {
 
 function setView(mode) {
   stopHoverPreview();
+  if (mode !== 'trigger') clearAllSel();
   setSettingsOpen(false);
   if ($('#visualPanel').classList.contains('show')) setVisualOpen(false);
   if (mode === 'trigger' && state.viewMode !== 'trigger') state.prevView = state.viewMode;
@@ -2210,12 +2462,12 @@ const KH = {
   edit:     [['Enter', 'Confirm'], ['Esc', 'Cancel']],
   drag:     [['Drop on a slot', ''], ['Esc', 'Cancel']],
   settings: [['Esc', 'Close']],
-  trigger:  [['1–8', 'Select slot'], ['Space', 'Play input'], ['Double-click', 'Edit value'], ['Esc', 'Back']],
-  files:    [['Space', 'Audition'], ['1–8', 'To a slot'], ['Esc', 'Home']],
+  trigger:  [['1–8', 'Play slot'], ['⌥+1–8', 'To a slot'], ['Space', 'Play input'], ['Esc', 'Back']],
+  files:    [['Space', 'Audition'], ['⌥+1–8', 'To a slot'], ['Esc', 'Home']],
   scrub:    [['Drag', 'Scrub'], ['⌥+Drag', 'To a slot']],
-  similar:  [['← →', 'Similar'], ['Space', 'Audition'], ['1–8', 'To a slot'], ['Esc', 'Close']],
+  similar:  [['← →', 'Similar'], ['Space', 'Audition'], ['⌥+1–8', 'To a slot'], ['Esc', 'Close']],
   hover:    [['Click', 'Audition'], ['⌥+Drag', 'To a slot']],
-  universe: [['Scroll', 'Zoom'], ['/', 'Search'], ['F', 'Files'], ['T', 'Trigger']],
+  universe: [['Scroll', 'Zoom'], ['1–8', 'Play slot'], ['/', 'Search'], ['Tab', 'Trigger']],
 };
 function keyHintContext() {
   if (numericEditor) return 'edit';
@@ -2276,9 +2528,8 @@ window.addEventListener('keydown', e => {
     if (inTrigger) playInput();
     else if (state.selectedSample) playHoverPreview(state.selectedSample);
   } else if (/^[1-8]$/.test(k)) {
-    const i = +k - 1;
-    if (inTrigger) selectSlot(i);
-    else if (state.selectedSample) assignSample(i, state.selectedSample);
+    // 1–8 plays that Trigger Slot (Alt+1–8 sends a sample to it, below).
+    auditionSlot(+k - 1);
   } else if (k === 't' || k === 'T') {
     setTriggerOpen(!inTrigger);
   } else if (k === 'f' || k === 'F') {
@@ -2291,6 +2542,43 @@ window.addEventListener('keydown', e => {
     $('#search').focus();
   }
 });
+
+function auditionSlot(i) {
+  const el = document.querySelector(`#slots .slot[data-slot="${i}"]`);
+  if (el) {
+    el.classList.remove('slot-audition'); void el.offsetWidth; el.classList.add('slot-audition');
+    setTimeout(() => el.classList.remove('slot-audition'), 380);
+  }
+  if (!slotSample(state.slots[i])) return;
+  ensureAudio();
+  playSlot(i, .01);
+}
+// Alt+1–8: send the sample you have (selected in HOME / FILE SEARCH, or the
+// one in the editor on the TRIGGER page) to that slot. e.code, because Alt
+// turns the digit into another character on macOS.
+window.addEventListener('keydown', e => {
+  if (!e.altKey || e.metaKey || e.ctrlKey || e.repeat) return;
+  const m = /^(?:Digit|Numpad)([1-8])$/.exec(e.code || '');
+  if (!m || numericEditor || isTypingTarget(e.target)) return;
+  e.preventDefault();
+  const i = +m[1] - 1;
+  const smp = state.viewMode === 'trigger' ? (currentSlotSample() || state.selectedSample) : state.selectedSample;
+  if (!smp) { toast('Select a sample first'); return; }
+  assignSample(i, smp);
+  const el = document.querySelector(`#slots .slot[data-slot="${i}"]`);
+  if (el) { el.classList.add('slot-impact'); setTimeout(() => el.classList.remove('slot-impact'), 640); }
+});
+
+// TAB toggles TRIGGER <-> UNIVERSE (HOME). Text fields and inline numeric
+// editors keep their normal Tab.
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Tab' || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.closest('input, textarea, select, [contenteditable="true"]') || t.classList.contains('num-editing'))) return;
+  e.preventDefault();
+  if (state.viewMode === 'trigger') setView('universe');
+  else openTriggerPage();
+}, true);
 
 // ESC always lands on HOME, from TRIGGER, FILE SEARCH or any open overlay.
 window.addEventListener('keydown', e => {
@@ -2384,9 +2672,100 @@ function updateInspector() {
   renderSampleEditor();
 }
 
+// SAMPLE + ENVELOPE editor geometry, in real CSS pixels of the SVG (the
+// viewBox follows the element size, so circles stay round and lines crisp at
+// any window size). x0..x1 shows the visible part of the sample (wheel zoom);
+// the envelope runs from START to the end of the sample.
 function waveGeom() {
-  const W = 600, H = 170, padX = 14, top = 20, bottom = 150;
-  return { W, H, padX, top, bottom, mid: (top + bottom) / 2, amp: (bottom - top) / 2 };
+  const svg = $('#wave');
+  const W = Math.max(160, Math.round(svg && svg.clientWidth || 600));
+  const H = Math.max(90, Math.round(svg && svg.clientHeight || 170));
+  const x0 = 12, x1 = W - 12, top = 14, bottom = H - 20;
+  return { W, H, x0, x1, top, bottom, mid: (top + bottom) / 2, amp: (bottom - top) / 2 };
+}
+function niceStepMs(pxPerMs, minPx) {
+  for (const st of [.1, .2, .5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000]) if (st * pxPerMs >= minPx) return st;
+  return 10000;
+}
+// Move START keeping A/D/R times; a release that sat on the end of the sample
+// stays on the end.
+function setSlotStart(slot, startFrac) {
+  const atEnd = slot.adsr.end >= envTotalMs() - 1;
+  slot.start = clamp(startFrac, 0, .98);
+  fitAdsrToSample(slot);
+  if (atEnd) slot.adsr.end = Math.round(envTotalMs());
+  clampEnvPts(slot);
+}
+
+// ---- envelope points ----
+// A/D/R stay the named points (slot.adsr). slot.envPts holds the extra points
+// added with a double click: [{t, v}] with t in ms from START (always before
+// R) and v the level 0..1. The shape is the sorted list (0,0) -> ... -> R.
+let envPtSeq = 1; // stable ids for extra points (selection survives sorting)
+function clampEnvPts(slot) {
+  if (!Array.isArray(slot.envPts)) slot.envPts = [];
+  const end = slot.adsr.end;
+  slot.envPts = slot.envPts
+    .map(q => ({ t: clamp(q.t, 0, Math.max(0, end - .5)), v: clamp(q.v, 0, 1), id: q.id || envPtSeq++ }))
+    .sort((a, b) => a.t - b.t);
+}
+function slotEnvPoints(slot, total = envTotalMs()) {
+  const a = clamp(slot.adsr.a, 0, total);
+  const d = clamp(slot.adsr.d, 0, Math.max(0, total - a));
+  const end = clamp(slot.adsr.end, a + d, total);
+  // every level is free (LFO Tool style): no A >= D >= R constraint
+  const s = clamp(slot.adsr.s, 0, 1);
+  const p = clamp(slot.adsr.p, 0, 1);
+  const e = clamp(slot.adsr.e, 0, 1);
+  const pts = [
+    { t: a, v: p, k: 'attack' },
+    { t: a + d, v: s, k: 'decay' },
+    ...(slot.envPts || []).map((q, i) => ({ t: clamp(q.t, 0, end), v: clamp(q.v, 0, 1), k: 'x', i, id: q.id, sid: 'x' + q.id })),
+  ].sort((x, y) => x.t - y.t || (x.k === 'x') - (y.k === 'x'));
+  pts.forEach(q => { if (!q.sid) q.sid = q.k; });
+  return [{ t: 0, v: 0, k: 'origin', sid: 'origin' }, ...pts, { t: end, v: e, k: 'release', sid: 'release' }];
+}
+function envGainAt(pts, t) {
+  if (t < 0 || t > pts[pts.length - 1].t) return 0;
+  for (let i = 1; i < pts.length; i++) {
+    const q0 = pts[i - 1], q1 = pts[i];
+    if (t <= q1.t) return q1.t - q0.t < 1e-6 ? q1.v : q0.v + (q1.v - q0.v) * (t - q0.t) / (q1.t - q0.t);
+  }
+  return pts[pts.length - 1].v;
+}
+
+// ---- zoom (wheel) ----
+let waveView = { key: '', vs: 0, ve: 0 };
+function waveViewFor(slot, smp) {
+  const key = `${state.selectedSlot}|${smp.id}|${slot.reverse ? 'r' : 'f'}`;
+  if (waveView.key !== key || !(waveView.ve > waveView.vs)) waveView = { key, vs: 0, ve: smp.dur };
+  waveView.vs = clamp(waveView.vs, 0, smp.dur); waveView.ve = clamp(waveView.ve, waveView.vs + .5, smp.dur);
+  return waveView;
+}
+// Peaks of the real playback buffer for each pixel column of the view.
+function sampleColumnPeaks(smp, reverse, vs, ve, cols) {
+  const buf = reverse ? getReversedBuffer(smp) : getBuffer(smp);
+  const out = new Float32Array(cols);
+  if (!buf) {
+    let arr = sampleWave(smp); if (reverse) arr = arr.slice().reverse();
+    for (let c = 0; c < cols; c++) {
+      const f = (vs + (c + .5) / cols * (ve - vs)) / smp.dur * (arr.length - 1);
+      const i = Math.floor(f), fr = f - i;
+      out[c] = (arr[i] || 0) * (1 - fr) + (arr[i + 1] || 0) * fr;
+    }
+    return out;
+  }
+  const data = buf.getChannelData(0);
+  if (!buf._tuPeak) { let m = 1e-6; for (let i = 0; i < data.length; i++) m = Math.max(m, Math.abs(data[i])); buf._tuPeak = m; }
+  const msToIdx = ms => ms / 1000 * buf.sampleRate;
+  for (let c = 0; c < cols; c++) {
+    const i0 = Math.floor(msToIdx(vs + c / cols * (ve - vs)));
+    const i1 = Math.max(i0 + 1, Math.ceil(msToIdx(vs + (c + 1) / cols * (ve - vs))));
+    let m = 0;
+    for (let i = Math.max(0, i0); i < Math.min(data.length, i1); i++) { const a = Math.abs(data[i]); if (a > m) m = a; }
+    out[c] = m / buf._tuPeak;
+  }
+  return out;
 }
 
 function renderSampleEditor() {
@@ -2395,116 +2774,133 @@ function renderSampleEditor() {
   const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
   const slot = currentSlot();
   const smp = slot ? slotSample(slot) : null;
+  const g = waveGeom();
+  svg.setAttribute('viewBox', `0 0 ${g.W} ${g.H}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
   if (!slot || !smp) {
-    svg.innerHTML = '';
-    ['startVal', 'endVal', 'fadeInVal', 'fadeOutVal', 'aVal', 'dVal', 'rVal'].forEach(id => set(id, '—'));
+    svg.innerHTML = `<text x="${g.W / 2}" y="${g.H / 2}" text-anchor="middle" class="we-empty">Drop a sample on this slot</text>`;
+    ['startVal', 'aVal', 'dVal', 'rVal'].forEach(id => set(id, '—'));
     return;
   }
-  const { W, H, padX, top, bottom, mid, amp } = waveGeom();
-  const waveAmp = amp * .82;
-  let arr = sampleWave(smp);
-  if (slot.reverse) arr = arr.slice().reverse();
+  if (envSelSlot !== state.selectedSlot) { envSelSlot = state.selectedSlot; multiSel.env = new Set(); }
+  // END and the fades are gone from the editor: the envelope is the shape.
+  if (slot.end !== 1 || slot.fadeIn || slot.fadeOut) { slot.end = 1; slot.fadeIn = 0; slot.fadeOut = 0; }
+  clampEnvPts(slot);
+  const { W, H, x0, x1, top, bottom, mid, amp } = g;
+  const span = x1 - x0;
+  const dur = smp.dur;
+  const view = waveViewFor(slot, smp);
+  const { vs, ve } = view;
+  const msToX = ms => x0 + (ms - vs) / (ve - vs) * span;
   const color = CAT[smp.category].color;
-  const startX = padX + slot.start * (W - 2 * padX);
-  const endX = padX + slot.end * (W - 2 * padX);
-  const span = Math.max(1, endX - startX);
-  const denom = Math.max(1, arr.length - 1);
-  const topPts = [], botPts = [];
-  for (let i = 0; i < arr.length; i++) {
-    const x = padX + (i / denom) * (W - 2 * padX);
-    const v = arr[i] * waveAmp;
-    topPts.push([x, mid - v]);
-    botPts.push([x, mid + v]);
-  }
-  const d = `M ${topPts.map(p => p.join(' ')).join(' L ')} L ${botPts.reverse().map(p => p.join(' ')).join(' L ')} Z`;
-
+  const startMs = slot.start * dur;
+  const startX = msToX(startMs);
   const total = envTotalMs();
-  const a = clamp(slot.adsr.a, 0, total);
-  const dd = clamp(slot.adsr.d, 0, Math.max(0, total - a));
-  const endMs = clamp(slot.adsr.end, a + dd, total);
-  const sLvl = clamp(slot.adsr.s, 0, 1);
-  const pLvl = clamp(slot.adsr.p, sLvl, 1);
-  const eLvl = clamp(slot.adsr.e, 0, sLvl);
-  const fadeIn = clamp(slot.fadeIn, 0, total);
-  const fadeOut = clamp(slot.fadeOut, 0, total);
-  const envX = t => startX + (clamp(t, 0, total) / total) * span;
+  const pts = slotEnvPoints(slot, total);
+  const endMs = pts[pts.length - 1].t;
+  const envX = t => msToX(startMs + t);
   const envY = v => bottom - clamp(v, 0, 1) * (bottom - top);
-  const baseAt = t => {
-    if (t <= 0) return a > 0 ? 0 : pLvl;
-    if (a > 0 && t < a) return pLvl * (t / a);
-    if (t < a + dd) return pLvl + (sLvl - pLvl) * ((t - a) / Math.max(1, dd));
-    if (t <= endMs) return sLvl + (eLvl - sLvl) * ((t - a - dd) / Math.max(1, endMs - a - dd));
-    return 0;
+  const f1 = v => v.toFixed(1);
+
+  // time grid + axis labels (absolute ms in the sample)
+  const pxPerMs = span / (ve - vs);
+  const stepMs = niceStepMs(pxPerMs, 64);
+  const dec = stepMs < 1 ? 1 : 0;
+  let grid = '', labels = '';
+  for (let t = Math.ceil(vs / stepMs - 1e-9) * stepMs; t <= ve + 1e-6; t += stepMs) {
+    const x = msToX(t);
+    grid += `<line x1="${f1(x)}" y1="${top}" x2="${f1(x)}" y2="${bottom}" class="we-grid"/>`;
+    if (x > x0 + 18 && x < x1 - 24 || Math.abs(t - vs) < 1e-6)
+      labels += `<text x="${f1(x)}" y="${H - 6}" class="we-axis" text-anchor="${Math.abs(t - vs) < 1e-6 ? 'start' : 'middle'}">${t >= 1000 ? (t / 1000).toFixed(stepMs < 1000 ? 2 : 1) + ' s' : t.toFixed(dec) + (Math.abs(t - vs) < 1e-6 ? ' ms' : '')}</text>`;
+  }
+  [0.5, 1].forEach(v => { grid += `<line x1="${x0}" y1="${f1(envY(v))}" x2="${x1}" y2="${f1(envY(v))}" class="we-grid${v === 1 ? ' we-grid-top' : ''}"/>`; });
+
+  // waveform: ghost of the original + the enveloped one (what you hear)
+  const cols = Math.max(2, Math.round(span));
+  const pk = sampleColumnPeaks(smp, !!slot.reverse, vs, ve, cols);
+  const wAmp = amp * .9;
+  let ghostTop = '', ghostBot = '', shapedTop = '', shapedBot = '';
+  for (let c = 0; c < cols; c++) {
+    const x = x0 + (c + .5) / cols * span;
+    const v = pk[c] * wAmp;
+    ghostTop += `${c ? 'L' : 'M'}${f1(x)} ${f1(mid - v)}`;
+    ghostBot = `L${f1(x)} ${f1(mid + v)}` + ghostBot;
+    const tMs = vs + (c + .5) / cols * (ve - vs) - startMs;
+    const gv = v * envGainAt(pts, tMs);
+    shapedTop += `${c ? 'L' : 'M'}${f1(x)} ${f1(mid - gv)}`;
+    shapedBot = `L${f1(x)} ${f1(mid + gv)}` + shapedBot;
+  }
+  // envelope polyline: every point, then silence after R (unchanged behaviour)
+  const linePts = pts.map(q => [envX(q.t), envY(q.v)]);
+  if (endMs < total) linePts.push([envX(endMs + 1e-6), envY(0)], [envX(total), envY(0)]);
+  const envLine = linePts.map((q, i) => `${i ? 'L' : 'M'}${f1(q[0])} ${f1(q[1])}`).join(' ');
+  const envArea = `${envLine} L${f1(envX(total))} ${bottom} L${f1(startX)} ${bottom} Z`;
+  const handle = (q, label) => {
+    const x = envX(q.t), y = envY(q.v);
+    const attr = q.k === 'x' ? `data-x="${q.i}"` : `data-h="${q.k}"`;
+    const lx = clamp(x, x0 + 8, x1 - 8), ly = y < top + 16 ? y + 17 : y - 9;
+    if (x < x0 - 6 || x > x1 + 6) label = ''; // out of the zoomed view
+    return `<g class="we-handle${q.k === 'x' ? ' we-extra' : ''}${multiSel.env.has(q.sid) ? ' sel' : ''}" ${attr} data-sid="${q.sid}">
+      <circle cx="${f1(x)}" cy="${f1(y)}" r="${q.k === 'x' ? 10 : 12}" class="we-hit"/>
+      <circle cx="${f1(x)}" cy="${f1(y)}" r="${q.k === 'x' ? 3.6 : 4.5}" class="we-dot"/>
+      ${label ? `<text x="${f1(lx)}" y="${f1(ly)}" text-anchor="middle" class="we-hlabel">${label}</text>` : ''}</g>`;
   };
-  const fadeAt = t => {
-    let g = 1;
-    if (fadeIn > 0) g *= clamp(t / fadeIn, 0, 1);
-    if (fadeOut > 0) g *= clamp((total - t) / fadeOut, 0, 1);
-    return g;
-  };
-  const gainAt = t => clamp(baseAt(t) * fadeAt(t), 0, 1);
-  const times = new Set();
-  const N = 160;
-  for (let i = 0; i <= N; i++) times.add(total * i / N);
-  [0, a, a + dd, endMs, Math.min(total, endMs + .5), fadeIn, total - fadeOut].forEach(t => {
-    if (t >= 0 && t <= total) times.add(t);
-  });
-  const pts = [...times].sort((x, y) => x - y).map(t => [envX(t), envY(gainAt(t))]);
-  const line = pts.map((p, i) => `${i ? 'L' : 'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
-  const area = `${line} L ${endX.toFixed(1)} ${bottom} L ${startX.toFixed(1)} ${bottom} Z`;
-  const basePts = [
-    [envX(0), envY(0)],
-    [envX(a), envY(pLvl)],
-    [envX(a + dd), envY(sLvl)],
-    [envX(endMs), envY(eLvl)]
-  ];
-  const baseLine = basePts.map((p, i) => `${i ? 'L' : 'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
-  const fInX = envX(fadeIn), fOutX = envX(total - fadeOut);
-  const fadeY = top + 13;
-  const trimY = Math.max(4, top - 12);
+  const zoom = dur / (ve - vs);
 
   svg.innerHTML = `
     <defs>
-      <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="${color}" stop-opacity=".46"/>
-        <stop offset="1" stop-color="${color}" stop-opacity=".07"/>
+      <linearGradient id="weWave" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${color}" stop-opacity=".75"/>
+        <stop offset=".5" stop-color="${color}" stop-opacity=".45"/>
+        <stop offset="1" stop-color="${color}" stop-opacity=".75"/>
       </linearGradient>
-      <linearGradient id="eg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#2DE2C5" stop-opacity=".32"/>
-        <stop offset="1" stop-color="#2DE2C5" stop-opacity=".035"/>
+      <linearGradient id="weEnv" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2DE2C5" stop-opacity=".16"/>
+        <stop offset="1" stop-color="#2DE2C5" stop-opacity=".01"/>
       </linearGradient>
-      <clipPath id="trim"><rect x="${startX}" y="0" width="${Math.max(0, span)}" height="${H}"/></clipPath>
+      <clipPath id="wePlot"><rect x="${x0 - 6}" y="0" width="${span + 12}" height="${H}"/></clipPath>
     </defs>
-    <line x1="${padX}" y1="${mid}" x2="${W - padX}" y2="${mid}" stroke="rgba(255,255,255,.06)"/>
-    <line x1="${startX}" y1="${bottom}" x2="${endX}" y2="${bottom}" stroke="rgba(255,255,255,.08)"/>
-    <path d="${d}" fill="rgba(255,255,255,.045)"/>
-    <path d="${d}" fill="url(#wg)" clip-path="url(#trim)"/>
-    <rect x="${padX}" y="0" width="${Math.max(0, startX - padX)}" height="${H}" fill="rgba(4,6,10,.64)"/>
-    <rect x="${endX}" y="0" width="${Math.max(0, W - padX - endX)}" height="${H}" fill="rgba(4,6,10,.64)"/>
-    <path d="${area}" fill="url(#eg)"/>
-    <path d="${line}" fill="none" stroke="#2DE2C5" stroke-width="2.2" stroke-linejoin="round"/>
-    <path d="${baseLine}" fill="none" stroke="rgba(45,226,197,.38)" stroke-width="1" stroke-dasharray="3 3"/>
-    ${fadeIn > 0 ? `<line x1="${fInX}" y1="${top}" x2="${fInX}" y2="${bottom}" stroke="${color}" stroke-opacity=".35" stroke-dasharray="3 3"/>` : ''}
-    ${fadeOut > 0 ? `<line x1="${fOutX}" y1="${top}" x2="${fOutX}" y2="${bottom}" stroke="${color}" stroke-opacity=".35" stroke-dasharray="3 3"/>` : ''}
-    <line x1="${startX}" y1="${trimY}" x2="${startX}" y2="${bottom + 2}" stroke="${color}" stroke-width="1.4"/>
-    <line x1="${endX}" y1="${trimY}" x2="${endX}" y2="${bottom + 2}" stroke="${color}" stroke-width="1.4"/>
-    <circle data-handle="start" cx="${startX}" cy="${trimY}" r="5" fill="#fff" stroke="${color}" stroke-width="2" style="cursor:ew-resize"/>
-    <circle data-handle="end" cx="${endX}" cy="${trimY}" r="5" fill="#fff" stroke="${color}" stroke-width="2" style="cursor:ew-resize"/>
-    <circle data-handle="fadeIn" cx="${fInX}" cy="${fadeY}" r="3.8" fill="${color}" stroke="#0B0E14" stroke-width="1.4" style="cursor:ew-resize"/>
-    <circle data-handle="fadeOut" cx="${fOutX}" cy="${fadeY}" r="3.8" fill="${color}" stroke="#0B0E14" stroke-width="1.4" style="cursor:ew-resize"/>
-    <circle data-h="attack" cx="${envX(a)}" cy="${envY(pLvl)}" r="4.3" fill="#fff" stroke="#2DE2C5" stroke-width="2" style="cursor:move"/>
-    <circle data-h="decay" cx="${envX(a + dd)}" cy="${envY(sLvl)}" r="4.3" fill="#fff" stroke="#2DE2C5" stroke-width="2" style="cursor:move"/>
-    <circle data-h="release" cx="${envX(endMs)}" cy="${envY(eLvl)}" r="4.3" fill="#fff" stroke="#2DE2C5" stroke-width="2" style="cursor:move"/>
+    <rect x="${x0}" y="${top}" width="${span}" height="${bottom - top}" class="we-bg"/>
+    ${grid}
+    <line x1="${x0}" y1="${f1(mid)}" x2="${x1}" y2="${f1(mid)}" class="we-zero"/>
+    <path d="${ghostTop}${ghostBot}Z" class="we-ghost"/>
+    <g clip-path="url(#wePlot)">
+      <path d="${envArea}" fill="url(#weEnv)"/>
+      <path d="${shapedTop}${shapedBot}Z" fill="url(#weWave)"/>
+      <rect x="${x0}" y="${top}" width="${f1(clamp(startX - x0, 0, span))}" height="${bottom - top}" class="we-off"/>
+    </g>
+    <line x1="${x0}" y1="${bottom}" x2="${x1}" y2="${bottom}" class="we-base"/>
+    <g clip-path="url(#wePlot)">
+      <path d="${envLine}" class="we-env"/>
+      <g class="we-start" data-handle="start" style="--c:${color}">
+        <rect x="${f1(startX - 7)}" y="${top - 4}" width="14" height="${bottom - top + 4}" class="we-hit"/>
+        <line x1="${f1(startX)}" y1="${top}" x2="${f1(startX)}" y2="${bottom}" class="we-start-line"/>
+        <path d="M${f1(startX)} ${bottom} v-13 h8 a2 2 0 0 1 2 2 v9 a2 2 0 0 1 -2 2 Z" class="we-start-flag"/>
+      </g>
+      ${pts.filter(q => q.k === 'x').map(q => handle(q, '')).join('')}
+      ${handle(pts.find(q => q.k === 'attack'), 'A')}
+      ${handle(pts.find(q => q.k === 'decay'), 'D')}
+      ${handle(pts[pts.length - 1], 'R')}
+    </g>
+    ${labels}
+    ${zoom > 1.01 ? `<text x="${x1 - 2}" y="${top + 10}" text-anchor="end" class="we-zoom">×${zoom < 10 ? zoom.toFixed(1) : Math.round(zoom)}</text>` : ''}
   `;
 
-  set('startVal', fmtMs(slot.start * smp.dur));
-  set('endVal', fmtMs(slot.end * smp.dur));
-  set('fadeInVal', fmtMs(slot.fadeIn));
-  set('fadeOutVal', fmtMs(slot.fadeOut));
+  set('startVal', fmtMs(startMs));
   set('aVal', fmtMs(slot.adsr.a));
   set('dVal', fmtMs(slot.adsr.d));
-  set('rVal', fmtMs(Math.max(0, endMs - a - dd)));
+  set('rVal', fmtMs(Math.max(0, slot.adsr.end - slot.adsr.a - slot.adsr.d)));
 }
+// Redraw at the new pixel size when the panel or window resizes.
+(() => {
+  const wrap = document.querySelector('.unified-wave-wrap');
+  if (!wrap || typeof ResizeObserver === 'undefined') return;
+  let raf = 0;
+  new ResizeObserver(() => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; renderSampleEditor(); });
+  }).observe(wrap);
+})();
 
 function renderWaveform() { renderSampleEditor(); }
 function renderADSR() { renderSampleEditor(); }
@@ -2533,8 +2929,8 @@ function fitAdsrToSample(slot) {
     }
   }
   const level = clamp(slot.adsr.s ?? .5, 0, 1);
-  const peak = clamp(slot.adsr.p ?? 1, level, 1);
-  const releaseLevel = clamp(slot.adsr.e ?? 0, 0, level);
+  const peak = clamp(slot.adsr.p ?? 1, 0, 1);
+  const releaseLevel = clamp(slot.adsr.e ?? 0, 0, 1);
   slot.adsr.a = Math.round(a);
   slot.adsr.d = Math.round(d);
   slot.adsr.end = Math.round(end);
@@ -2551,101 +2947,275 @@ bindNumericEdit($('#startVal'), Object.assign({
   set: v => {
     const smp = currentSlotSample(); if (!smp) return;
     const slot = currentSlot();
-    slot.start = clamp(v / smp.dur, 0, slot.end - .02);
+    setSlotStart(slot, v / smp.dur);
     renderWaveform();
   },
-  min: 0, max: () => currentSlot().end * waveDur(), default: 0,
+  min: 0, max: () => .98 * waveDur(), default: 0,
 }, waveEditOpts));
 
-bindNumericEdit($('#endVal'), Object.assign({
-  get: () => currentSlot().end * waveDur(),
-  set: v => {
-    const smp = currentSlotSample(); if (!smp) return;
-    const slot = currentSlot();
-    slot.end = clamp(v / smp.dur, slot.start + .02, 1);
-    renderWaveform();
-  },
-  min: () => currentSlot().start * waveDur(), max: () => waveDur(), default: () => waveDur(),
-}, waveEditOpts));
+// START -> transient: first sample above -20 dB of the peak, then back to
+// where the signal was still below -40 dB (max 5 ms) and to the zero
+// crossing just before it (max 1 ms), so the attack is kept and nothing clicks.
+function transientStartMs(smp, reverse) {
+  const buf = reverse ? getReversedBuffer(smp) : getBuffer(smp);
+  if (!buf) return null;
+  const d = buf.getChannelData(0), sr = buf.sampleRate;
+  let peak = 0;
+  for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+  if (peak <= 0) return 0;
+  let on = 0;
+  while (on < d.length && Math.abs(d[on]) < peak * 0.1) on++;
+  let i = on;
+  const lim = Math.max(0, on - Math.round(0.005 * sr));
+  while (i > lim && Math.abs(d[i - 1]) > peak * 0.01) i--;
+  const lim2 = Math.max(0, i - Math.round(0.001 * sr));
+  while (i > lim2 && d[i] !== 0 && Math.sign(d[i - 1]) === Math.sign(d[i])) i--;
+  return i / sr * 1000;
+}
+$('#snapStartBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  const slot = currentSlot(), smp = slotSample(slot);
+  if (!slot || !smp) { toast('Drop a sample in this slot first'); return; }
+  if (slot.reverse) ensureAudio();
+  const ms = transientStartMs(smp, !!slot.reverse);
+  if (ms == null) { toast('Sample audio not ready yet'); return; }
+  setSlotStart(slot, ms / smp.dur);
+  renderSampleEditor();
+  toast(`START → ${fmtMs(slot.start * smp.dur)} · transient`);
+});
 
-bindNumericEdit($('#fadeInVal'), Object.assign({
-  get: () => currentSlot().fadeIn,
-  set: v => {
-    const smp = currentSlotSample(); if (!smp) return;
-    const slot = currentSlot();
-    slot.fadeIn = clamp(v, 0, (slot.end - slot.start) * smp.dur);
-    renderWaveform();
-  },
-  min: 0, max: () => { const slot = currentSlot(); return (slot.end - slot.start) * waveDur(); }, default: 0,
-}, waveEditOpts));
+// Drag the sample to a slot from its name above the waveform, like a file.
+$('#sampleMeta').addEventListener('pointerdown', e => {
+  const smp = currentSlotSample();
+  if (!smp || e.button !== 0) return;
+  beginDrag(smp, { clientX: e.clientX, clientY: e.clientY, preventDefault() {} }, { keepTrigger: true, openTrigger: true });
+});
 
-bindNumericEdit($('#fadeOutVal'), Object.assign({
-  get: () => currentSlot().fadeOut,
-  set: v => {
-    const smp = currentSlotSample(); if (!smp) return;
-    const slot = currentSlot();
-    slot.fadeOut = clamp(v, 0, (slot.end - slot.start) * smp.dur);
-    renderWaveform();
-  },
-  min: 0, max: () => { const slot = currentSlot(); return (slot.end - slot.start) * waveDur(); }, default: 0,
-}, waveEditOpts));
+// pixel -> sample ms / envelope level, for the current view
+function waveCoords(e) {
+  const svg = $('#wave');
+  const rect = svg.getBoundingClientRect();
+  const g = waveGeom();
+  const slot = currentSlot(), smp = slotSample(slot);
+  const view = waveViewFor(slot, smp);
+  const px = (e.clientX - rect.left) / (rect.width / g.W);
+  const py = (e.clientY - rect.top) / (rect.height / g.H);
+  const ms = view.vs + (px - g.x0) / (g.x1 - g.x0) * (view.ve - view.vs);
+  return { g, rect, view, px, py, ms, t: ms - slot.start * smp.dur,
+    level: clamp((g.bottom - py) / Math.max(1, g.bottom - g.top), 0, 1) };
+}
 
+let lastExtraDown = { i: -1, time: 0 };
 $('#wave').addEventListener('pointerdown', e => {
   const trimH = e.target.closest('[data-handle]');
   const envH = e.target.closest('[data-h]');
+  const extraH = e.target.closest('[data-x]');
   const smp = currentSlotSample();
-  if (!trimH && !envH) {
-    if (smp) beginDrag(smp, e, { keepTrigger: true, openTrigger: true });
+  if (!trimH && !envH && !extraH) {
+    if (!smp || e.button !== 0) return;
+    // Alt+drag: take the sample to a slot (like HOME). Started without
+    // preventDefault on this pointerdown: that would suppress the
+    // mousemove/mouseup the drag listens to.
+    if (e.altKey) { beginDrag(smp, { clientX: e.clientX, clientY: e.clientY, preventDefault() {} }, { keepTrigger: true, openTrigger: true }); return; }
+    // Plain drag on empty space: select points with a box.
+    startMarquee(e, { scope: 'env', onChange: renderSampleEditor,
+      items: () => [...document.querySelectorAll('#wave .we-handle[data-sid]')].map(g => ({ el: g.querySelector('.we-dot'), id: g.dataset.sid })) });
     return;
   }
   e.preventDefault();
-  const svg = $('#wave');
-  const rect = svg.getBoundingClientRect();
   const slot = currentSlot();
   if (!slot || !smp) return;
-  const { W, padX } = waveGeom();
-  const total = envTotalMs();
-  const startX = padX + slot.start * (W - 2 * padX);
-  const endX = padX + slot.end * (W - 2 * padX);
-  const span = Math.max(1, endX - startX);
+  const c0 = waveCoords(e);
+  const sy = c0.rect.height / c0.g.H;
   const startY = e.clientY;
   const startP = slot.adsr.p, startS = slot.adsr.s, startE = slot.adsr.e;
+  const xi = extraH ? +extraH.dataset.x : -1;
+  const sid = (envH || extraH) ? (envH || extraH).dataset.sid : null;
+  multiSel.scope = 'env';
+  if (sid && (e.metaKey || e.ctrlKey || e.shiftKey)) { finderClick('env', sid, e, envOrder); renderSampleEditor(); return; }
+  if (sid && !multiSel.env.has(sid)) selAnchor.env = sid;
+  if (sid && multiSel.env.has(sid) && multiSel.env.size > 1) { groupDragEnv(e, slot, sid); return; }
+  if (sid) multiSel.env = new Set([sid]);
+  // Double click on an extra point removes it (detected here: the redraw
+  // between the two clicks replaces the element, so 'dblclick' never fires).
+  if (xi >= 0) {
+    const now = performance.now();
+    if (lastExtraDown.i === xi && now - lastExtraDown.time < 400) {
+      lastExtraDown = { i: -1, time: 0 };
+      slot.envPts.splice(xi, 1);
+      renderSampleEditor();
+      return;
+    }
+    lastExtraDown = { i: xi, time: now };
+  }
+  const startV = xi >= 0 ? slot.envPts[xi].v : 0;
+  let moved = false;
+  // Every point moves only between its neighbours, so the order never flips.
+  const key = envH ? envH.dataset.h : 'x';
+  const neighbours = () => {
+    const pts = slotEnvPoints(slot);
+    const idx = pts.findIndex(q => key === 'x' ? (q.k === 'x' && q.i === xi) : q.k === key);
+    return [idx > 0 ? pts[idx - 1].t : 0, idx < pts.length - 1 ? pts[idx + 1].t : envTotalMs()];
+  };
   const move = ev => {
-    const px = clamp((ev.clientX - rect.left) / rect.width, 0, 1) * W;
-    if (trimH) {
-      const full = clamp((px - padX) / (W - 2 * padX), 0, 1);
-      const trim = clamp((px - startX) / span, 0, 1);
-      const key = trimH.dataset.handle;
-      if (key === 'start') slot.start = clamp(full, 0, slot.end - .02);
-      if (key === 'end') slot.end = clamp(full, slot.start + .02, 1);
-      if (key === 'fadeIn') slot.fadeIn = clamp(trim * total, 0, total);
-      if (key === 'fadeOut') slot.fadeOut = clamp((1 - trim) * total, 0, total);
+    moved = true;
+    const c = waveCoords(ev);
+    if (trimH) { setSlotStart(slot, c.ms / smp.dur); renderSampleEditor(); return; }
+    const total = envTotalMs();
+    const t = clamp(c.t, 0, total);
+    const level = (startY - ev.clientY) / sy / Math.max(1, c.g.bottom - c.g.top);
+    const [lo, hi] = neighbours();
+    const { a, d, end } = slot.adsr;
+    if (key === 'attack') {
+      slot.adsr.a = Math.round(clamp(t, lo, Math.min(hi, Math.max(0, end - d))));
+      slot.adsr.p = clamp(startP + level, 0, 1);
+    } else if (key === 'decay') {
+      slot.adsr.d = Math.round(clamp(t, lo, Math.min(hi, end)) - a);
+      slot.adsr.s = clamp(startS + level, 0, 1);
+    } else if (key === 'release') {
+      slot.adsr.end = Math.round(clamp(t, Math.max(lo, a + d), total));
+      slot.adsr.e = clamp(startE + level, 0, 1);
     } else {
-      const t = clamp((px - startX) / span, 0, 1) * total;
-      const { a, d, end } = slot.adsr;
-      const level = (startY - ev.clientY) / Math.max(1, rect.height);
-      if (envH.dataset.h === 'attack') {
-        slot.adsr.a = clamp(t, 0, Math.max(0, end - d));
-        slot.adsr.p = clamp(startP + level, slot.adsr.s, 1);
-      }
-      if (envH.dataset.h === 'decay') {
-        slot.adsr.d = clamp(t - a, 0, Math.max(0, end - a));
-        slot.adsr.s = clamp(startS + level, slot.adsr.e, slot.adsr.p);
-      }
-      if (envH.dataset.h === 'release') {
-        slot.adsr.end = clamp(t, a + d, total);
-        slot.adsr.e = clamp(startE + level, 0, slot.adsr.s);
-      }
+      slot.envPts[xi].t = clamp(t, lo, Math.max(lo, hi - .5));
+      slot.envPts[xi].v = clamp(startV + level, 0, 1);
     }
     renderSampleEditor();
   };
   const up = () => {
     window.removeEventListener('pointermove', move);
     window.removeEventListener('pointerup', up);
+    if (!moved) return;
+    clampEnvPts(slot);
+    renderSampleEditor();
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
 });
+
+// Move every selected envelope point by the same time/level offset. The time
+// offset is limited so no selected point passes an unselected neighbour.
+function groupDragEnv(e, slot, sid) {
+  const c0 = waveCoords(e);
+  let gMoved = false;
+  const total = envTotalMs();
+  const pts0 = slotEnvPoints(slot, total);
+  const sel = q => multiSel.env.has(q.sid);
+  let dLo = -Infinity, dHi = Infinity;
+  pts0.forEach((q, idx) => {
+    if (!sel(q)) return;
+    let j = idx - 1; while (j > 0 && sel(pts0[j])) j--;
+    let k = idx + 1; while (k < pts0.length && sel(pts0[k])) k++;
+    const lo = j >= 0 ? pts0[j].t : 0, hi = k < pts0.length ? pts0[k].t : total;
+    dLo = Math.max(dLo, lo - q.t); dHi = Math.min(dHi, hi - q.t);
+  });
+  const sy = c0.rect.height / c0.g.H, y0 = e.clientY;
+  const move = ev => {
+    gMoved = true;
+    const c = waveCoords(ev);
+    const dt = clamp(c.t - c0.t, dLo, dHi);
+    const dv = (y0 - ev.clientY) / sy / Math.max(1, c.g.bottom - c.g.top);
+    let tA = pts0.find(q => q.k === 'attack').t, tD = pts0.find(q => q.k === 'decay').t, tR = pts0[pts0.length - 1].t;
+    pts0.forEach(q => {
+      if (!sel(q)) return;
+      const t = q.t + dt, v = clamp(q.v + dv, 0, 1);
+      if (q.k === 'attack') { tA = t; slot.adsr.p = v; }
+      else if (q.k === 'decay') { tD = t; slot.adsr.s = v; }
+      else if (q.k === 'release') { tR = t; slot.adsr.e = v; }
+      else { const x = slot.envPts.find(p => p.id === q.id); if (x) { x.t = t; x.v = v; } }
+    });
+    slot.adsr.a = tA; slot.adsr.d = Math.max(0, tD - tA); slot.adsr.end = Math.max(tA + slot.adsr.d, tR);
+    renderSampleEditor();
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    if (!gMoved) { multiSel.env = new Set([sid]); selAnchor.env = sid; }
+    clampEnvPts(slot); renderSampleEditor();
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
+// Delete / Backspace removes the selected extra points; Cmd/Ctrl+A selects
+// everything in the active scope (envelope points, knobs or slots).
+window.addEventListener('keydown', e => {
+  if (state.viewMode !== 'trigger') return;
+  const t = e.target;
+  if (t && (t.closest('input, textarea, select, [contenteditable="true"]') || t.classList.contains('num-editing'))) return;
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A') && multiSel.scope) {
+    e.preventDefault();
+    if (multiSel.scope === 'env') {
+      const slot = currentSlot();
+      if (slot && slotSample(slot)) { multiSel.env = new Set(slotEnvPoints(slot).filter(q => q.k !== 'origin').map(q => q.sid)); renderSampleEditor(); }
+    } else if (multiSel.scope === 'knobs') {
+      multiSel.knobs = new Set(Object.keys(knobReg)); applyKnobSelClasses();
+    } else if (multiSel.scope === 'slots' || multiSel.scope === 'faders') {
+      multiSel[multiSel.scope] = new Set(state.slots.map((_, i) => i)); applySlotSelClasses();
+    }
+    return;
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && multiSel.scope === 'env' && multiSel.env.size) {
+    const slot = currentSlot();
+    if (!slot || !slot.envPts) return;
+    e.preventDefault();
+    const before = slot.envPts.length;
+    slot.envPts = slot.envPts.filter(q => !multiSel.env.has('x' + q.id));
+    multiSel.env = new Set([...multiSel.env].filter(id => !id.startsWith('x')));
+    if (before !== slot.envPts.length) renderSampleEditor();
+    else toast('A / D / R are fixed points');
+  }
+});
+// Double click: add an envelope point (before R), or remove an extra point.
+$('#wave').addEventListener('dblclick', e => {
+  const slot = currentSlot(), smp = slotSample(slot);
+  if (!slot || !smp) return;
+  e.preventDefault(); e.stopPropagation();
+  const extraH = e.target.closest('[data-x]');
+  if (extraH) {
+    slot.envPts.splice(+extraH.dataset.x, 1);
+    renderSampleEditor();
+    return;
+  }
+  if (e.target.closest('[data-h],[data-handle]')) return;
+  const c = waveCoords(e);
+  if (c.t <= 0) { toast('Envelope points go after START'); return; }
+  const total = envTotalMs();
+  if (c.t >= total) return;
+  clampEnvPts(slot);
+  if (c.t > slot.adsr.end + .5) {
+    // Past R: the old R becomes a regular point and the new one is the end.
+    const oldEnd = slot.adsr.end;
+    slot.envPts.push({ t: oldEnd, v: clamp(slot.adsr.e, 0, 1) });
+    slot.adsr.end = Math.min(total, c.t);
+    slot.adsr.e = c.level;
+    // keep the old R a hair before the new end so the order never flips
+    slot.envPts[slot.envPts.length - 1].t = Math.min(oldEnd, slot.adsr.end - .5);
+  } else {
+    slot.envPts.push({ t: c.t, v: c.level });
+  }
+  clampEnvPts(slot);
+  renderSampleEditor();
+});
+
+// Wheel: zoom around the cursor. Shift+wheel or a horizontal swipe: pan.
+document.querySelector('.unified-wave-wrap').addEventListener('wheel', e => {
+  const slot = currentSlot(), smp = slotSample(slot);
+  if (!slot || !smp) return;
+  e.preventDefault();
+  const c = waveCoords(e);
+  const v = c.view, range = v.ve - v.vs, dur = smp.dur;
+  const panPx = e.shiftKey ? (e.deltaY || e.deltaX) : (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0);
+  if (panPx) {
+    const dms = panPx / (c.g.x1 - c.g.x0) * range;
+    v.vs = clamp(v.vs + dms, 0, dur - range); v.ve = v.vs + range;
+  } else {
+    const nr = clamp(range * Math.exp(e.deltaY * .0025), Math.min(2, dur), dur);
+    const frac = clamp((c.px - c.g.x0) / (c.g.x1 - c.g.x0), 0, 1);
+    const anchor = v.vs + frac * range;
+    v.vs = clamp(anchor - frac * nr, 0, dur - nr); v.ve = v.vs + nr;
+  }
+  renderSampleEditor();
+}, { passive: false });
 
 const envMax = key => {
   const slot = currentSlot();
@@ -2773,14 +3343,17 @@ $('#reverseBtn').onclick = () => {
     // so toggling back does not change the sound.
     slot._forwardEnv = {
       adsr: { ...slot.adsr },
+      envPts: (slot.envPts || []).map(q => ({ ...q })),
       fadeIn: slot.fadeIn,
       fadeOut: slot.fadeOut,
     };
     const total = envTotalMs();
     slot.adsr = { a: 0, d: 0, end: total, s: 1, p: 1, e: 1 };
+    slot.envPts = [];
     slot.fadeIn = 0; slot.fadeOut = 0;
   } else if (slot._forwardEnv) {
     slot.adsr = { ...slot._forwardEnv.adsr };
+    slot.envPts = slot._forwardEnv.envPts || [];
     slot.fadeIn = slot._forwardEnv.fadeIn;
     slot.fadeOut = slot._forwardEnv.fadeOut;
     delete slot._forwardEnv;
@@ -2823,15 +3396,17 @@ const DET = [
     tip: 'HIGHCUT · detection filter only; does not alter the dry audio' },
   { key: 'detail',    label: 'DETAIL',    min: 0,   max: 100, val: 14,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
     tip: 'DETAIL · detection threshold. Higher = ignores bleed; lower = catches ghost notes; 100% sits above every transient' },
-  { key: 'retrig',    label: 'RETRIGGER', min: 0,   max: 1000, val: 16,    unit: 'ms', fmt: v => Math.round(v) + ' ms', group: 'detect',
-    tip: 'RETRIGGER · blind window after each hit (audio only, no graphic)' },
+  { key: 'retrig',    label: 'RETRIGGER', min: 0,   max: 1000, val: 30,    unit: 'ms', fmt: v => Math.round(v) + ' ms', group: 'detect',
+    tip: 'RETRIGGER · blind time after each hit. After it, anything still above DETAIL fires again: 0 ms = flams' },
   { key: 'sens',      label: 'SENSITIVITY',min: 0,  max: 100, val: 51,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
     tip: 'SENSITIVITY · dynamic range of the triggered samples. Low = fixed level, high = wide dynamics' }
 ];
 
+const knobReg = {};
 function makeKnob(cfg) {
   const el = document.createElement('div');
   el.className = 'knob';
+  el.dataset.key = cfg.key;
   el.innerHTML = `<div class="knob-dial"><div class="knob-ind"></div></div><div class="knob-label">${cfg.label}</div><div class="knob-val"></div>`;
   if (cfg.tip) el.title = cfg.tip;
   const dial = $('.knob-dial', el), ind = $('.knob-ind', el), val = $('.knob-val', el);
@@ -2861,11 +3436,24 @@ function makeKnob(cfg) {
     decimals: cfg.decimals != null ? cfg.decimals : (cfg.unit === 'dB' ? 1 : 0),
     default: cfg.val,
   });
-  let sy = 0, sn = 0;
+  let sy = 0, sn = 0, group = null, knobMoved = false;
+  knobReg[cfg.key] = { getNorm: () => toNorm(v), setNorm: n => { v = fromNorm(clamp(n, 0, 1)); render(); } };
   dial.addEventListener('pointerdown', e => {
     if (e.altKey) return;
-    e.preventDefault(); sy = e.clientY; sn = toNorm(v);
+    e.preventDefault();
+    multiSel.scope = 'knobs';
+    if (finderClick('knobs', cfg.key, e, knobOrder)) { applyKnobSelClasses(); return; }
+    if (!multiSel.knobs.has(cfg.key)) { multiSel.knobs = new Set(); applyKnobSelClasses(); }
+    // Selected knobs turn together: the same normalized move on each.
+    group = multiSel.knobs.size > 1
+      ? [...multiSel.knobs].map(k => ({ k, n0: knobReg[k].getNorm() }))
+      : null;
+    sy = e.clientY; sn = toNorm(v); knobMoved = false;
     dial.setPointerCapture(e.pointerId);
+  });
+  dial.addEventListener('pointerup', () => {
+    if (group && !knobMoved) { multiSel.knobs = new Set(); applyKnobSelClasses(); }
+    group = null;
   });
   el.addEventListener('click', e => {
     if (!e.altKey) return;
@@ -2874,8 +3462,10 @@ function makeKnob(cfg) {
   });
   dial.addEventListener('pointermove', e => {
     if (!dial.hasPointerCapture(e.pointerId)) return;
-    const n = clamp(sn + (sy - e.clientY) / 110, 0, 1);
-    v = fromNorm(n); render();
+    const dn = (sy - e.clientY) / 110;
+    if (Math.abs(sy - e.clientY) > 1) knobMoved = true;
+    if (group) { group.forEach(g => knobReg[g.k].setNorm(g.n0 + dn)); return; }
+    v = fromNorm(clamp(sn + dn, 0, 1)); render();
   });
   return el;
 }
@@ -2883,6 +3473,15 @@ function makeKnob(cfg) {
   const target = { gate: '#detKnobsGate', input: '#detKnobsInput', filter: '#detKnobsFilter', detect: '#detKnobsDetect' };
   DET.forEach(c => { const host = $(target[c.group]); if (host) host.appendChild(makeKnob(c)); });
 })();
+// Marquee over the detector: drag on any empty spot of the panel.
+$('#detectorPanel').addEventListener('pointerdown', e => {
+  if (e.button !== 0 || e.altKey) return;
+  if (e.target.closest('.knob, button, canvas, .det-wave, input, select, .dm-track-wrap, .num-editable')) return;
+  e.preventDefault();
+  startMarquee(e, { scope: 'knobs',
+    items: () => [...document.querySelectorAll('#detectorPanel .knob[data-key]')].map(el => ({ el: el.querySelector('.knob-dial') || el, id: el.dataset.key })),
+    onChange: applyKnobSelClasses });
+});
 
 function updateGateButton() {
   const btn = $('#gateBtn');
@@ -2893,8 +3492,8 @@ function updateGateButton() {
 $('#gateBtn').onclick = () => {
   state.detector.gate = !state.detector.gate;
   updateGateButton();
-  detectInputHits();
-  if (inputPlaying) rescheduleGate();
+  if (rtNode && inputPlaying) postDetectorParams();
+  else { detectInputHits(); if (inputPlaying) rescheduleGate(); }
   if (state.detector.gate && state.detector.mix >= 99) toast('GATE applies to the original input — lower MIX to hear it');
 };
 updateGateButton();
@@ -2963,6 +3562,8 @@ function applyBiquad(data, c) {
 }
 let detectPending = 0;
 function scheduleDetect() {
+  // Live: the detector reads the new values on the next audio sample.
+  if (rtNode && inputPlaying) { postDetectorParams(); return; }
   if (detectPending) return;
   detectPending = setTimeout(() => {
     detectPending = 0;
@@ -3133,13 +3734,78 @@ function gateValueAt(t) {
   const idx = clamp(Math.floor(t / realInputDuration * realGateEnv.length), 0, realGateEnv.length - 1);
   return realGateEnv[idx];
 }
+// ---------- real-time detector (AudioWorklet) ----------
+// The whole INPUT DETECTOR runs live on the audio thread, sample by sample, on
+// the audio that is playing: every control change applies to the next sample
+// and nothing is precomputed over the file. Hits come back as messages and the
+// slots are scheduled on the onset of the (lookahead-delayed) dry input.
+function initDetectorWorklet(ctx) {
+  if (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined') return;
+  ctx.audioWorklet.addModule('detector-worklet.js?v=208').then(() => {
+    if (ctx !== audioCtx) return;
+    const node = new AudioWorkletNode(ctx, 'tu-detector', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+      processorOptions: { lookahead: RT_LOOKAHEAD },
+    });
+    node.port.onmessage = e => onDetectorMessage(e.data);
+    if (inputPlaying) stopInput();
+    try { inputGain.disconnect(gateGain); } catch (e) {}
+    inputGain.connect(node).connect(gateGain);
+    rtNode = node;
+    postDetectorParams();
+  }).catch(e => console.warn('real-time detector unavailable, using precomputed fallback:', e));
+}
+function postDetectorParams() {
+  if (!rtNode) return;
+  const d = state.detector;
+  rtNode.port.postMessage({ type: 'params', p: {
+    gate: !!d.gate, gateThreshold: d.gateThreshold, attack: d.attack, hold: d.hold, release: d.release,
+    detail: d.detail, supp: d.supp, retrig: d.retrig, low: d.low, high: d.high,
+    norm: 1 / (realInputMax || 1),
+  } });
+}
+function liveGateAt(t) {
+  if (!liveGate) return 1;
+  const b = Math.floor(t * 1000);
+  return b >= 0 && b <= liveKnownBlock ? liveGate[b] : 1;
+}
+function onDetectorMessage(m) {
+  if (!m || !inputPlaying || !audioCtx) return;
+  if (m.type === 'blocks') {
+    if (!liveGate || m.from < 0) return;
+    const n = Math.min(m.gate.length, liveGate.length - m.from);
+    if (n <= 0) return;
+    liveGate.set(m.gate.subarray(0, n), m.from);
+    livePeak.set(m.peak.subarray(0, n), m.from);
+    liveKnownBlock = Math.max(liveKnownBlock, m.from + n - 1);
+    return;
+  }
+  if (m.type !== 'hit') return;
+  realHits.push({ time: m.time, peak: m.peak, peakTime: m.peakTime, velocity: m.velocity });
+  const el = $('#triggerCount'); if (el) el.textContent = String(realHits.length);
+  const now = audioCtx.currentTime;
+  // A hit that arrives after its onset was already heard is not dumped late.
+  if (m.out < now - 0.03) { rtLate++; return; }
+  const when = Math.max(0, m.out - now - 0.02);
+  const velocity = clamp(m.velocity, 0, 2);
+  liveLastVelocity = velocity;
+  liveLastHitTime = m.time;
+  liveTriggerCount++;
+  inputTimers.push(setTimeout(() => {
+    const hv = $('#hitVel');
+    if (hv && inputPlaying) hv.textContent = Math.round(velocity * 100) + '%';
+  }, Math.max(0, (m.out - now) * 1000)));
+  state.slots.forEach((_, i) => playSlot(i, when, velocity, m.time, m.out));
+}
 function scheduleGate(startTime) {
   if (!gateGain || !audioCtx) return;
   gateGain.gain.cancelScheduledValues(audioCtx.currentTime);
   gateGain.gain.setValueAtTime(1, audioCtx.currentTime);
   if (!state.detector.gate || !realGateEnv || !realInputBuffer) return;
   const blockDur = realGateBlock / realInputBuffer.sampleRate;
-  const duration = realGateEnv.length * blockDur;
+  // setValueCurveAtTime spreads N points over N-1 intervals: (N-1)*blockDur
+  // keeps env[b] exactly at startTime + b*blockDur for the whole track.
+  const duration = Math.max(1, realGateEnv.length - 1) * blockDur;
   try {
     gateGain.gain.setValueCurveAtTime(realGateEnv, startTime, duration);
     return;
@@ -3167,22 +3833,23 @@ function rescheduleGate() {
     return;
   }
   const blockDur = realGateBlock / realInputBuffer.sampleRate;
-  const startIdx = clamp(Math.floor((now - inputStartCtxTime) / blockDur), 0, realGateEnv.length - 1);
+  // Re-enter the envelope ON the input timeline: the first new curve point is
+  // the first block boundary after the glide, placed at that block's real time
+  // (inputStart + idx*blockDur). Previously the curve for 'now' started 8 ms
+  // later, so after any knob move the gate ran 8 ms behind the audio and cut
+  // the attack of every hit.
+  const startIdx = clamp(Math.ceil((now + GATE_GLIDE - inputStartCtxTime) / blockDur), 0, realGateEnv.length - 1);
+  const curveStart = inputStartCtxTime + startIdx * blockDur;
   const curve = realGateEnv.subarray(startIdx);
-  const target = realGateEnv[startIdx];
-  // Glide to the envelope value at the current playhead, then follow the new
-  // curve. This avoids the click/double-hit impression when GATE is toggled.
   gateGain.gain.setValueAtTime(current, now);
-  gateGain.gain.linearRampToValueAtTime(target, now + GATE_GLIDE);
-  const curveStart = now + GATE_GLIDE;
+  gateGain.gain.linearRampToValueAtTime(realGateEnv[startIdx], curveStart);
+  if (curve.length < 2) return;
   try {
-    gateGain.gain.setValueCurveAtTime(curve, curveStart, curve.length * blockDur);
+    gateGain.gain.setValueCurveAtTime(curve, curveStart, (curve.length - 1) * blockDur);
     return;
   } catch (e) {}
-  gateGain.gain.setValueAtTime(target, curveStart);
   for (let b = startIdx + 1; b < realGateEnv.length; b++) {
-    const t = inputStartCtxTime + b * blockDur;
-    if (t > curveStart) gateGain.gain.linearRampToValueAtTime(realGateEnv[b], t);
+    gateGain.gain.linearRampToValueAtTime(realGateEnv[b], inputStartCtxTime + b * blockDur);
   }
 }
 
@@ -3525,6 +4192,7 @@ function ensureAudio() {
   wetGain.connect(masterGain);
   inputGain.connect(gateGain);
   gateGain.connect(dryGain);
+  initDetectorWorklet(audioCtx);
   slotNodes = state.slots.map(() => {
     const cut = audioCtx.createBiquadFilter();
     cut.type = 'lowpass'; cut.frequency.value = 20000; cut.Q.value = 0.7;
@@ -3673,7 +4341,7 @@ function getReversedBuffer(smp) {
   return out;
 }
 
-function scheduleSlot(ctx, i, when, velocity = 1, gateStartSec = null) {
+function scheduleSlot(ctx, i, when, velocity = 1, gateStartSec = null, atTime = null) {
   const s = state.slots[i];
   const smp = slotSample(s);
   if (!smp) return null;
@@ -3700,19 +4368,17 @@ function scheduleSlot(ctx, i, when, velocity = 1, gateStartSec = null) {
   // Negative offset means "play earlier": live triggers are scheduled with
   // lookahead, so the shift can be applied as long as we do not start in the
   // past. Manual auditions clamp to the next audio block.
-  const wantedT0 = ctx.currentTime + 0.02 + (when || 0) + s.offset / 1000;
+  // atTime: absolute onset from the real-time detector (sample-accurate; a
+  // relative 'when' would drift by the audio blocks rendered in between).
+  const wantedT0 = (atTime != null ? atTime : ctx.currentTime + 0.02 + (when || 0)) + s.offset / 1000;
   const t0 = Math.max(ctx.currentTime + 0.002, wantedT0);
   const total = len / rate;
-  let a = Math.max(0.001, s.adsr.a / 1000);
-  let d = Math.max(0.001, s.adsr.d / 1000);
-  if (a + d > total) {
-    const k = total / (a + d);
-    a *= k; d *= k;
-  }
-  const envEndSec = clamp((s.adsr.end || (a + d) * 1000) / 1000, a + d, total);
-  // Loop mode repeats the trimmed sample for up to two seconds. The envelope
-  // must stay open across the loop; using envEndSec would silence it after the
-  // first pass.
+  // Envelope from every point (A/D/R + extra points), in seconds from t0.
+  // If the sample got shorter than the envelope (tuning up), scale it to fit.
+  const envPtsMs = slotEnvPoints(s, Math.max(1, (smp ? (1 - s.start) * smp.dur : 800)));
+  const envLenSec = Math.max(0.002, envPtsMs[envPtsMs.length - 1].t / 1000);
+  const envK = envLenSec > total ? total / envLenSec : 1;
+  const envEndSec = Math.max(0.002, envLenSec * envK);
   const envStopSec = s.loop ? Math.max(envEndSec, 2) : envEndSec;
   const stopSec = s.loop ? 2 : envEndSec;
   // Sensitivity controls the dynamic range (like Trigger 2): 0% squeezes
@@ -3723,14 +4389,16 @@ function scheduleSlot(ctx, i, when, velocity = 1, gateStartSec = null) {
   const velAmount = clamp((s.velSens ?? 100) / 100, 0, 1);
   const velGain = clamp(1 - velAmount + velAmount * dynamics, 0, 2.2);
   const base = clamp(dbToAmp(s.gain), 0, 4) * velGain;
-  const peak = base * clamp(s.adsr.p ?? 1, 0, 1);
-  const level = base * clamp(s.adsr.s ?? .5, 0, 1);
-  const releaseLevel = base * clamp(s.adsr.e ?? 0, 0, 1);
   const g = env.gain;
   g.setValueAtTime(0, t0);
-  g.linearRampToValueAtTime(peak, t0 + a);
-  g.linearRampToValueAtTime(level, t0 + a + d);
-  g.linearRampToValueAtTime(releaseLevel, t0 + envStopSec);
+  let lastT = 0;
+  for (let k = 1; k < envPtsMs.length; k++) {
+    // a 1 ms minimum on the first segment keeps ATTACK 0 click-free
+    const tk = Math.max(k === 1 ? 0.001 : lastT, envPtsMs[k].t / 1000 * envK);
+    g.linearRampToValueAtTime(base * envPtsMs[k].v, t0 + tk);
+    lastT = tk;
+  }
+  if (envStopSec > lastT) g.linearRampToValueAtTime(base * envPtsMs[envPtsMs.length - 1].v, t0 + envStopSec);
   g.linearRampToValueAtTime(0, t0 + envStopSec + 0.004);
   // PLAYBACK GATE follows the input gate envelope for live triggers; a manual
   // audition (no gateStartSec) still plays the full sample.
@@ -3771,11 +4439,11 @@ function scheduleSlot(ctx, i, when, velocity = 1, gateStartSec = null) {
   return src;
 }
 
-function playSlot(i, when = 0, velocity = 1, gateStartSec = null) {
+function playSlot(i, when = 0, velocity = 1, gateStartSec = null, atTime = null) {
   const ctx = ensureAudio();
   if (!ctx) return null;
   syncSlotAudio(i);
-  return scheduleSlot(ctx, i, when, velocity, gateStartSec);
+  return scheduleSlot(ctx, i, when, velocity, gateStartSec, atTime);
 }
 
 // Real peak from the analyser. Float data keeps the meter honest; the
@@ -3819,7 +4487,7 @@ function startMeters() {
           const active = !s.mute && (!anySolo || s.solo);
           const held = active ? Math.max(peak, holds[i] * METER_HOLD) : 0;
           holds[i] = held;
-          const h = Math.round(active ? clamp(held * 100, 3, 100) : 3);
+          const h = active && held > 0.001 ? Math.round(faderDbToPos(20 * Math.log10(held)) * 1000) / 10 : 0;
           if (h === slotMeterVals[i]) return;
           slotMeterVals[i] = h;
           const mt = $(`#meter-${i}`); if (mt) mt.style.height = h + '%';
@@ -3930,6 +4598,10 @@ function detectInputHits() {
   const win = Math.round(0.005 * sr);
   let fast = 0, slow = 0, supTh = 0, hold = 0, capturing = false, peak = 0, cap = 0, armed = true;
   let capStart = 0, peakAt = 0, velPeak = 0;
+  // Same as detector-worklet.js: RETRIGGER is purely the blind time; after it
+  // the envelope above the threshold fires again (0 ms = flams). A fresh hit
+  // after a dip below half the threshold also needs fast > slow*k.
+  let dipped = true;
   const hits = [];
   const gateOn = state.detector.gate && realGateEnv;
   for (let i = 0; i < data.length; i++) {
@@ -3947,7 +4619,7 @@ function detectInputHits() {
     // Start once per transient: without !capturing the peak resets every
     // sample while the transient is above the threshold, so the captured
     // velocity collapses to the level at the end of the attack.
-    if (!capturing && armed && fast > thr && fast > slow * k) {
+    if (!capturing && armed && fast > thr && (!dipped || fast > slow * k)) {
       capturing = true; peak = 0; velPeak = 0; cap = 0; capStart = i; peakAt = i;
     }
     if (capturing) {
@@ -3958,47 +4630,87 @@ function detectInputHits() {
         hits.push({ time: Math.max(0, capStart / sr), peak, peakTime: peakAt / sr, velocity: velPeak });
         capturing = false;
         armed = false;
+        dipped = false;
         supTh = peak * supp;
         hold = win + retrig;
       }
     }
     if (!armed) {
       if (hold > 0) hold--;
-      if (hold <= 0 && fast < rearmLevel) armed = true;
+      if (hold <= 0) armed = true;
     }
+    if (armed && fast < rearmLevel) dipped = true;
   }
   realHits = hits;
   const el = $('#triggerCount'); if (el) el.textContent = String(hits.length);
   return hits;
 }
 
-const DET_WINDOW = 2.0; // seconds visible in the detector waveform (~6 transients)
+const DET_WINDOW = 2.0; // default seconds visible in the detector waveform (~6 transients)
+// Wheel zoom on the detector waveform: detWin = visible seconds; at rest
+// detViewStart scrolls through the track (Shift+wheel / horizontal swipe).
+let detWin = DET_WINDOW, detViewStart = 0;
+let inputMsPeaks = null; // |x| / max per 1 ms of the track, built once
+function inputColumnPeaks(winStart, winDur, cols) {
+  const raw = realInputBuffer.getChannelData(0), sr = realInputBuffer.sampleRate;
+  const norm = 1 / (realInputMax || 1);
+  if (!inputMsPeaks) {
+    const n = Math.ceil(raw.length / sr * 1000);
+    inputMsPeaks = new Float32Array(n);
+    for (let b = 0; b < n; b++) {
+      let m = 0;
+      const i1 = Math.min(raw.length, Math.round((b + 1) * sr / 1000));
+      for (let i = Math.round(b * sr / 1000); i < i1; i++) { const a = Math.abs(raw[i]); if (a > m) m = a; }
+      inputMsPeaks[b] = m * norm;
+    }
+  }
+  const out = new Float32Array(cols);
+  const colMs = winDur * 1000 / cols;
+  for (let x = 0; x < cols; x++) {
+    const t0 = winStart + x * winDur / cols, t1 = t0 + winDur / cols;
+    let m = 0;
+    if (colMs >= 2) {
+      for (let b = Math.floor(t0 * 1000); b < Math.min(inputMsPeaks.length, Math.ceil(t1 * 1000)); b++) if (inputMsPeaks[b] > m) m = inputMsPeaks[b];
+    } else {
+      // zoomed in: read the samples themselves
+      const i1 = Math.min(raw.length, Math.ceil(t1 * sr));
+      for (let i = Math.max(0, Math.floor(t0 * sr)); i < Math.max(i1, Math.floor(t0 * sr) + 1); i++) { const a = Math.abs(raw[i] || 0); if (a > m) m = a; }
+      m *= norm;
+    }
+    out[x] = m;
+  }
+  return out;
+}
 function drawRealInput(now) {
   if (!realInputPeaks) return;
   const ctx = inputCanvas.getContext('2d');
   ctx.clearRect(0, 0, inW, inH);
   const mid = inH / 2, amp = Math.max(10, mid - 6);
   const volAmp = dbToAmp(state.detector.input);
-  const gateOn = state.detector.gate && !!realGateEnv;
+  // Live mode: everything left of the playhead comes from the real-time
+  // detector (gate gain, input peak, hits); the playhead is what you hear.
+  const rtLive = !!(rtNode && inputPlaying && liveGate);
+  const gateOn = rtLive ? state.detector.gate : state.detector.gate && !!realGateEnv;
   const detailThr = detailThreshold();
-  const winDur = Math.min(DET_WINDOW, realInputDuration || DET_WINDOW);
+  const winDur = Math.min(detWin, realInputDuration || detWin);
   const playT = inputPlaying && audioCtx
-    ? clamp(audioCtx.currentTime - inputStartCtxTime, 0, realInputDuration)
+    ? clamp(audioCtx.currentTime - inputStartCtxTime - (rtLive ? RT_LOOKAHEAD : 0), 0, realInputDuration)
     : 0;
   // While playing, the 2 s window follows the playhead; at rest it shows the
   // first 2 s of the input when stopped.
-  const winStart = inputPlaying
-    ? clamp(playT - winDur * .5, 0, Math.max(0, realInputDuration - winDur))
-    : 0;
+  const winStart = !inputPlaying ? (detViewStart = clamp(detViewStart, 0, Math.max(0, realInputDuration - winDur)))
+    : rtLive ? clamp(playT - winDur, 0, Math.max(0, realInputDuration - winDur))
+    : clamp(playT - winDur * .5, 0, Math.max(0, realInputDuration - winDur));
   const tAt = x => winStart + (x / inW) * winDur;
   const xAt = t => ((t - winStart) / winDur) * inW;
   const waveAmp = amp / DETAIL_MAX;
-  const rawPeakAt = x => {
+  const colPk = inputColumnPeaks(winStart, winDur, Math.max(1, Math.ceil(inW)));
+  const rawPeakAt = x => Math.min(1, colPk[Math.min(colPk.length - 1, x | 0)] * volAmp);
+  const gateAtX = x => {
     const t = tAt(x);
-    const idx = clamp(Math.floor(t / realInputDuration * realInputPeaks.length), 0, realInputPeaks.length - 1);
-    return Math.min(1, realInputPeaks[idx] * volAmp);
+    if (rtLive) return t <= playT && Math.floor(t * 1000) <= liveKnownBlock ? liveGateAt(t) : 0;
+    return state.detector.gate ? gateValueAt(t) : 1;
   };
-  const gateAtX = x => state.detector.gate ? gateValueAt(tAt(x)) : 1;
   const peakAt = x => rawPeakAt(x) * gateAtX(x);
   const traceWave = peakFn => {
     ctx.beginPath();
@@ -4045,6 +4757,7 @@ function drawRealInput(now) {
   for (const h of realHits) {
     const ht = h.peakTime ?? h.time;
     if (ht < winStart || ht > winStart + winDur) continue;
+    if (rtLive && ht > playT) continue;
     const x = xAt(ht);
     // The marker height is the hit velocity, not the level of the bucket at
     // peakTime. That keeps the orange line honest even if the transient peak
@@ -4062,7 +4775,7 @@ function drawRealInput(now) {
   // Time scale, bottom right.
   ctx.textAlign = 'right';
   ctx.fillStyle = 'rgba(255,255,255,.32)';
-  ctx.fillText(winDur.toFixed(1) + ' s', inW - 3, inH - 4);
+  ctx.fillText(winDur < 1 ? Math.round(winDur * 1000) + ' ms' : winDur.toFixed(1) + ' s', inW - 3, inH - 4);
   ctx.textAlign = 'left';
   const imb = $('#inputMeterBar');
   const gled = $('#gateLed');
@@ -4070,7 +4783,7 @@ function drawRealInput(now) {
     const sx = clamp(xAt(playT), 0, inW);
     ctx.strokeStyle = 'rgba(45,226,197,.85)';
     ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, inH); ctx.stroke();
-    const gateV = gateValueAt(playT);
+    const gateV = rtLive ? liveGateAt(playT) : gateValueAt(playT);
     if (gled) gled.classList.toggle('on', gateOn && gateV > .5);
     const gr = $('#grMeterBar');
     if (gr) gr.style.height = gainReductionPct(gateV) + '%';
@@ -4078,7 +4791,10 @@ function drawRealInput(now) {
     const near = realHits.some(h => Math.abs(h.time - playT) < 0.006);
     if (led) led.classList.toggle('on', near);
     let peak = 0;
-    if (realInputPeakEnv) {
+    if (rtLive && livePeak) {
+      const end = Math.min(Math.floor(playT * 1000), liveKnownBlock);
+      for (let b = Math.max(0, end - 60); b <= end; b++) peak = Math.max(peak, Math.min(1, livePeak[b]));
+    } else if (realInputPeakEnv) {
       const end = clamp(Math.floor(playT / realInputDuration * realInputPeakEnv.length), 0, realInputPeakEnv.length - 1);
       const start = Math.max(0, end - Math.max(1, Math.round(0.06 * realInputBuffer.sampleRate / realInputPeakBlock)));
       for (let b = start; b <= end; b++) peak = Math.max(peak, Math.min(1, realInputPeakEnv[b]));
@@ -4114,8 +4830,18 @@ function stopInput() {
   activeSlotSources.slice().forEach(s => { try { s.stop(); } catch (e) {} });
   activeSlotSources = [];
   if (gateGain && audioCtx) {
-    gateGain.gain.cancelScheduledValues(audioCtx.currentTime);
-    gateGain.gain.setValueAtTime(1, audioCtx.currentTime);
+    const t = audioCtx.currentTime;
+    gateGain.gain.cancelScheduledValues(t);
+    if (rtNode) {
+      // Mute the lookahead tail still inside the detector after STOP.
+      gateGain.gain.setValueAtTime(gateGain.gain.value, t);
+      gateGain.gain.linearRampToValueAtTime(0, t + 0.005);
+    } else gateGain.gain.setValueAtTime(1, t);
+  }
+  if (rtNode) {
+    rtNode.port.postMessage({ type: 'stop' });
+    liveGate = null; livePeak = null; liveKnownBlock = -1;
+    if (audioReady) scheduleDetect(); // stopped view: static preview of the first 2 s
   }
   const btn = $('#inputPlay'); if (btn) btn.textContent = '▶ INPUT';
   const hv = $('#hitVel'); if (hv) hv.textContent = '—';
@@ -4165,7 +4891,8 @@ function playInput() {
   if (!ctx) { toast('Audio not available'); return; }
   stopInput();
   if (detectPending) { clearTimeout(detectPending); detectPending = 0; }
-  detectInputHits();
+  const rt = !!rtNode;
+  if (!rt) detectInputHits();
   const src = ctx.createBufferSource();
   src.buffer = realInputBuffer;
   src.connect(inputGain);
@@ -4173,16 +4900,54 @@ function playInput() {
   inputSource = src;
   inputStartCtxTime = start;
   inputPlaying = true;
+  if (rt) {
+    const nb = Math.ceil(realInputDuration * 1000) + 2;
+    liveGate = new Float32Array(nb).fill(1);
+    livePeak = new Float32Array(nb);
+    liveKnownBlock = -1; rtLate = 0;
+    realHits = []; liveTriggerCount = 0; liveLastHitTime = 0; liveLastVelocity = 0;
+    const el = $('#triggerCount'); if (el) el.textContent = '0';
+    postDetectorParams();
+    rtNode.port.postMessage({ type: 'start', start, duration: realInputDuration });
+    gateGain.gain.cancelScheduledValues(ctx.currentTime);
+    gateGain.gain.setValueAtTime(1, ctx.currentTime);
+  }
   src.start(start);
-  scheduleGate(start);
-  src.onended = () => { if (inputPlaying) stopInput(); };
+  if (!rt) scheduleGate(start);
+  const tail = rt ? RT_LOOKAHEAD : 0;
+  src.onended = () => {
+    if (!inputPlaying || inputSource !== src) return;
+    inputTimers.push(setTimeout(() => { if (inputPlaying && inputSource === src) stopInput(); }, tail * 1000 + 50));
+  };
   const btn = $('#inputPlay'); if (btn) btn.textContent = '■ STOP';
-  startLiveTriggers();
-  inputTimers.push(setTimeout(() => { if (inputPlaying) stopInput(); }, (realInputDuration + 0.5) * 1000));
+  if (!rt) startLiveTriggers();
+  inputTimers.push(setTimeout(() => { if (inputPlaying && inputSource === src) stopInput(); }, (realInputDuration + tail + 0.5) * 1000));
 }
 
 $('#inputPlay').onclick = playInput;
 $('#inputWave').addEventListener('click', playInput);
+// Wheel: zoom the detector waveform around the cursor (20 ms – 20 s).
+// Shift+wheel or a horizontal swipe scrolls through the track while stopped.
+$('#inputWave').addEventListener('wheel', e => {
+  if (!realInputBuffer) return;
+  e.preventDefault();
+  const dur = realInputDuration;
+  const win = Math.min(detWin, dur);
+  const panPx = e.shiftKey ? (e.deltaY || e.deltaX) : (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : 0);
+  if (panPx) {
+    if (!inputPlaying) detViewStart = clamp(detViewStart + panPx / Math.max(1, inW) * win, 0, Math.max(0, dur - win));
+  } else {
+    const nw = clamp(win * Math.exp(e.deltaY * .0025), 0.02, Math.min(20, dur));
+    if (!inputPlaying) {
+      const r = inputCanvas.getBoundingClientRect();
+      const frac = clamp((e.clientX - r.left) / Math.max(1, r.width), 0, 1);
+      const anchor = detViewStart + frac * win;
+      detViewStart = clamp(anchor - frac * nw, 0, Math.max(0, dur - nw));
+    }
+    detWin = nw;
+  }
+  if (!inputPlaying) drawRealInput(performance.now());
+}, { passive: false });
 audioReady = true;
 
 // ---------- debug handles for the prototype ----------
@@ -4202,7 +4967,8 @@ window.__audio = {
   get inputStart() { return inputStartCtxTime; },
   setPlayhead(t) { if (audioCtx) inputStartCtxTime = audioCtx.currentTime - clamp(t, 0, realInputDuration); },
   get live() { return { lastHit: liveLastHitTime, triggers: liveTriggerCount, playing: inputPlaying, velocity: liveLastVelocity }; },
-  get nodes() { return { gateGain, inputGain, dryGain, wetGain }; },
+  get nodes() { return { gateGain, rtNode, inputGain, dryGain, wetGain }; },
+  get rt() { return { on: !!rtNode, late: rtLate, knownBlock: liveKnownBlock, lookahead: RT_LOOKAHEAD }; },
   get meter() {
     if (!masterAnalyser) return { peak: 0, rms: 0 };
     const buf = new Float32Array(masterAnalyser.fftSize);

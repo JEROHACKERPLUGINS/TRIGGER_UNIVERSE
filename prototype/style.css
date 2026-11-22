@@ -1680,3 +1680,116 @@ html.cat-shapes .sim-dots i.cat-mark.active{width:11px;height:11px}
 .trigger-view .input-col .dm-scale span:nth-child(4){bottom:73%}
 .trigger-view .input-col .dm-scale span:nth-child(5){bottom:50%}
 .trigger-view .input-col .dm-scale span:nth-child(6){bottom:4%}
+
+/* =====================================================================
+   TRIGGER page · 22/11 pass
+   1. INPUT DETECTOR and SAMPLE + ENVELOPE share the width 50/50.
+   2. SAMPLE + ENVELOPE drawn in real pixels (no stretched SVG): START flag +
+      A/D/R envelope only; END and FADE IN/OUT removed.
+   3. Longer console faders: real vertical travel, dB scale, unity detent,
+      meter on the same scale.
+   ===================================================================== */
+.trigger-page-grid,
+.trigger-view .trigger-page-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:1100px){
+  .trigger-page-grid,.trigger-view .trigger-page-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+.trigger-view .detector{grid-template-columns:100px 70px 60px minmax(0,1fr) 78px;gap:5px}
+@media (max-width:1360px){
+  .trigger-view .detector{grid-template-columns:92px 64px 56px minmax(0,1fr) 70px;gap:4px}
+}
+
+/* ---- SAMPLE + ENVELOPE ---- */
+.unified-editor{gap:6px}
+.unified-wave-wrap{min-height:120px;border-radius:8px;overflow:hidden}
+#wave{user-select:none;-webkit-user-select:none}
+#wave .we-bg{fill:rgba(255,255,255,.012)}
+#wave .we-grid{stroke:rgba(255,255,255,.055);stroke-width:1;shape-rendering:crispEdges}
+#wave .we-grid-top{stroke-dasharray:2 4}
+#wave .we-zero{stroke:rgba(255,255,255,.07);stroke-width:1;shape-rendering:crispEdges}
+#wave .we-base{stroke:rgba(255,255,255,.16);stroke-width:1;shape-rendering:crispEdges}
+#wave .we-axis{font:500 9px var(--mono);fill:rgba(233,238,247,.36)}
+#wave .we-ghost{fill:rgba(255,255,255,.075)}
+#wave .we-off{fill:rgba(4,7,12,.62)}
+#wave .we-env{fill:none;stroke:#2DE2C5;stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+#wave .we-hit{fill:transparent}
+#wave .we-handle{cursor:move}
+#wave .we-dot{fill:#0B1218;stroke:#2DE2C5;stroke-width:1.8}
+#wave .we-handle:hover .we-dot,#wave .we-handle.active .we-dot{fill:#2DE2C5;stroke:#E9FFFA}
+#wave .we-hlabel{font:650 9px var(--mono);fill:rgba(45,226,197,.85);pointer-events:none}
+#wave .we-start{cursor:ew-resize}
+#wave .we-start-line{stroke:var(--c);stroke-width:1.5}
+#wave .we-start-flag{fill:var(--c)}
+#wave .we-start:hover .we-start-line{stroke-width:2}
+#wave .we-empty{font:500 11px var(--sans);fill:rgba(233,238,247,.4)}
+.unified-readouts .u-readout-row{grid-template-columns:repeat(4,minmax(0,1fr));gap:2px 12px;
+  padding:6px 2px 0;border-top:1px solid rgba(255,255,255,.06)}
+.unified-readouts .u-readout-row>span{font-size:8.5px;letter-spacing:.12em;color:var(--muted-2);opacity:1}
+.unified-readouts .u-readout-row>span.u-env{color:rgba(45,226,197,.8)}
+.unified-readouts .u-readout-row b{font-size:11px;margin-top:2px;color:#E9EEF7}
+
+/* ---- faders ---- */
+:root{--fader-h:clamp(196px,27vh,320px)}
+.trigger-view .slot-fader{padding:7px 6px 6px;gap:0}
+.trigger-view .sf-head{height:14px;margin-bottom:2px}
+.trigger-view .sf-body{--cap-h:12px;flex:1;min-height:0;display:grid;
+  grid-template-columns:22px 6px 28px;justify-content:center;align-items:stretch;gap:0 5px;padding:4px 0 6px}
+.trigger-view .sf-scale{position:relative;min-height:0}
+.trigger-view .sf-scale span{position:absolute;right:0;
+  bottom:calc(var(--p) * (100% - var(--cap-h)) + var(--cap-h) / 2);transform:translateY(50%);
+  font:500 8px/1 var(--mono);color:rgba(233,238,247,.34);white-space:nowrap}
+.trigger-view .sf-scale span.unity{color:rgba(233,238,247,.75)}
+.trigger-view .sf-meter{width:6px;margin:calc(var(--cap-h) / 2) 0;border-radius:3px;
+  background:rgba(0,0,0,.4);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);position:relative;overflow:hidden}
+.trigger-view .sf-meter i{border-radius:0;transition:height .06s linear;
+  background:linear-gradient(to top,#2DE2C5,#7BF0C9 70%,#C8FF9E)}
+.sf-fader{position:relative;width:28px;height:100%;min-height:0;cursor:pointer;outline:none;touch-action:none}
+.sf-rail{position:absolute;left:50%;top:calc(var(--cap-h) / 2);bottom:calc(var(--cap-h) / 2);width:4px;
+  transform:translateX(-50%);border-radius:2px;background:rgba(0,0,0,.5);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.sf-fill{position:absolute;left:0;right:0;bottom:0;height:calc(var(--pos) * 100%);border-radius:2px;
+  background:rgba(45,226,197,.38)}
+.slot-fader.empty .sf-fill{background:rgba(255,255,255,.14)}
+.sf-unity{position:absolute;left:3px;right:3px;height:1px;pointer-events:none;
+  bottom:calc(var(--p) * (100% - var(--cap-h)) + var(--cap-h) / 2);background:rgba(255,255,255,.28)}
+.sf-cap{position:absolute;left:50%;width:26px;height:var(--cap-h);transform:translateX(-50%);
+  bottom:calc(var(--pos) * (100% - var(--cap-h)));border-radius:3px;
+  background:linear-gradient(180deg,#F4F7FB 0%,#CBD3DF 46%,#9FA9B8 54%,#DCE2EA 100%);
+  box-shadow:0 2px 6px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.45);transition:box-shadow .12s}
+.sf-cap::after{content:"";position:absolute;left:4px;right:4px;top:50%;height:1px;
+  transform:translateY(-50%);background:#1B2330}
+.sf-fader:hover .sf-cap,.sf-fader.dragging .sf-cap{
+  box-shadow:0 2px 6px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.45),0 0 0 3px rgba(45,226,197,.35)}
+.sf-fader:focus-visible .sf-cap{box-shadow:0 2px 6px rgba(0,0,0,.5),0 0 0 2px var(--mint)}
+.trigger-view .sf-foot{margin-top:0}
+.trigger-view .sf-level{font-size:10px;line-height:1.3}
+.trigger-view .sf-btns{margin-top:3px;gap:3px}
+.trigger-view .sf-btns button{width:20px;height:17px}
+
+/* SAMPLE + ENVELOPE: extra envelope points, zoom readout, transient snap */
+#wave .we-extra .we-dot{fill:#0B1218;stroke:rgba(45,226,197,.85);stroke-width:1.5}
+#wave .we-extra:hover .we-dot,#wave .we-extra.active .we-dot{fill:#2DE2C5}
+#wave .we-zoom{font:600 9px var(--mono);fill:rgba(233,238,247,.5)}
+.unified-head .u-hint{flex:none;font-size:8.5px;letter-spacing:.04em;color:rgba(233,238,247,.34);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46%}
+@media (max-width:1360px){.unified-head .u-hint{display:none}}
+.unified-readouts .u-start{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:6px}
+.unified-readouts .u-start b{flex:none}
+.u-snap{flex:none;align-self:center;margin-top:2px;padding:1px 5px;border-radius:4px;cursor:pointer;
+  font:600 8px/1.3 var(--sans);letter-spacing:.06em;color:var(--mint);
+  background:rgba(45,226,197,.08);border:1px solid rgba(45,226,197,.32);transition:.12s}
+.u-snap:hover{background:rgba(45,226,197,.2);border-color:var(--mint)}
+
+/* ---------- multi-selection ---------- */
+.marquee{position:fixed;z-index:200;pointer-events:none;border:1px dashed rgba(45,226,197,.9);
+  background:rgba(45,226,197,.08);border-radius:2px}
+#wave .we-handle.sel .we-dot{fill:#2DE2C5;stroke:#E9FFFA;stroke-width:2}
+.trigger-view .knob.msel .knob-dial{box-shadow:0 0 0 2px rgba(45,226,197,.85),0 0 12px rgba(45,226,197,.35)}
+.trigger-view .knob.msel .knob-label{color:var(--mint)}
+.slot.msel{outline:2px solid rgba(45,226,197,.85);outline-offset:2px}
+.trigger-view .slot-fader.msel{border-color:rgba(45,226,197,.75);
+  box-shadow:inset 0 0 0 1px rgba(45,226,197,.45),0 0 12px rgba(45,226,197,.18)}
+/* the sample name above the waveform is the "file" you drag to a slot */
+.unified-head .sample-meta{cursor:grab}
+.unified-head .sample-meta:active{cursor:grabbing}
+.unified-head .sample-meta:hover{color:var(--text)}
