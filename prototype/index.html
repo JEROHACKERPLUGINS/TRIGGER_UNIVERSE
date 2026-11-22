@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=134">
+<link rel="stylesheet" href="style.css?v=135">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -109,7 +109,7 @@
             <div class="dm-track gr-track" title="Gain reduction · gate attenuation of the original input (0–24 dB)"><i id="grMeterBar"></i></div>
           </div>
           <div class="dc-knobs" id="detKnobsInput"></div>
-          <button class="chip input-play" id="inputPlay" title="Play input">▶ INPUT</button>
+          <button class="chip input-play" id="inputPlay" data-kbd="Space" title="Play input">▶ INPUT</button>
         </section>
 
         <section class="det-col filter-col">
@@ -134,7 +134,7 @@
         <span class="sel-name" id="selSampleTitle">—</span>
         <span class="sel-sample" id="selSampleMeta">select a slot to edit its sample</span>
         <span class="drag-grip" id="editorGrip" title="Drag this sample to a slot">⠿</span>
-        <button class="insp-close" id="inspectorClose" title="Close editor">×</button>
+        <button class="insp-close" id="inspectorClose" data-kbd="Esc" title="Close editor">×</button>
       </div>
 
       <div class="inspector-tabs">
@@ -218,7 +218,8 @@
           <div class="search-box liquid-glass">
             <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
             <input id="search" placeholder="Search" autocomplete="off" spellcheck="false">
-            <button class="search-view-toggle" id="viewToggle" title="File search" aria-label="File search">
+            <kbd class="search-kbd" aria-hidden="true">/</kbd>
+            <button class="search-view-toggle" id="viewToggle" data-kbd="F" title="File search" aria-label="File search">
               <svg class="ico-folder" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg>
               <svg class="ico-universe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="11" ry="4.5" transform="rotate(-24 12 12)"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
             </button>
@@ -227,8 +228,8 @@
 
         <div class="similar-bar" id="similarBar">
           <span class="lbl">SIMILARITY</span>
-          <button class="sim-arrow" id="simPrev" title="Previous similar">◂</button>
-          <button class="sim-arrow" id="simNext" title="Next similar">▸</button>
+          <button class="sim-arrow" id="simPrev" data-kbd="←" title="Previous similar">◂</button>
+          <button class="sim-arrow" id="simNext" data-kbd="→" title="Next similar">▸</button>
           <span class="sim-target" id="simTarget"></span>
           <div class="sim-dots" id="simDots"></div>
           <span class="count" id="count">Select a sample</span>
@@ -239,6 +240,7 @@
   </main>
 
   <div class="name-bar" id="nameBar"><span id="nameBarText"></span></div>
+  <div class="key-hints" id="keyHints" aria-live="polite"></div>
 
   <section class="slot-dock" id="slotDock">
     <div class="slots" id="slots"></div>
@@ -248,8 +250,8 @@
 
 </div>
 
-<button class="side-bracket left" id="triggerTab" title="Open TRIGGER page"><span>TRIGGER</span></button>
-<button class="side-bracket right" id="settingsBtn" title="Settings"><span>SETTINGS</span></button>
+<button class="side-bracket left" id="triggerTab" data-kbd="T" title="Open TRIGGER page"><span>TRIGGER</span></button>
+<button class="side-bracket right" id="settingsBtn" data-kbd="," title="Settings"><span>SETTINGS</span></button>
 
 <div class="settings-menu" id="settingsMenu">
   <div class="sm-head">SETTINGS</div>
@@ -262,6 +264,6 @@
 <div class="toast" id="toast"></div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=134"></script>
+<script src="app.js?v=135"></script>
 </body>
 </html>

@@ -1398,7 +1398,7 @@ function renderSlots() {
     const sel = i === state.selectedSlot ? ' selected' : '';
     const stateCls = smp ? ' filled' : ' empty';
     return `
-      <div class="slot${stateCls}${sel}" data-slot="${i}"${smp ? ` style="--slot-color:${color}"` : ''} title="${smp ? `${smp.name} · click to audition · double-click to edit` : 'Drop a sample here · click to open TRIGGER'}">
+      <div class="slot${stateCls}${sel}" data-slot="${i}" data-kbd="${i + 1}"${smp ? ` style="--slot-color:${color}"` : ''} title="${smp ? `${smp.name} · click to audition · double-click to edit` : 'Drop a sample here · click to open TRIGGER'}">
         <div class="slot-head">
           <span class="slot-num">${String(i + 1).padStart(2, '0')}</span>
           ${smp ? `<span class="slot-dot" style="background:${color};color:${color}"></span>` : ''}
@@ -2061,6 +2061,91 @@ function goHome() {
   else requestUniverseDraw();
 }
 
+// ---------- contextual shortcut hints ----------
+// A tiny strip at the right end of the name-bar row that shows only the shortcuts that
+// apply to what the user is doing right now. Each hint: [keys or gesture, label].
+const KH = {
+  edit:     [['Enter', 'Confirm'], ['Esc', 'Cancel']],
+  drag:     [['Drop on a slot', ''], ['Esc', 'Cancel']],
+  settings: [['Esc', 'Close']],
+  trigger:  [['1–8', 'Select slot'], ['Space', 'Play input'], ['Double-click', 'Edit value'], ['Esc', 'Back']],
+  files:    [['Space', 'Audition'], ['1–8', 'To a slot'], ['Esc', 'Home']],
+  scrub:    [['Drag', 'Scrub'], ['⌥+Drag', 'To a slot']],
+  similar:  [['← →', 'Similar'], ['Space', 'Audition'], ['1–8', 'To a slot'], ['Esc', 'Close']],
+  hover:    [['Click', 'Audition'], ['⌥+Drag', 'To a slot']],
+  universe: [['Scroll', 'Zoom'], ['/', 'Search'], ['F', 'Files'], ['T', 'Trigger']],
+};
+function keyHintContext() {
+  if (numericEditor) return 'edit';
+  if (state.drag && dragStarted) return 'drag';
+  if ($('#settingsMenu').classList.contains('show')) return 'settings';
+  if (state.viewMode === 'trigger') return 'trigger';
+  if (state.viewMode === 'files') return 'files';
+  if (state.scanning) return 'scrub';
+  if (state.simVisible) return 'similar';
+  if (state.hover) return 'hover';
+  return 'universe';
+}
+const GESTURES = ['Click', 'Double-click', 'Drag', 'Scroll', 'Right-drag', 'Drop on a slot'];
+function keyHintHTML(keys) {
+  return keys.split('+').map(part => {
+    if (GESTURES.includes(part)) return `<span class="gesture">${part}</span>`;
+    return part.split(' ').filter(Boolean).map(k => `<kbd>${k}</kbd>`).join('');
+  }).join('<span class="plus">+</span>');
+}
+(function keyHints() {
+  const el = $('#keyHints');
+  if (!el) return;
+  let shown = null;
+  const render = ctx => {
+    el.innerHTML = KH[ctx].map(([keys, label]) =>
+      `<span class="kh">${keyHintHTML(keys)}${label ? `<span class="lbl">${label}</span>` : ''}</span>`).join('');
+    el.classList.add('show');
+  };
+  setInterval(() => {
+    const ctx = keyHintContext();
+    if (ctx === shown) return;
+    shown = ctx;
+    el.classList.remove('show');
+    setTimeout(() => { if (shown === ctx) render(ctx); }, 120);
+  }, 150);
+})();
+
+// ---------- single-key shortcuts ----------
+// Ignored while typing (inputs, selects, in-place numeric editing) and with ⌘/Ctrl/Alt held.
+//   Space  audition the selected sample (TRIGGER: play the input)
+//   1–8    send the selected sample to that slot (TRIGGER: select that slot)
+//   T      TRIGGER page on/off     F  FILE SEARCH on/off
+//   ,      Settings                /  focus the search field
+function isTypingTarget(t) {
+  return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+}
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+  if (numericEditor || isTypingTarget(e.target)) return;
+  const k = e.key;
+  const inTrigger = state.viewMode === 'trigger';
+  if (k === ' ') {
+    e.preventDefault();
+    if (inTrigger) playInput();
+    else if (state.selectedSample) playHoverPreview(state.selectedSample);
+  } else if (/^[1-8]$/.test(k)) {
+    const i = +k - 1;
+    if (inTrigger) selectSlot(i);
+    else if (state.selectedSample) assignSample(i, state.selectedSample);
+  } else if (k === 't' || k === 'T') {
+    setTriggerOpen(!inTrigger);
+  } else if (k === 'f' || k === 'F') {
+    setView(state.viewMode === 'files' ? 'universe' : 'files');
+  } else if (k === ',') {
+    setSettingsOpen(!$('#settingsMenu').classList.contains('show'));
+  } else if (k === '/') {
+    e.preventDefault();
+    if (inTrigger) closeTriggerPage();
+    $('#search').focus();
+  }
+});
+
 // ESC always lands on HOME, from TRIGGER, FILE SEARCH or any open overlay.
 window.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
@@ -2072,6 +2157,7 @@ window.addEventListener('keydown', e => {
 $('#viewToggle').onclick = () => setView(state.viewMode === 'universe' ? 'files' : 'universe');
 
 $('#search').addEventListener('focus', hideSimilarity);
+$('#search').addEventListener('input', e => $('.search-box').classList.toggle('has-value', !!e.target.value));
 $('#search').addEventListener('input', e => {
   hideSimilarity();
   state.filters.search = e.target.value.trim();
@@ -3652,7 +3738,15 @@ function init() {
   const show = el => {
     const text = textOf(el);
     if (!text) return hide();
-    target = el; tip.textContent = text; place();
+    target = el;
+    tip.textContent = text;
+    if (el.dataset.kbd) {
+      const k = document.createElement('span');
+      k.className = 'tip-kbd';
+      k.innerHTML = keyHintHTML(el.dataset.kbd);
+      tip.append(k);
+    }
+    place();
     clearTimeout(timer); timer = setTimeout(() => tip.classList.add('show'), 250);
   };
   const hide = () => { target = null; clearTimeout(timer); tip.classList.remove('show'); };
