@@ -36,7 +36,7 @@ La UI final será **React + TypeScript** sobre el bridge WebView de iPlug2. El p
 - **Fase 0 completada y aprobada.**
 - Motor existente importado en `engine/` y **no reescrito**.
 - Tests DSP existentes: **3/3 pasan**.
-- Tests C++ con `SNARE.cm.wav`: detector y `SlotEngine` verificados.
+- Tests C++ con `SNARE.cm.wav`: detector y `SlotEngine` verificados. El INPUT del prototipo es **SN TOP 1 (0:17–2:20)**.
 - **Prototipo UI navegable y con audio real funcionando** en `prototype/`.
 - **Build del plugin bloqueado**: faltan Xcode completo, CMake, Node.js y SDK de VST3.
 - **Commit inicial creado en `main`**, árbol limpio.
@@ -61,13 +61,13 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (
 - **Fase:** `Ø = 180°` (polaridad). Phase shift separado: 0° / 90° / 180° / 260°.
 - **Auto-phase:** corre al cargar un sample. Por defecto solo polaridad; offset en 0 salvo **TIMING** activo.
 - **Trigger Slots:** dock fijo de 8 recuadros de glass `01`–`08`, cuadrados y centrados, vacíos al inicio, con la misma textura glass que search/TRIGGER/Settings/OUTPUT. Al arrancar un drag se encienden con glow mint y se magnifican tipo Dock de macOS. Click en un slot lleno **audiciona** su sample; doble click lo abre en TRIGGER; click en uno vacío abre TRIGGER.
-- **Faders:** 8 faders verticales (≈136 px) alineados arriba de los slots, con meter, M/S/Ø y nivel. La tira de **AUTO PHASE** va arriba del banco y sigue al slot seleccionado.
+- **Faders:** 8 faders verticales (≈136 px) alineados arriba de los slots, con meter de pico, M/S/Ø y nivel. La tira de **AUTO PHASE** va arriba del banco y sigue al slot seleccionado.
 - **Editor:** sample view angosto (~30–32%) en la página TRIGGER. **SAMPLE + ENVELOPE** comparten **una sola waveform**: sample con trim/fades + curva A/D/R × fades + handles de start/end/fades y A/D/R. **TONE** es una tira full-width debajo. **Alt+click resetea cualquier valor a su default** (faders/OUTPUT 0 dB, MIX 100%, detector de fábrica, etc.).
 - **Paneles del editor:** **SAMPLE + ENVELOPE** en una sola waveform y **TONE** en una tira full-width. **AUTO PHASE** queda sobre los faders. Readouts en dos filas: START/END/FADE IN/FADE OUT y A/D/R.
 - **Auto Phase:** tira horizontal sobre los faders con REF, re-analizar, TIMING, OFFSET y SHIFT; sin Level/Pan/Tune/Mute/Solo/Pol en el editor.
 - **TRIGGER:** corchete vertical glass a la izquierda; abre la página full-screen con detector Slate en cinco columnas (GATE/INPUT/FILTER/waveform/DETECT), sample view con una sola waveform SAMPLE + ENVELOPE, tira TONE compacta y fila de faders centrada con un panel vertical de Auto Phase en el margen derecho (se angosta; arriba de los faders en <=1000). OUTPUT y MIX están en la cápsula master superior y MIX abre en 100%. **Esc vuelve siempre a HOME**; el corchete vuelve a la vista anterior.
-- **Detector:** INPUT VOLUME escala la waveform y la señal; **DETAIL es el threshold de detección** (línea dashed) y tiene 1.5× de headroom para poder silenciar los triggers; SENSITIVITY ayuda con ghost notes; RETRIGGER es la ventana ciega; LOWCUT/HIGHCUT filtran solo la detección; SUPPRESS en INPUT. **GATE C1-style**: threshold con flecha naranja sobre el medidor INPUT (pre-gate) + ATTACK/HOLD/RELEASE; el gate es post-VOLUME, la detección usa la señal post-gate y **ATTACK 0 es instantáneo**. La waveform del detector es post-gate (azul) con fantasma rojo pre-gate; el **VU GR rojo** está junto a los knobs del GATE. MIX 0% = input original, 100% = samples.
-- **En vivo:** el input se dispara hit por hit (loop de 20 ms, lookahead 80 ms). Mover cualquier parámetro del detector mientras suena recalcula hits/gate y cambia los próximos disparos sin reiniciar. Filtros/Detail/Sens/Retrig/Suppress afectan la detección; Gate/Input Volume el audio seco; MIX/OUTPUT son inmediatos.
+- **Detector:** INPUT VOLUME escala medidor, waveform, detección y **velocity**; **DETAIL es el threshold de detección** (línea dashed) y tiene 1.5× de headroom para poder silenciar los triggers; **SENSITIVITY es el rango dinámico** (0% fijo, 100% amplio), no una ganancia de detección; RETRIGGER es la ventana ciega; LOWCUT/HIGHCUT filtran solo la detección; SUPPRESS en INPUT. **GATE C1-style**: threshold con flecha naranja sobre el medidor INPUT (pre-gate) + ATTACK/HOLD/RELEASE; el gate es post-VOLUME, la detección usa la señal post-gate y **ATTACK 0 es instantáneo con lookahead de 1 ms**. La waveform del detector es post-gate (azul) con fantasma rojo pre-gate; el **VU GR rojo** está junto a los knobs del GATE. MIX 0% = input original, 100% = samples.
+- **En vivo:** el input se dispara hit por hit (loop de 20 ms, lookahead 80 ms). Mover cualquier parámetro del detector mientras suena recalcula hits/gate y cambia los próximos disparos sin reiniciar. Detail/Retrig/Suppress/filtros y el gate afectan la detección; Sensitivity cambia la dinámica de los samples; Input Volume escala detección, velocity y audio seco; MIX/OUTPUT son inmediatos.
 - **HOME** (ex Universe): vista principal full-bleed, nube de puntos 3D abstracta, sin ejes. Search arriba, similitud abajo. **Esc vuelve acá desde cualquier vista.**
 - **FILE SEARCH:** árbol tipo Finder con root en la carpeta elegida por el usuario; subcarpetas reales; samples reales primero.
 - **OUTPUT + MIX** arriba a la derecha, en una cápsula glass. **TRIGGER** es un corchete vertical glass a la izquierda y **SETTINGS** otro a la derecha. **AUTO PHASE ALL** vive en Settings.
@@ -78,7 +78,7 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (
 
 ## Qué está implementado en el prototipo
 
-- HOME full-bleed con 1000 samples sintéticos + `SNARE.cm.wav` real.
+- HOME full-bleed con 1000 samples sintéticos + `SNARE.cm.wav` real. El INPUT del trigger es el caso real **SN TOP 1 (0:17–2:20, 123 s)**.
 - Zoom con rueda anclado al cursor; pan con click derecho o Ctrl+click; click izquierdo en vacío solo cierra paneles; hover/snap dentro de un aura de 20 px con el nombre en la barra inferior.
 - FILE SEARCH con árbol, búsqueda, preview, audition al click en cada fila y ALT + drag a los 8 slots del dock. El dock queda siempre visible. El drag convierte el sample en una partícula del tamaño de su punto de HOME, con glow/estela, nombre sutil, magnetismo a slots y burst al soltar.
 - Editor integrado en la página TRIGGER con una sola waveform **SAMPLE + ENVELOPE** en un sample view angosto y **TONE** en una tira full-width; Auto Phase sobre los faders.
@@ -96,7 +96,7 @@ Limitaciones del prototipo:
 - Similitud basada en features sintéticas, no en análisis tímbrico real.
 - 90° / 260° **no** se aplican al audio; solo 180°.
 - Offsets negativos clampeados a 0 en Web Audio.
-- Velocity no aplicada; folder picker y Audio/MIDI son demos.
+- Velocity aplicada en los disparos del INPUT (pico real); el preview usa velocity 1. Folder picker y Audio/MIDI son demos.
 
 ---
 

@@ -67,7 +67,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - **Editor de sample**: **SAMPLE + ENVELOPE** comparten **una sola waveform**: sample completo, trim/fades, curva A/D/R × fades en mint y handles de start/end/fades + A/D/R. **TONE** va en una tira full-width debajo del detector. **AUTO PHASE** (REF, re-analizar, TIMING, OFFSET, SHIFT) está en la tira sobre los faders.
 - **Fase**: 0/90/180/260; **180 = Ø**. Los badges se mantienen en el editor.
 - **Slots**: solo números 01–08, sin faders.
-- **Audio real**: `prototype/samples/SNARE.cm.wav` se decodifica con Web Audio y el archivo completo es el **INPUT** del trigger. El botón **▶ INPUT** dispara los slots cargados en cada transiente detectado. Los slots arrancan vacíos; se llenan con ALT + drag.
+- **Audio real**: `prototype/samples/SN_TOP_1COMMIT_17-140.wav` (recorte 0:17–2:20, 123 s, normalizado a −0.5 dBFS) se decodifica con Web Audio y el archivo completo es el **INPUT** del trigger. `SNARE.cm.wav` queda como one-shot real del slot 01. El botón **▶ INPUT** dispara los slots cargados en cada transiente detectado. Los slots arrancan vacíos; se llenan con ALT + drag.
 - **AUDIO TEST eliminado** de la barra: el audio se inicia con **▶ INPUT** o al clickear un sample del Universo o una fila de FILE SEARCH.
 - **Medidores reales**: master y salida usan analizadores Web Audio.
 - **Polaridad 180** verificada offline (correlación −1.0). 90/260 quedan como UI hasta el DSP C++.
@@ -122,12 +122,12 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 ## Actualización 21/11 — detector Slate (flujo final)
 
 - El detector quedó en **cinco columnas**: GATE (ON/OFF + ATTACK/HOLD/RELEASE + **VU GR**), INPUT (medidor pre-gate + **flecha de GATE THRESHOLD** + VOLUME + SUPPRESS + ▶ INPUT), FILTER (LOWCUT/HIGHCUT), waveform central y DETECT (DETAIL/RETRIGGER/SENSITIVITY).
-- **GATE C1-style:** el threshold es la **flecha naranja arrastrable sobre el medidor INPUT** (el medidor muestra el input pre-gate) y se combina con ATTACK/HOLD/RELEASE. El gate es **post-VOLUME**, su envolvente se calcula a 1 ms y **ATTACK 0 es realmente instantáneo**. La detección usa la señal **post-gate**; el gate solo procesa el input original, nunca los samples.
-- **VOLUME** es el trim que regula el nivel que llega a la waveform y a la detección. LOWCUT/HIGHCUT filtran solo la detección. SUPPRESS vive en INPUT.
-- **DETAIL** es el threshold de detección (línea dashed mint, independiente del volumen) y tiene **1.5× de headroom**: a 100% la línea queda por encima de los transientes y no dispara. **SENSITIVITY** ayuda con ghost notes; **RETRIGGER** es la ventana ciega (sin gráfica).
-- La waveform central muestra una **ventana de 2 s** (~6 transientes) que sigue al playhead: **post-gate en azul** con un **fantasma rojo suave** del input pre-gate, la línea de cero, la línea dashed de DETAIL y los hits naranjas hasta el pico. El LED junto a GATE marca open/closed.
+- **GATE C1-style:** el threshold es la **flecha naranja arrastrable sobre el medidor INPUT** (el medidor muestra el input pre-gate) y se combina con ATTACK/HOLD/RELEASE. El gate es **post-VOLUME**, su envolvente se calcula a 1 ms con lookahead y **ATTACK 0 es realmente instantáneo** (no recorta el transiente). La detección usa la señal **post-gate**; el gate solo procesa el input original, nunca los samples.
+- **VOLUME** es el trim que regula el medidor, la waveform, la detección y la velocity. **INPUT y OUTPUT/MASTER muestran pico real, no RMS**, con hold corto y lectura numérica de pico en INPUT. LOWCUT/HIGHCUT filtran solo la detección. SUPPRESS vive en INPUT.
+- **DETAIL** es el threshold de detección (línea dashed mint, independiente del volumen) y tiene **1.5× de headroom**: a 100% la línea queda por encima de los transientes y no dispara. **SENSITIVITY** controla el **rango dinámico** de la velocity (0% nivel fijo, 100% amplio), como Dynamics en Trigger 2; **RETRIGGER** es la ventana ciega (sin gráfica).
+- La waveform central muestra una **ventana de 2 s** (~6 transientes en SN TOP 1) que sigue al playhead: **post-gate en azul** con un **fantasma rojo suave** del input pre-gate, la línea de cero, la línea dashed de DETAIL y los hits naranjas hasta el pico. El LED junto a GATE marca open/closed.
 - **OUTPUT y MIX** están en la cápsula master superior: **0% = input original**, **100% = samples disparados** (arranca en 100%). El gate se escucha bajando MIX.
-- **Todo el detector corre en vivo**: los slots se disparan hit por hit mientras suena el input; mover Detail/Sens/Retrigger/Suppress/filtros, el threshold/attack/hold/release del gate, Volume, MIX u OUTPUT actualiza los próximos disparos y el audio sin reiniciar.
+- **Todo el detector corre en vivo**: los slots se disparan hit por hit mientras suena el input; mover Detail/Retrigger/Suppress/filtros, Sensitivity (dinámica), el threshold/attack/hold/release del gate, Volume, MIX u OUTPUT actualiza los próximos disparos y el audio sin reiniciar. VEL junto a DETECT muestra la velocity del último hit.
 - Cada knob del detector tiene tooltip con su rol; la waveform también explica sus colores/líneas al hover.
 - El **sample view** quedó en ~30–32%; el detector ocupa ~68–70% (70/30 en ventanas angostas).
 - **TONE** sigue como tira full-width debajo del detector/editor.
@@ -269,4 +269,13 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - El scrub va dejando una **estela** que conecta los samples visitados. Cada segmento usa el color de la categoría del destino, con glow aditivo, núcleo brillante, nodos y cabeza viva mientras el botón está apretado.
 - Al soltar, la estela se desvanece en ~2,4 s. Un nuevo click la reinicia.
 - El click/hover hace **snap** al sample más cercano dentro de un **aura de 20 px**. El click en vacío solo cierra paneles: no busca ni centra nada.
-- El preview usa el buffer procedural cacheado de cada sample sintético o el WAV real de `SNARE.cm`.
+- El preview usa el buffer procedural cacheado de cada sample sintético o el WAV real de `SNARE.cm`. El INPUT del trigger es `SN_TOP_1COMMIT_17-140.wav` (0:17–2:20).
+
+## Actualización 22/11 — medidores de pico y dinámica
+
+- **INPUT y OUTPUT/MASTER ahora muestran el pico real** (float time-domain del analizador), no RMS, con hold corto para que un transiente de 1 ms no se pierda entre frames.
+- La **barra de INPUT**, sus labels y la **flecha de GATE THRESHOLD** comparten la misma escala en dB: el threshold se lee contra el medidor. INPUT es pre-gate; OUTPUT es post-master.
+- **SENSITIVITY = rango dinámico:** 0% aplasta la velocity hacia un nivel fijo; 100% la expande (0.35×…2.0×). El control **VELOCITY** de TONE mezcla esa respuesta por slot. **INPUT VOLUME** escala la velocity, así que el nivel del input cambia el nivel de los samples disparados.
+- El detector ahora captura el **pico real del transiente** y su `peakTime`; antes reiniciaba el capture en cada sample por encima del threshold y la velocity terminaba en el nivel del final del ataque. **VEL** junto a DETECT muestra el último valor.
+- **ATTACK 0** abre el gate un bloque (1 ms) antes del cruce de threshold, así el primer sample del transiente pasa con ganancia 1.
+- Medido en el prototipo: input 0 dB → velocity 100%, OUTPUT peak 54%; input −12 dB → velocity 25%, OUTPUT peak 10%; SENSITIVITY 0 vs 100 con velocity 0.5 → OUTPUT 43% vs 14%; Detail 100 → 0 hits; Detail 46 → 12 hits.

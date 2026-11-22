@@ -1,6 +1,6 @@
-# Pruebas de audio — SNARE.cm.wav
+# Pruebas de audio — SNARE.cm + SN TOP 1
 
-Fecha: 20/11/2026. Archivo: `/Users/dante/Desktop/SNARE.cm.wav` (copiado a `prototype/samples/SNARE.cm.wav`).
+Fecha: 20–22/11/2026. Archivos: `/Users/dante/Desktop/SNARE.cm.wav` (sample de slot) y `/Users/dante/Downloads/SN TOP 1COMMIT.18_01.wav` recortado 0:17–2:20 como INPUT.
 
 ## 1. Archivo
 
@@ -15,6 +15,24 @@ Fecha: 20/11/2026. Archivo: `/Users/dante/Desktop/SNARE.cm.wav` (copiado a `prot
 | DC | −0.00007 |
 
 Es una **secuencia de snare con golpes principales y ghosts/flams**, no un único hit. Los golpes principales están a ~0.15, 0.855, 1.586, 2.322, 3.059, 3.789, 4.516, 5.240, 5.965, 6.690, 7.414 s; hay transientes secundarios ~0.18–0.37 s después de varios de ellos.
+
+### INPUT real — SN TOP 1 (0:17–2:20)
+
+Recorte del archivo real del usuario entre 0:17 y 2:20 (123.0 s), mono 48 kHz, normalizado a −0.5 dBFS. El detector del prototipo corre sobre el archivo completo; la waveform muestra una ventana de 2 s que sigue al playhead.
+
+| Prueba | Resultado |
+| --- | --- |
+| Duración / formato | 123.0 s · mono · 48 kHz · 16-bit PCM |
+| Decode en el browser | ~0.6 s |
+| Hits con Detail 14 / Retrigger 16 / Sens 51 | **139** |
+| Hits con Detail 46 | **56** |
+| Hits con Detail 100 | **0** |
+| Recompute del detector (5.4 M samples) | ~32–47 ms (caché de block peaks 1 ms) |
+| Primer hit del excerpt | ~2.287 s (los primeros 2 s son un build de ghosts) |
+| Playback 3.2 s | 5 triggers; velocity del último hit 64%; INPUT peak −17 dB |
+| Waveform | ~6 transientes visibles en la ventana de 2 s |
+
+El excerpt empieza con un build suave; los golpes principales comienzan en ~2.29 s. `SNARE.cm.wav` sigue siendo el one-shot real del slot 01.
 
 ## 2. Motor C++ real — TransientDetector
 
@@ -76,6 +94,23 @@ Render offline del buffer real con `GainNode.gain = −1`:
 
 La inversión de polaridad de 180° funciona. Los 90°/260° quedan como UI en el prototipo; el motor C++ real los implementará con all-pass/Hilbert (no hay DSP de fase en Web Audio).
 
+### Medidores de pico y velocity (prototipo, 22/11/2026)
+
+Medición en la página TRIGGER con `SNARE.cm`, MIX 100% y solo el slot 01 sonando:
+
+| Prueba | Resultado |
+| --- | --- |
+| INPUT peak con input 0 dB | pico ~0 dB en el meter pre-gate |
+| OUTPUT peak con input 0 dB | 54% del meter (pico del sample) |
+| INPUT −12 dB → velocity del hit | 25% (antes el volumen no cambiaba la velocity) |
+| INPUT −12 dB → OUTPUT peak | 10% (≈14.6 dB menos que a 0 dB) |
+| SENSITIVITY 0 vs 100 con velocity 0.5 | OUTPUT peak 43% vs 14% |
+| Detail 100 | 0 hits (threshold 1.5× por encima de los transientes) |
+| Detail 46 (screenshot del usuario) | 12 hits |
+| Attack 0 | envolvente = 1 desde el bloque anterior al pico; sin recorte del transiente |
+
+El detector ahora captura el **pico real** del transiente y su `peakTime`; antes el capture se reiniciaba en cada muestra por encima del threshold y la velocity era el nivel del final del ataque. Los VU de INPUT y OUTPUT usan `getFloatTimeDomainData` + hold corto, no RMS. La barra de INPUT y la flecha de GATE THRESHOLD comparten `meterPct()` (dB −48…0 con 4% de inset).
+
 ## 5. Bugs encontrados y corregidos
 
 1. **Settings no abría**: faltaba todo el CSS de `.settings-menu`.
@@ -90,12 +125,13 @@ La inversión de polaridad de 180° funciona. Los 90°/260° quedan como UI en e
 
 - 90°/260° no se aplican al audio del prototipo (solo 180° polaridad). El DSP real va en el motor C++.
 - El auto-phase del prototipo es simulado; el diseño real (GCC-PHAT + offset con límite de lookahead) está en `docs/auto_phase.md`.
-- Tone/Cut del prototipo usan biquads aproximados; velocity no se usa en el preview.
+- Tone/Cut del prototipo usan biquads aproximados. La velocity del input sí se usa al disparar; el preview de hover usa velocity 1.
 - El motor C++ del plugin no se puede compilar (faltan Xcode completo, CMake y SDKs VST3); sí se compilaron y ejecutaron los headers DSP con CommandLineSuite.
 - El contexto de audio remuestrea a 44.1 kHz; el WAV es 48 kHz.
 
 ## 7. Recomendación
 
-- Para escuchar solo los **12 golpes principales** de este archivo: Sens ~20, Retrig 250, Detail bajo.
-- Para detectar ghosts/flams: Sens 45–70, Retrig 50, Detail 50 (default actual).
+- Para escuchar solo los **12 golpes principales** de este archivo: Detail ~20–30, Retrig 16–250, Sens a gusto (Sens ya no cambia el threshold).
+- Para detectar ghosts/flams: bajar Detail (0–10) y ajustar Retrig; Detail alto los ignora.
+- **SENSITIVITY** es el rango dinámico: 0% deja los samples casi a nivel fijo, 100% conserva toda la diferencia entre hits fuertes y suaves. El **VELOCITY** de TONE mezcla esa respuesta por slot.
 - El siguiente paso de audio real es implementar el auto-phase GCC-PHAT y el phase shift 90/260 en el `SlotEngine`/plugin C++, y validar con este snare y una segunda capa.

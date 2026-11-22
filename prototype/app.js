@@ -230,7 +230,13 @@ let realHits = [];
 let realInputDuration = 0;
 let realGateEnv = null;
 let realGateBlock = 0;
+let realInputPeakEnv = null;
+let realInputPeakBlock = 0;
+let realInputBlockPeaks = null;
+let realInputBlockPeaksKey = null;
 let realInputMax = 1;
+let liveLastVelocity = 0;
+let inputMeterHold = 0;
 
 // ---------- categories ----------
 const CATEGORIES = [
@@ -443,7 +449,7 @@ function buildSlots() {
     adsr: { a: 0, d: 120, end: 800, s: .5, p: 1, e: 0 },
     start: 0, end: 1, fadeIn: 0, fadeOut: 0,
     reverse: false,
-    tone: 0, cut: 50, velSens: 50, gain: 0,
+    tone: 0, cut: 50, velSens: 100, gain: 0,
     playback: 'one-shot', loop: false,
   }));
 }
@@ -1676,7 +1682,7 @@ function assignSample(i, smp) {
   s.adsr = { a: 0, d: 120, end: 0, s: .5, p: 1, e: 0 };
   s.start = 0; s.end = 1; s.fadeIn = 0; s.fadeOut = 0;
   s.reverse = false;
-  s.tone = 0; s.cut = 50; s.velSens = 50; s.gain = 0;
+  s.tone = 0; s.cut = 50; s.velSens = 100; s.gain = 0;
   s.playback = 'one-shot'; s.loop = false;
   s.polarity = false; s.shift = 0; s.offset = 0;
   s.autoPhase = false; s.corr = 0; s.suggestedLag = 0;
@@ -2721,7 +2727,7 @@ function bindToneNumeric(id, key, fmt, opts) {
 }
 bindToneNumeric('#tone', 'tone', v => (v > 0 ? '+' : '') + v, { min: -100, max: 100, step: 1, decimals: 0, default: 0 });
 bindToneNumeric('#cut', 'cut', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0, default: 50 });
-bindToneNumeric('#velSens', 'velSens', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0, default: 50 });
+bindToneNumeric('#velSens', 'velSens', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0, default: 100 });
 bindToneNumeric('#gain', 'gain', v => fmtDb(v), { min: -24, max: 24, step: .1, unit: 'dB', decimals: 1, default: 0 });
 
 $('#playbackSeg').addEventListener('click', e => {
@@ -2776,7 +2782,7 @@ const DET = [
   { key: 'release',   label: 'RELEASE',   min: 0,   max: 2000, val: 450,   unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate',
     tip: 'GATE RELEASE · time for the gate to close after hold' },
   { key: 'input',     label: 'VOLUME',    min: -24, max: 24,  val: 0,     unit: 'dB', fmt: v => fmtDb(v), step: .1, decimals: 1, group: 'input',
-    tip: 'INPUT VOLUME · level that feeds the waveform and the detector' },
+    tip: 'INPUT VOLUME · level that feeds the meter, the detector and the sample velocity' },
   { key: 'supp',      label: 'SUPPRESS',  min: 0,   max: 100, val: 0,     unit: '%',  fmt: v => Math.round(v) + '%', group: 'input',
     tip: 'SUPPRESS · leakage suppression' },
   { key: 'low',       label: 'LOWCUT',    min: 20,  max: 20000, val: 20,  log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'filter',
@@ -2784,11 +2790,11 @@ const DET = [
   { key: 'high',      label: 'HIGHCUT',   min: 20,  max: 20000, val: 20000, log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'filter',
     tip: 'HIGHCUT · detection filter only; does not alter the dry audio' },
   { key: 'detail',    label: 'DETAIL',    min: 0,   max: 100, val: 14,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
-    tip: 'DETAIL · detection threshold. Higher = ignores bleed; lower = catches ghost notes' },
+    tip: 'DETAIL · detection threshold. Higher = ignores bleed; lower = catches ghost notes; 100% sits above every transient' },
   { key: 'retrig',    label: 'RETRIGGER', min: 0,   max: 1000, val: 16,    unit: 'ms', fmt: v => Math.round(v) + ' ms', group: 'detect',
     tip: 'RETRIGGER · blind window after each hit (audio only, no graphic)' },
   { key: 'sens',      label: 'SENSITIVITY',min: 0,  max: 100, val: 51,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'detect',
-    tip: 'SENSITIVITY · helps catch ghost notes and soft hits' }
+    tip: 'SENSITIVITY · dynamic range of the triggered samples. Low = fixed level, high = wide dynamics' }
 ];
 
 function makeKnob(cfg) {
@@ -2944,6 +2950,10 @@ const DETAIL_MAX = 1.5;
 function detailThreshold() {
   return (clamp(state.detector.detail, 0, 100) / 100) * DETAIL_MAX;
 }
+const METER_INSET = 4; // keep the 0 dB and -48 dB labels inside the track
+function meterPct(db) {
+  return METER_INSET + clamp((clamp(db, -48, 0) + 48) / 48, 0, 1) * (100 - METER_INSET * 2);
+}
 function detailFrac() {
   return clamp(state.detector.detail, 0, 100) / 100;
 }
@@ -2952,23 +2962,25 @@ function gainReductionPct(gateV) {
   const db = -20 * Math.log10(Math.max(gateV, .001));
   return clamp(db / 24 * 100, 0, 100);
 }
-// The gate is a standard threshold gate on the original input, like C1 Gate:
-// the arrow on the input meter sets the threshold and attack/hold/release shape
-// the gain reduction. Detection stays independent (Detail/Sensitivity/Retrigger).
-function computeGateEnvFromInput() {
-  if (!state.detector.gate || !realInputBuffer) { realGateEnv = null; realGateBlock = 0; return null; }
+// 1 ms block peaks feed the gate, the input meter and the threshold. They
+// only depend on the input volume, so Detail/attack/hold/release changes reuse
+// this cache instead of rescanning the whole file (important on the 2 min
+// real input).
+function computeInputBlockPeaks() {
+  if (!realInputBuffer) {
+    realInputBlockPeaks = null; realInputBlockPeaksKey = null;
+    realInputPeakEnv = null; realInputPeakBlock = 0;
+    realGateBlock = 0;
+    return null;
+  }
+  const key = String(state.detector.input);
+  if (realInputBlockPeaks && realInputBlockPeaksKey === key) return realInputBlockPeaks;
   const raw = realInputBuffer.getChannelData(0);
   const sr = realInputBuffer.sampleRate;
   const volAmp = dbToAmp(state.detector.input);
-  const thr = dbToAmp(state.detector.gateThreshold);
-  const block = Math.max(1, Math.round(sr * 0.001)); // 1 ms resolution
+  const block = Math.max(1, Math.round(sr * 0.001));
   const n = Math.ceil(raw.length / block);
-  const env = new Float32Array(n);
-  const atk = Math.max(0, state.detector.attack / 1000);
-  const hold = Math.max(0, state.detector.hold / 1000);
-  const rel = Math.max(0, state.detector.release / 1000);
-  const dt = block / sr;
-  let gain = 0, holdLeft = 0;
+  const peaks = new Float32Array(n);
   for (let b = 0; b < n; b++) {
     let peak = 0;
     const start = b * block, finish = Math.min(raw.length, start + block);
@@ -2976,7 +2988,35 @@ function computeGateEnvFromInput() {
       const a = Math.abs(raw[i]) / realInputMax * volAmp;
       if (a > peak) peak = a;
     }
-    const open = peak >= thr;
+    peaks[b] = peak;
+  }
+  realInputBlockPeaks = peaks;
+  realInputBlockPeaksKey = key;
+  realInputPeakBlock = block;
+  return peaks;
+}
+
+// The gate is a standard threshold gate on the original input, like C1 Gate:
+// the arrow on the input meter sets the threshold and attack/hold/release shape
+// the gain reduction. Detection stays independent (Detail/Sensitivity/Retrigger).
+function computeGateEnvFromInput() {
+  if (!state.detector.gate || !realInputBuffer) { realGateEnv = null; realGateBlock = 0; return null; }
+  const peaks = computeInputBlockPeaks();
+  if (!peaks) { realGateEnv = null; realGateBlock = 0; return null; }
+  const sr = realInputBuffer.sampleRate;
+  const thr = dbToAmp(state.detector.gateThreshold);
+  const block = realInputPeakBlock;
+  const n = peaks.length;
+  const env = new Float32Array(n);
+  const atk = Math.max(0, state.detector.attack / 1000);
+  const hold = Math.max(0, state.detector.hold / 1000);
+  const rel = Math.max(0, state.detector.release / 1000);
+  const dt = block / sr;
+  let gain = 0, holdLeft = 0;
+  for (let b = 0; b < n; b++) {
+    // Open one block early: the 1 ms curve then starts at 1 before the
+    // transient, so ATTACK 0 never clips the first samples of the hit.
+    const open = peaks[b] >= thr || (b + 1 < n && peaks[b + 1] >= thr);
     if (open) holdLeft = hold;
     const target = (open || holdLeft > 0) ? 1 : 0;
     if (!open && holdLeft > 0) holdLeft = Math.max(0, holdLeft - dt);
@@ -2993,10 +3033,17 @@ function computeGateEnvFromInput() {
   realGateBlock = block;
   return env;
 }
+function computeInputPeakEnv() {
+  const peaks = computeInputBlockPeaks();
+  if (!peaks) { realInputPeakEnv = null; realInputPeakBlock = 0; return null; }
+  // Shared with the gate cache; the meter clamps each value to 0 dBFS.
+  realInputPeakEnv = peaks;
+  return peaks;
+}
 function setGateThreshold(v) {
   state.detector.gateThreshold = clamp(v, -48, 0);
   const btn = $('#gateThresh');
-  if (btn) btn.style.bottom = (clamp((state.detector.gateThreshold + 48) / 48, 0, 1) * 100).toFixed(2) + '%';
+  if (btn) btn.style.bottom = meterPct(state.detector.gateThreshold).toFixed(2) + '%';
   const lab = $('#gateThreshVal');
   if (lab) lab.textContent = fmtDb(state.detector.gateThreshold);
   scheduleDetect();
@@ -3206,12 +3253,15 @@ function drawInput(now) {
   if (gled) gled.classList.toggle('on', gateOn && gateV > .5);
   const gr = $('#grMeterBar');
   if (gr) gr.style.height = (gateOn ? gainReductionPct(gateV) : 0) + '%';
-  const peak = Math.min(1, envAt(scan) * volAmp);
-  const lvl = Math.round(20 * Math.log10(Math.max(peak, .001)));
+  inputMeterHold = Math.max(Math.min(1, envAt(scan) * volAmp), inputMeterHold * METER_HOLD);
+  const lvl = Math.round(20 * Math.log10(Math.max(inputMeterHold, .001)));
+  const dbTxt = (lvl >= 0 ? '+' : '') + Math.max(-48, lvl);
   const il = $('#inputLevel');
-  if (il) il.textContent = (lvl >= 0 ? '+' : '') + Math.max(-48, lvl) + ' dB';
+  if (il) il.textContent = dbTxt + ' dB';
+  const ip = $('#inputPeakDb');
+  if (ip) ip.textContent = dbTxt;
   const imb = $('#inputMeterBar');
-  if (imb) imb.style.height = clamp((Math.max(-48, lvl) + 48) / 48 * 100, 2, 100) + '%';
+  if (imb) imb.style.height = meterPct(lvl) + '%';
 }
 let inputRAF = null;
 function startInputLoop() {
@@ -3371,7 +3421,7 @@ function ensureAudio() {
   masterGain = audioCtx.createGain();
   masterGain.gain.value = dbToAmp(masterOut);
   masterAnalyser = audioCtx.createAnalyser();
-  masterAnalyser.fftSize = 512;
+  masterAnalyser.fftSize = 2048;
   masterGain.connect(masterAnalyser).connect(audioCtx.destination);
   gateGain = audioCtx.createGain();
   gateGain.gain.value = 1;
@@ -3393,9 +3443,13 @@ function ensureAudio() {
     const level = audioCtx.createGain();
     const pan = audioCtx.createStereoPanner();
     const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
+    analyser.fftSize = 1024;
     cut.connect(tone).connect(level).connect(pan).connect(analyser).connect(wetGain);
-    return { cut, tone, level, pan, analyser, buf: new Uint8Array(analyser.fftSize) };
+    return {
+      cut, tone, level, pan, analyser,
+      fbuf: new Float32Array(analyser.fftSize),
+      buf: new Uint8Array(analyser.fftSize),
+    };
   });
   syncAllSlotAudio();
   startMeters();
@@ -3529,7 +3583,7 @@ function getReversedBuffer(smp) {
   return out;
 }
 
-function scheduleSlot(ctx, i, when) {
+function scheduleSlot(ctx, i, when, velocity = 1) {
   const s = state.slots[i];
   const smp = slotSample(s);
   if (!smp) return null;
@@ -3561,7 +3615,14 @@ function scheduleSlot(ctx, i, when) {
     a *= k; d *= k;
   }
   const envEndSec = clamp((s.adsr.end || (a + d) * 1000) / 1000, a + d, total);
-  const base = clamp(dbToAmp(s.gain), 0, 4);
+  // Sensitivity controls the dynamic range (like Trigger 2): 0% squeezes
+  // soft and hard hits together, 100% spreads them apart. The slot VELOCITY
+  // blends that response with a fixed level.
+  const dynExp = 0.35 + clamp(state.detector.sens, 0, 100) / 100 * 1.65;
+  const dynamics = Math.pow(clamp(velocity, 0, 2), dynExp);
+  const velAmount = clamp((s.velSens ?? 100) / 100, 0, 1);
+  const velGain = clamp(1 - velAmount + velAmount * dynamics, 0, 2.2);
+  const base = clamp(dbToAmp(s.gain), 0, 4) * velGain;
   const peak = base * clamp(s.adsr.p ?? 1, 0, 1);
   const level = base * clamp(s.adsr.s ?? .5, 0, 1);
   const releaseLevel = base * clamp(s.adsr.e ?? 0, 0, 1);
@@ -3591,16 +3652,41 @@ function scheduleSlot(ctx, i, when) {
   return src;
 }
 
-function playSlot(i, when = 0) {
+function playSlot(i, when = 0, velocity = 1) {
   const ctx = ensureAudio();
   if (!ctx) return null;
   syncSlotAudio(i);
-  return scheduleSlot(ctx, i, when);
+  return scheduleSlot(ctx, i, when, velocity);
 }
 
+// Real peak from the analyser. Float data keeps the meter honest; the
+// byte fallback is only for old browsers. A short hold makes 1 ms transients
+// visible between 25 fps meter frames.
+function analyserPeak(analyser, fbuf, buf) {
+  if (analyser.getFloatTimeDomainData && fbuf) {
+    analyser.getFloatTimeDomainData(fbuf);
+    let peak = 0;
+    for (let i = 0; i < fbuf.length; i++) {
+      const x = Math.abs(fbuf[i]);
+      if (x > peak) peak = x;
+    }
+    return peak;
+  }
+  analyser.getByteTimeDomainData(buf);
+  let peak = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const x = Math.abs((buf[i] - 128) / 128);
+    if (x > peak) peak = x;
+  }
+  return peak;
+}
+const METER_HOLD = 0.9; // per 40 ms frame (~24 dB/s fall)
 function startMeters() {
   if (meterRAF) return;
-  const mb = new Uint8Array(masterAnalyser.fftSize);
+  const mb = new Float32Array(masterAnalyser.fftSize);
+  const mb8 = new Uint8Array(masterAnalyser.fftSize);
+  const holds = new Float32Array(8);
+  let outHold = 0;
   let lastMeter = 0, lastVu = -1, lastMaster = -1;
   const loop = now => {
     if (audioCtx && now - lastMeter > 40) {
@@ -3610,22 +3696,19 @@ function startMeters() {
         state.slots.forEach((s, i) => {
           const node = slotNodes[i];
           if (!node) return;
-          node.analyser.getByteTimeDomainData(node.buf);
-          let sum = 0;
-          for (const v of node.buf) { const x = (v - 128) / 128; sum += x * x; }
-          const rms = Math.sqrt(sum / node.buf.length);
+          const peak = analyserPeak(node.analyser, node.fbuf, node.buf);
           const active = !s.mute && (!anySolo || s.solo);
-          const h = Math.round(active ? clamp(rms * 380, 3, 100) : 3);
+          const held = active ? Math.max(peak, holds[i] * METER_HOLD) : 0;
+          holds[i] = held;
+          const h = Math.round(active ? clamp(held * 100, 3, 100) : 3);
           if (h === slotMeterVals[i]) return;
           slotMeterVals[i] = h;
           const mt = $(`#meter-${i}`); if (mt) mt.style.height = h + '%';
         });
       }
-      masterAnalyser.getByteTimeDomainData(mb);
-      let sum = 0;
-      for (const v of mb) { const x = (v - 128) / 128; sum += x * x; }
-      const rms = Math.sqrt(sum / mb.length);
-      const vu = Math.round(clamp(rms * 420, 0, 100));
+      const peak = analyserPeak(masterAnalyser, mb, mb8);
+      outHold = Math.max(peak, outHold * METER_HOLD);
+      const vu = Math.round(clamp(outHold * 100, 0, 100));
       if (vu !== lastVu) {
         lastVu = vu;
         const ov = $('#outVuBar'); if (ov) ov.style.height = vu + '%';
@@ -3640,19 +3723,36 @@ function startMeters() {
   meterRAF = requestAnimationFrame(loop);
 }
 
+const INPUT_FILE = 'samples/SN_TOP_1COMMIT_17-140.wav';
+const SAMPLE_FILE = 'samples/SNARE.cm.wav';
+
 async function loadRealAudio() {
   try {
-    const resp = await fetch('samples/SNARE.cm.wav');
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const ab = await resp.arrayBuffer();
+    // The trigger input is the real 0:17–2:20 excerpt (mono, normalized to
+    // −0.5 dBFS). SNARE.cm stays as the demo one-shot.
+    const [inputResp, sampleResp] = await Promise.all([
+      fetch(INPUT_FILE),
+      fetch(SAMPLE_FILE),
+    ]);
+    if (!inputResp.ok) throw new Error('HTTP ' + inputResp.status + ' · ' + INPUT_FILE);
+    if (!sampleResp.ok) throw new Error('HTTP ' + sampleResp.status + ' · ' + SAMPLE_FILE);
     const ctx = ensureAudio();
     if (!ctx) return;
-    const full = await ctx.decodeAudioData(ab);
+    const [full, snareFull] = await Promise.all([
+      ctx.decodeAudioData(await inputResp.arrayBuffer()),
+      ctx.decodeAudioData(await sampleResp.arrayBuffer()),
+    ]);
     realInputBuffer = full;
     realInputDuration = full.duration;
-    const waveLabel = $('#inputWaveLabel'); if (waveLabel) waveLabel.textContent = 'SNARE.cm';
-    // 1200 peak buckets for the input waveform
-    const n = 1200;
+    realInputBlockPeaks = null;
+    realInputBlockPeaksKey = null;
+    const waveLabel = $('#inputWaveLabel');
+    if (waveLabel) {
+      waveLabel.textContent = 'SN TOP 1';
+      waveLabel.title = 'SN TOP 1COMMIT.18_01 · 0:17–2:20 · real input';
+    }
+    // 5 ms peak buckets: a 2 s window gets ~400 buckets on a long input.
+    const n = Math.max(1200, Math.ceil(full.duration * 200));
     const data = full.getChannelData(0);
     const step = Math.max(1, Math.floor(data.length / n));
     realInputPeaks = new Float32Array(n);
@@ -3666,13 +3766,13 @@ async function loadRealAudio() {
     }
     for (let i = 0; i < n; i++) realInputPeaks[i] /= maxPeak;
     realInputMax = maxPeak || 1;
-    // first hit becomes the slot sample
-    const sr = full.sampleRate;
+    // SNARE.cm's first hit stays as the demo one-shot.
+    const sr = snareFull.sampleRate;
     const start = Math.floor(0.14 * sr);
     const end = Math.floor(0.65 * sr);
-    const slice = ctx.createBuffer(full.numberOfChannels, end - start, sr);
-    for (let ch = 0; ch < full.numberOfChannels; ch++) {
-      slice.getChannelData(ch).set(full.getChannelData(ch).subarray(start, end));
+    const slice = ctx.createBuffer(snareFull.numberOfChannels, end - start, sr);
+    for (let ch = 0; ch < snareFull.numberOfChannels; ch++) {
+      slice.getChannelData(ch).set(snareFull.getChannelData(ch).subarray(start, end));
     }
     realSample.audioBuffer = slice;
     realSample.dur = slice.duration * 1000;
@@ -3683,7 +3783,7 @@ async function loadRealAudio() {
     if (cur && cur.isReal && $('.inspector').classList.contains('show')) updateInspector();
     drawUniverse();
   } catch (e) {
-    console.warn('SNARE.cm load failed:', e);
+    console.warn('real input load failed:', e);
   }
 }
 
@@ -3692,10 +3792,10 @@ function detectInputHits() {
   const raw = realInputBuffer.getChannelData(0);
   const sr = realInputBuffer.sampleRate;
   computeGateEnvFromInput();
+  computeInputPeakEnv();
   const data = filterDetection(raw, sr);
-  const sensGain = Math.pow(2, (state.detector.sens - 50) / 25);
   const volAmp = dbToAmp(state.detector.input);
-  const normGain = volAmp * sensGain / (realInputMax || 1);
+  const normGain = volAmp / (realInputMax || 1);
   const detailThr = detailThreshold();
   const supp = state.detector.supp / 100;
   const retrig = Math.round(state.detector.retrig * 0.001 * sr);
@@ -3704,6 +3804,7 @@ function detectInputHits() {
   const slowCoef = 1 - Math.exp(-1 / (0.05 * sr));
   const win = Math.round(0.005 * sr);
   let fast = 0, slow = 0, supTh = 0, hold = 0, capturing = false, peak = 0, cap = 0, armed = true;
+  let capStart = 0, peakAt = 0;
   const hits = [];
   const gateOn = state.detector.gate && realGateEnv;
   for (let i = 0; i < data.length; i++) {
@@ -3713,14 +3814,17 @@ function detectInputHits() {
     slow += (x - slow) * slowCoef;
     supTh *= Math.exp(-1 / (0.05 * sr));
     const thr = Math.max(detailThr, supTh);
-    if (armed && fast > thr && fast > slow * k) {
-      capturing = true; peak = 0; cap = 0;
+    // Start once per transient: without !capturing the peak resets every
+    // sample while the transient is above the threshold, so the captured
+    // velocity collapses to the level at the end of the attack.
+    if (!capturing && armed && fast > thr && fast > slow * k) {
+      capturing = true; peak = 0; cap = 0; capStart = i; peakAt = i;
     }
     if (capturing) {
-      peak = Math.max(peak, fast);
+      if (fast > peak) { peak = fast; peakAt = i; }
       cap++;
       if (cap >= win) {
-        hits.push({ time: Math.max(0, i / sr - 0.005), peak });
+        hits.push({ time: Math.max(0, capStart / sr), peak, peakTime: peakAt / sr });
         capturing = false;
         armed = false;
         supTh = peak * supp;
@@ -3751,7 +3855,7 @@ function drawRealInput(now) {
     ? clamp(audioCtx.currentTime - inputStartCtxTime, 0, realInputDuration)
     : 0;
   // While playing, the 2 s window follows the playhead; at rest it shows the
-  // first 2 s of the sample (six transients on SNARE.cm).
+  // first 2 s of the input when stopped.
   const winStart = inputPlaying
     ? clamp(playT - winDur * .5, 0, Math.max(0, realInputDuration - winDur))
     : 0;
@@ -3808,8 +3912,9 @@ function drawRealInput(now) {
   }
   // Detected hits: orange line reaches the transient peak, not the top of the pane.
   for (const h of realHits) {
-    if (h.time < winStart || h.time > winStart + winDur) continue;
-    const x = xAt(h.time);
+    const ht = h.peakTime ?? h.time;
+    if (ht < winStart || ht > winStart + winDur) continue;
+    const x = xAt(ht);
     const peak = Math.max(.04, peakAt(x));
     const top = mid - peak * waveAmp;
     const bottom = mid + peak * waveAmp * .65;
@@ -3838,16 +3943,32 @@ function drawRealInput(now) {
     const led = $('#hitLed');
     const near = realHits.some(h => Math.abs(h.time - playT) < 0.006);
     if (led) led.classList.toggle('on', near);
-    const idx = clamp(Math.floor(playT / realInputDuration * realInputPeaks.length), 0, realInputPeaks.length - 1);
-    const peak = Math.min(1, realInputPeaks[idx] * volAmp);
-    const db = 20 * Math.log10(Math.max(peak, .001));
+    let peak = 0;
+    if (realInputPeakEnv) {
+      const end = clamp(Math.floor(playT / realInputDuration * realInputPeakEnv.length), 0, realInputPeakEnv.length - 1);
+      const start = Math.max(0, end - Math.max(1, Math.round(0.06 * realInputBuffer.sampleRate / realInputPeakBlock)));
+      for (let b = start; b <= end; b++) peak = Math.max(peak, Math.min(1, realInputPeakEnv[b]));
+    } else {
+      const idx = clamp(Math.floor(playT / realInputDuration * realInputPeaks.length), 0, realInputPeaks.length - 1);
+      peak = Math.min(1, realInputPeaks[idx] * volAmp);
+    }
+    inputMeterHold = Math.max(peak, inputMeterHold * METER_HOLD);
+    const db = 20 * Math.log10(Math.max(inputMeterHold, .001));
+    const dbTxt = (db >= 0 ? '+' : '') + db.toFixed(0);
     const il = $('#inputLevel');
-    if (il) il.textContent = (db >= 0 ? '+' : '') + db.toFixed(0) + ' dB';
-    if (imb) imb.style.height = clamp((db + 48) / 48 * 100, 2, 100) + '%';
+    if (il) il.textContent = dbTxt + ' dB';
+    const ip = $('#inputPeakDb');
+    if (ip) ip.textContent = dbTxt;
+    if (imb) imb.style.height = meterPct(db) + '%';
   } else {
+    inputMeterHold = 0;
     if (imb) imb.style.height = '2%';
     if (gled) gled.classList.remove('on');
     const gr = $('#grMeterBar'); if (gr) gr.style.height = '0%';
+    const il = $('#inputLevel');
+    if (il) il.textContent = '−48 dB';
+    const ip = $('#inputPeakDb');
+    if (ip) ip.textContent = '—';
   }
 }
 
@@ -3863,6 +3984,7 @@ function stopInput() {
     gateGain.gain.setValueAtTime(1, audioCtx.currentTime);
   }
   const btn = $('#inputPlay'); if (btn) btn.textContent = '▶ INPUT';
+  const hv = $('#hitVel'); if (hv) hv.textContent = '—';
   const led = $('#hitLed'); if (led) led.classList.remove('on');
   const gled = $('#gateLed'); if (gled) gled.classList.remove('on');
   const gr = $('#grMeterBar'); if (gr) gr.style.height = '0%';
@@ -3873,6 +3995,7 @@ function startLiveTriggers() {
   stopLiveTriggers();
   liveLastHitTime = 0;
   liveTriggerCount = 0;
+  liveLastVelocity = 0;
   liveHitTimer = setInterval(() => {
     if (!inputPlaying || !audioCtx) return;
     const playT = audioCtx.currentTime - inputStartCtxTime;
@@ -3887,7 +4010,11 @@ function startLiveTriggers() {
       // dump a burst of samples; only schedule hits that are still ahead.
       if (abs < audioCtx.currentTime - 0.03) continue;
       const when = Math.max(0, abs - audioCtx.currentTime - 0.02);
-      state.slots.forEach((_, i) => playSlot(i, when));
+      const velocity = clamp(h.peak, 0, 2);
+      liveLastVelocity = velocity;
+      const hv = $('#hitVel');
+      if (hv) hv.textContent = Math.round(velocity * 100) + '%';
+      state.slots.forEach((_, i) => playSlot(i, when, velocity));
       liveTriggerCount++;
     }
   }, 20);
@@ -3895,10 +4022,11 @@ function startLiveTriggers() {
 function stopLiveTriggers() {
   if (liveHitTimer) clearInterval(liveHitTimer);
   liveHitTimer = null;
+  liveLastVelocity = 0;
 }
 function playInput() {
   if (inputPlaying) { stopInput(); return; }
-  if (!realInputBuffer) { toast('SNARE.cm still loading…'); return; }
+  if (!realInputBuffer) { toast('Real input still loading…'); return; }
   const ctx = ensureAudio();
   if (!ctx) { toast('Audio not available'); return; }
   stopInput();
@@ -3928,12 +4056,17 @@ window.__TU = state;
 window.__audio = {
   get hits() { return realHits; },
   get inputDuration() { return realInputDuration; },
+  get inputBuffer() { return realInputBuffer; },
+  get inputMax() { return realInputMax; },
+  get inputPeaks() { return realInputPeaks; },
+  get peakEnv() { return realInputPeakEnv; },
+  get peakBlock() { return realInputPeakBlock; },
   get sample() { return realSample; },
   get context() { return audioCtx; },
   get gateEnv() { return realGateEnv; },
   get gateBlock() { return realGateBlock; },
   get inputStart() { return inputStartCtxTime; },
-  get live() { return { lastHit: liveLastHitTime, triggers: liveTriggerCount, playing: inputPlaying }; },
+  get live() { return { lastHit: liveLastHitTime, triggers: liveTriggerCount, playing: inputPlaying, velocity: liveLastVelocity }; },
   get nodes() { return { gateGain, inputGain, dryGain, wetGain }; },
   get gains() { return { dry: dryGain && dryGain.gain.value, wet: wetGain && wetGain.gain.value, gate: gateGain && gateGain.gain.value, input: inputGain && inputGain.gain.value }; },
   detect: detectInputHits,

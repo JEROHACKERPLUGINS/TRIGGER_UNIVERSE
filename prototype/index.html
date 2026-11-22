@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=151">
+<link rel="stylesheet" href="style.css?v=165">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -108,7 +108,7 @@
         </section>
 
         <section class="det-col input-col">
-          <div class="dc-head">INPUT</div>
+          <div class="dc-head input-head"><span>INPUT</span><b class="det-peak" id="inputPeakDb" title="Peak input level (pre-gate)">—</b></div>
           <div class="det-meter">
             <div class="dm-scale"><span>-0</span><span>-3</span><span>-6</span><span>-12</span><span>-24</span><span>-48</span></div>
             <div class="dm-track-wrap">
@@ -131,7 +131,7 @@
         </div>
 
         <section class="det-col detect-col">
-          <div class="dc-head">DETECT</div>
+          <div class="dc-head detect-head"><span>DETECT</span><span class="det-vel" title="Velocity of the last hit">VEL <b id="hitVel">—</b></span></div>
           <div class="dc-knobs" id="detKnobsDetect"></div>
         </section>
       </div>
@@ -183,7 +183,7 @@
               <div class="tone-grid">
                 <label>TONE <input type="range" id="tone" min="-100" max="100" step="1" value="0"><b id="toneVal">0</b></label>
                 <label>CUT <input type="range" id="cut" min="0" max="100" step="1" value="50"><b id="cutVal">50%</b></label>
-                <label>VEL SENS <input type="range" id="velSens" min="0" max="100" step="1" value="50"><b id="velSensVal">50%</b></label>
+                <label title="Velocity response: 0% = fixed level, 100% = full input dynamics">VELOCITY <input type="range" id="velSens" min="0" max="100" step="1" value="100"><b id="velSensVal">100%</b></label>
                 <label>GAIN <input type="range" id="gain" min="-24" max="24" step="0.1" value="0"><b id="gainVal">+0.0 dB</b></label>
               </div>
               <div class="playback-row">
@@ -307,6 +307,6 @@
 <div class="toast" id="toast"></div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=151"></script>
+<script src="app.js?v=165"></script>
 </body>
 </html>
