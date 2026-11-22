@@ -3915,7 +3915,10 @@ function drawRealInput(now) {
     const ht = h.peakTime ?? h.time;
     if (ht < winStart || ht > winStart + winDur) continue;
     const x = xAt(ht);
-    const peak = Math.max(.04, peakAt(x));
+    // The marker height is the hit velocity, not the level of the bucket at
+    // peakTime. That keeps the orange line honest even if the transient peak
+    // sits between two waveform buckets.
+    const peak = Math.max(.04, Math.min(1, h.peak));
     const top = mid - peak * waveAmp;
     const bottom = mid + peak * waveAmp * .65;
     ctx.strokeStyle = 'rgba(255,150,90,.55)';
