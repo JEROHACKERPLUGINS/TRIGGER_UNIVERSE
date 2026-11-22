@@ -603,6 +603,7 @@ AAX **no** se necesita.
 28. **Doble click en faders**: el click sobre un valor numérico ya no se propaga al contenedor, así el fader no se re-renderiza entre los dos clicks y la edición in-place funciona en los 8 niveles. Se auditaron los valores numéricos (detector, MIX, OUTPUT, faders, tone, waveform, A/D/R y offset) con la secuencia de click completa.
 29. **Editor numérico neutro**: se quitó el halo mint, el subrayado punteado y el cambio de color al hover. El valor editable se indica solo con un recuadro gris de 1 px y fondo apenas más claro; la selección de texto también usa gris. El estado inválido mantiene un borde rojo tenue.
 30. **Envelope A/D/R sin hold**: los tres puntos son libres en X e Y. Attack ajusta tiempo y pico; Decay ajusta tiempo y nivel; Release es el punto final, libre en tiempo y nivel, y por defecto cae al final del sample. No hay meseta de sustain: el release sale directamente del decay. El readout R es la duración desde el decay hasta el punto de release; editarlo mueve ese punto. Mover Decay no mueve el release. Reset A 0 / D 120, release al final del sample, pico 100%, nivel de decay 50% y nivel final 0%. El motor sigue soportando ADSR.
+31. **Waveform en el ADR**: el gráfico del envelope superpone la waveform del sample recortado (y reversible) como silueta tenue detrás de la línea. El release point queda por defecto al final de cada sample, de modo que R se recalcula por sample; su nivel final es libre.
 
 ---
 

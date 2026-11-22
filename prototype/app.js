@@ -2340,6 +2340,29 @@ function renderADSR() {
   const area = `${line} L ${X(endX).toFixed(1)} ${y1} L ${x0} ${y1} Z`;
   const c = '#2DE2C5';
 
+  // Ghost waveform of the trimmed sample behind the envelope.
+  let waveEl = '';
+  const smp = slotSample(slot);
+  if (smp) {
+    let arr = sampleWave(smp);
+    if (slot.reverse) arr = arr.slice().reverse();
+    const i0 = clamp(Math.floor(slot.start * (arr.length - 1)), 0, arr.length - 2);
+    const i1 = clamp(Math.ceil(slot.end * (arr.length - 1)), i0 + 1, arr.length - 1);
+    const count = i1 - i0 + 1;
+    const mid = (y0 + y1) / 2;
+    const amp = (y1 - y0) * .46;
+    const top = [], bot = [];
+    for (let i = 0; i < count; i++) {
+      const v = arr[i0 + i] * amp;
+      const px = x0 + (i / (count - 1)) * (x1 - x0);
+      top.push(`${px.toFixed(1)} ${(mid - v).toFixed(1)}`);
+      bot.push(`${px.toFixed(1)} ${(mid + v).toFixed(1)}`);
+    }
+    const wavePath = `M ${top.join(' L ')} L ${bot.reverse().join(' L ')} Z`;
+    const waveColor = CAT[smp.category].color;
+    waveEl = `<path d="${wavePath}" fill="${waveColor}" fill-opacity=".10" stroke="${waveColor}" stroke-opacity=".30" stroke-width=".7"/>`;
+  }
+
   $('#adsr').innerHTML = `
     <defs>
       <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
@@ -2350,6 +2373,7 @@ function renderADSR() {
     <line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y1}" stroke="rgba(255,255,255,.08)"/>
     <line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="rgba(255,255,255,.08)"/>
     <path d="${area}" fill="url(#ag)"/>
+    ${waveEl}
     <path d="${line}" fill="none" stroke="${c}" stroke-width="1.8" stroke-linejoin="round"/>
     <circle data-h="attack" cx="${X(a)}" cy="${Y(p)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:move"/>
     <circle data-h="decay" cx="${X(decayX)}" cy="${Y(s)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:move"/>

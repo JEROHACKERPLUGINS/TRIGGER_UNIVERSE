@@ -109,11 +109,13 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - Los **tres puntos son libres en X e Y**: Attack ajusta tiempo y pico; Decay ajusta tiempo y nivel; Release es el punto final y se mueve en tiempo y nivel.
 - No hay meseta de hold: el release sale directamente del decay. Por defecto el punto de release cae al final del sample.
 - El readout **R** es la duración desde el decay hasta el punto de release; editarlo mueve ese punto. El eje del gráfico usa la duración del sample.
+- La **waveform del sample** se superpone como silueta tenue detrás del envelope, respetando start/end y reverse.
 - El panel se llama **ENVELOPE · ADR** y el reset deja A 0 / D 120, release al final del sample, pico 100%, nivel de decay 50% y nivel final 0%.
+- El release se acomoda a cada sample (cae al final); R = duración del sample − A − D. Si el sample es más largo, R es mayor.
 
 ## Actualización 21/11 — edición numérica por doble click
 
-- Todos los parámetros con valor numérico son editables con **doble click**: knobs del detector, MIX, OUTPUT master, niveles de los 8 faders, TONE/CUT/VEL SENS/GAIN, START/END/FADE IN/FADE OUT, A/D/S/R y OFFSET.
+- Todos los parámetros con valor numérico son editables con **doble click**: knobs del detector, MIX, OUTPUT master, niveles de los 8 faders, TONE/CUT/VEL SENS/GAIN, START/END/FADE IN/FADE OUT, A/D/R y OFFSET.
 - El número existente se vuelve **editable en su lugar** (contenteditable), conservando posición, tipografía y unidad; no abre ninguna ventana flotante. **Enter** confirma, **Esc** cancela; el blur confirma y abrir otro valor confirma el anterior.
 - Acepta coma o punto decimal y sufijos (`1.2k` → 1200 Hz, `0.25s` → 250 ms). Clampa al rango del parámetro y redondea al step.
 - Los valores muestran cursor de texto; al hover y en edición aparece un **recuadro gris neutro**, sin glow ni cambio de color (rojo tenue solo si el valor es inválido). La selección de texto dentro del editor también es gris.
