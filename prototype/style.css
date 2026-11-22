@@ -340,8 +340,6 @@ body{
 .tone-grid input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:8px;height:8px;border-radius:50%;
   background:#fff;border:2px solid var(--panel-solid);box-shadow:0 0 0 1px rgba(255,255,255,.3)}
 .tone-grid b{font-family:var(--mono);font-size:12px;color:#D8E0EE;font-weight:500}
-.playback-row{display:flex;align-items:center;gap:6px;margin-top:12px}
-.pb-label{font-size:12px;letter-spacing:.1em;color:var(--muted-2)}
 .drag-note{margin-top:auto;padding-top:7px;font-size:12px;color:var(--muted-2);letter-spacing:.03em;line-height:1.4}
 .phase-buttons{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px}
 .seg{display:flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
@@ -833,8 +831,6 @@ body{
 .trigger-view .panel[data-panel="tone"] .tone-grid{gap:5px 9px;margin-top:2px}
 .trigger-view .panel[data-panel="tone"] .tone-grid label{font-size:9.5px;gap:2px}
 .trigger-view .panel[data-panel="tone"] .tone-grid b{font-size:9.5px}
-.trigger-view .panel[data-panel="tone"] .playback-row{margin-top:5px;gap:5px}
-.trigger-view .panel[data-panel="tone"] .pb-label{font-size:9px}
 .trigger-view .panel[data-panel="tone"] .seg button{font-size:9px;padding:3px 5px}
 
 .trigger-view .panel[data-panel="slot"] .sp-phase-head{font-size:9.5px}
@@ -1098,7 +1094,6 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 .trigger-view .wave-readout b,.trigger-view .env-readout b{font-size:10.5px}
 .trigger-view .tone-grid label{font-size:10.5px}
 .trigger-view .tone-grid b{font-size:10.5px}
-.trigger-view .pb-label{font-size:10px}
 .trigger-view .seg button{font-size:10px}
 .trigger-view .panel[data-panel="slot"] .sp-phase-head{font-size:10.5px}
 .trigger-view .panel[data-panel="slot"] .sp-phase-head select{font-size:10px}
@@ -1189,7 +1184,6 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 .trigger-view .sample-tools{margin-top:3px}
 .trigger-view .panel[data-panel="tone"] .tone-grid{grid-template-columns:repeat(4,minmax(0,1fr));
   gap:8px 14px;margin-top:2px}
-.trigger-view .panel[data-panel="tone"] .playback-row{margin-top:6px;gap:6px}
 
 /* Auto Phase strip above the faders. */
 .auto-phase-bar{display:flex;align-items:center;gap:10px;flex:none;width:100%;min-height:40px;
@@ -1249,7 +1243,6 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 /* Tone pane fits without scrolling. */
 .trigger-view .panel[data-panel="tone"]{padding-bottom:3px}
 .trigger-view .panel[data-panel="tone"] .tone-grid{margin-top:0}
-.trigger-view .panel[data-panel="tone"] .playback-row{margin-top:4px}
 
 /* Keep the TONE strip legible at short window heights. */
 .trigger-view .inspector-body{grid-template-rows:minmax(0,2.45fr) minmax(88px,1fr)}
@@ -1321,10 +1314,6 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 .tone-strip .tone-grid label{font-size:8.5px;gap:1px;letter-spacing:.06em;min-width:0}
 .tone-strip .tone-grid b{font-size:9px}
 .tone-strip .tone-grid input{width:100%;height:3px}
-.tone-strip .playback-row{display:flex;align-items:center;gap:5px;flex:none;margin:0}
-.tone-strip .pb-label{font-size:8px}
-.tone-strip .seg button{font-size:8.5px;padding:2px 5px}
-.tone-strip .chip{font-size:8.5px;padding:3px 6px}
 
 /* Narrow sample column: 2-column readouts so they remain legible. */
 @media (max-width:1250px){
@@ -1587,9 +1576,6 @@ html.cat-shapes .sim-dots i.cat-mark.active{width:11px;height:11px}
 .tone-strip .tone-grid{gap:1px 10px}
 .tone-strip .tone-grid label{font-size:8px}
 .tone-strip .tone-grid b{font-size:8.5px}
-.tone-strip .pb-label{font-size:7.5px}
-.tone-strip .seg button{font-size:8px;padding:2px 4px}
-.tone-strip .chip{font-size:8px;padding:2px 5px}
 
 /* Faders + upright Auto Phase panel in one centered row. The dock below is
    shifted by half the phase panel width so its slots stay under the faders. */

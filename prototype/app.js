@@ -2379,9 +2379,7 @@ function updateInspector() {
   $('#velSensVal').textContent = slot.velSens + '%';
   $('#gain').value = slot.gain;
   $('#gainVal').textContent = fmtDb(slot.gain);
-  $('#loopBtn').classList.toggle('on', slot.loop);
   $('#reverseBtn').classList.toggle('on', !!slot.reverse);
-  $$('#playbackSeg button').forEach(b => b.classList.toggle('active', b.dataset.pb === slot.playback));
 
   renderSampleEditor();
 }
@@ -2756,17 +2754,6 @@ bindToneNumeric('#cut', 'cut', v => v + '%', { min: 0, max: 100, step: 1, unit: 
 bindToneNumeric('#velSens', 'velSens', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0, default: 100 });
 bindToneNumeric('#gain', 'gain', v => fmtDb(v), { min: -24, max: 24, step: .1, unit: 'dB', decimals: 1, default: 0 });
 
-$('#playbackSeg').addEventListener('click', e => {
-  const b = e.target.closest('button[data-pb]');
-  if (!b) return;
-  currentSlot().playback = b.dataset.pb;
-  $$('#playbackSeg button').forEach(x => x.classList.toggle('active', x === b));
-});
-$('#loopBtn').onclick = () => {
-  const slot = currentSlot();
-  slot.loop = !slot.loop;
-  $('#loopBtn').classList.toggle('on', slot.loop);
-};
 
 // ---------- inspector tabs ----------
 $$('.tab').forEach(t => t.addEventListener('click', () => {

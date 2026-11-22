@@ -82,7 +82,7 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (
 - Zoom con rueda anclado al cursor; pan con click derecho o Ctrl+click; click izquierdo en vacío solo cierra paneles; hover/snap dentro de un aura de 20 px con el nombre en la barra inferior.
 - FILE SEARCH con árbol, búsqueda, preview, audition al click en cada fila y ALT + drag a los 8 slots del dock. El dock queda siempre visible. El drag convierte el sample en una partícula del tamaño de su punto de HOME, con glow/estela, nombre sutil, magnetismo a slots y burst al soltar.
 - Editor integrado en la página TRIGGER con una sola waveform **SAMPLE + ENVELOPE** en un sample view angosto y **TONE** en una tira full-width; Auto Phase sobre los faders.
-- Waveform real, start/end, fades, reverse, A/D/R, tone/cut, tune, pan, loop.
+- Waveform real, start/end, fades, reverse, A/D/R, tone/cut, tune, pan.
 - TRIGGER como página full-screen sin header de stats, con INPUT DETECTOR estilo Slate en columnas, sample view con una sola waveform SAMPLE + ENVELOPE, tira TONE full-width, banco de 8 faders con Auto Phase y dock de 8 slots cuadrados.
 - Settings con AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS, AUDIO/MIDI.
 - SIMILARITY funcional: 33 vecinos por features, flechas y teclas ← →, seguimiento suave de HOME y línea animada.
@@ -96,7 +96,7 @@ Limitaciones del prototipo:
 - Similitud basada en features sintéticas, no en análisis tímbrico real.
 - 90° / 260° **no** se aplican al audio; solo 180°.
 - Offsets negativos aplicados dentro del lookahead (clampeados al próximo bloque si caen en el pasado).
-- Velocity aplicada en los disparos del INPUT (pico real); el preview usa velocity 1. ONE SHOT / GATE y LOOP implementados; Reverse usa envolvente completa. La escala VISUAL se limita a 90/100 para no solapar el layout. Folder picker y Audio/MIDI son demos.
+- Velocity aplicada en los disparos del INPUT (pico real); el preview usa velocity 1. ONE SHOT / GATE y LOOP se retiraron de TONE; los disparos son one-shot sin loop. Reverse usa envolvente completa. La escala VISUAL se limita a 90/100 para no solapar el layout. Folder picker y Audio/MIDI son demos.
 
 ---
 

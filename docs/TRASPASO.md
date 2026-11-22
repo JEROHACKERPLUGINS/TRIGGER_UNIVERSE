@@ -255,8 +255,8 @@ Paneles (visibles a la vez en la página TRIGGER):
    - Audition se hace clickeando un Trigger Slot lleno o una fila de FILE SEARCH.
    - Drag desde la waveform a otro slot.
 2. **TONE** (todo el ancho)
-   - TONE (−100…+100), CUT (0–100%), VEL SENS, GAIN.
-   - PLAYBACK: ONE SHOT / GATE; LOOP.
+   - TONE (−100…+100), CUT (0–100%), VELOCITY, GAIN.
+   - Sin ONE SHOT / GATE ni LOOP: el disparo es one-shot sin loop.
 3. **AUTO PHASE** (no es panel del editor)
    - Tira horizontal arriba del banco de faders, atada al slot seleccionado:
      - REF: INPUT / SLOT 1.
@@ -348,7 +348,7 @@ Paneles (visibles a la vez en la página TRIGGER):
 - **Velocity:** los disparos del INPUT usan el pico real del transiente; el preview de hover/audition usa velocity 1.
 - **ALT + drag fuera de un slot** muestra el toast de export a Finder; el drag real al Finder queda para el plugin.
 - **Similitud**: usa features sintéticas (categoría, duración, brightness, druminess), no análisis tímbrico del audio. La línea y el paneo suave son efectos de navegación.
-- **ONE SHOT / GATE** sí se distinguen: GATE sigue la envolvente del gate del INPUT en los disparos en vivo; el audition manual reproduce el sample completo. **LOOP** repite el tramo hasta 2 s y **Reverse** reabre la envolvente para que el transiente invertido sea audible (y restaura la forward al volver).
+- **ONE SHOT / GATE y LOOP** se retiraron de la tira TONE; el disparo es **one-shot sin loop**. **Reverse** reabre la envolvente para que el transiente invertido sea audible y restaura la forward al volver.
 - El motor C++ no se puede compilar como plugin (faltan SDKs); los headers DSP sí se compilan y testean.
 
 ---
@@ -478,7 +478,7 @@ AAX **no** se necesita.
 - 90°/260° sin DSP.
 - Offsets negativos aplicados dentro del lookahead y clampeados al próximo bloque si caen en el pasado.
 - Velocity aplicada en los disparos del INPUT (pico real); el preview usa velocity 1.
-- ONE SHOT / GATE y LOOP implementados; Reverse usa envolvente completa.
+- ONE SHOT / GATE y LOOP retirados de TONE; Reverse usa envolvente completa.
 - La escala de interfaz VISUAL se limita a 90/100: los valores >100 hacían que el layout fijo de TRIGGER se solapara con el dock.
 - Folder picker / Audio-MIDI son demos.
 - Datos sintéticos: 1000 samples; el árbol no refleja una carpeta real.
@@ -636,6 +636,8 @@ AAX **no** se necesita.
 47. **Fix drift de la waveform**: los 24.600 buckets de picos se calculaban con un `step = floor(data.length / n)`, que dejaba 0,28 s sin cubrir y acumulaba un corrimiento de ~0,14 s a los 60 s del track. Los marcadores usaban el tiempo real y la waveform el tiempo del bucket, así que a medida que avanzaba el input se separaban. Ahora cada bucket usa límites fraccionales uniformes (`i * data.length / n`) y el eje coincide con el tiempo real. Verificado a 3, 10, 30, 60, 90 y 110 s: marcadores dentro de ±3 px del pico post-gate.
 
 48. **Gate toggle sin click**: al prender/apagar GATE con el input seco audible, el cambio brusco de `gateGain` podía percibirse como un segundo golpe/click. `rescheduleGate` ahora usa `cancelAndHoldAtTime` + un glide de 8 ms al valor actual de la envolvente antes de retomar la curva. Verificado: una sola fuente de INPUT y una sola muestra por hit al togglear; sin NaN en la automatización.
+
+49. **TONE sin PLAYBACK/LOOP**: se quitaron de la tira TONE los botones **ONE SHOT / GATE** y **LOOP**, junto con sus handlers y CSS. TONE queda con TONE/CUT/VELOCITY/GAIN; el scheduler mantiene el path one-shot sin loop. La página TRIGGER sigue sin overflow a 900×1200, 1076×717, 1280×800 y 1920×1080.
 
 ---
 

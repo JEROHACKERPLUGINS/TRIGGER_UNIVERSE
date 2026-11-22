@@ -138,6 +138,8 @@ El detector ahora captura el **pico real** del transiente y su `peakTime`; antes
 
 ### Auditoría funcional 22/11
 
+**ONE SHOT / GATE y LOOP se retiraron de la tira TONE; los disparos son one-shot sin loop.**
+
 | Prueba | Resultado |
 | --- | --- |
 | Detail 100 con Input +24 dB | **0 hits** (detección normalizada a 0 dBFS) |
@@ -145,8 +147,6 @@ El detector ahora captura el **pico real** del transiente y su `peakTime`; antes
 | Detail 14 / 46 / 60 / 80 | **139 / 56 / 6 / 0** hits |
 | Velocity a Input 0 / −12 / +12 dB | **100% / 25% / 200%** (clamp de velocity) |
 | Reverse SNARE.cm | forward 0.886 · reverse 0.923 · forward 0.886 |
-| Loop off vs on @800 ms | 0 vs energía audible (loop 2 s) |
-| GATE playback con gate cerrado | silencio (one-shot 0.886) |
 | GATE ON/OFF con input seco | glide de 8 ms; 1 fuente de INPUT y 1 muestra por hit (sin duplicados) |
 | Gate ATTACK 0 | envolvente = 1 desde el bloque anterior al pico |
 | Offset −5 ms / +50 ms | aplicado dentro del lookahead / clamp al próximo bloque |

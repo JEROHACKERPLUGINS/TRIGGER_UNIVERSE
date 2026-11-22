@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=197">
+<link rel="stylesheet" href="style.css?v=198">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -186,14 +186,6 @@
                 <label title="Velocity response: 0% = fixed level, 100% = full input dynamics">VELOCITY <input type="range" id="velSens" min="0" max="100" step="1" value="100"><b id="velSensVal">100%</b></label>
                 <label>GAIN <input type="range" id="gain" min="-24" max="24" step="0.1" value="0"><b id="gainVal">+0.0 dB</b></label>
               </div>
-              <div class="playback-row">
-                <span class="pb-label">PLAYBACK</span>
-                <div class="seg" id="playbackSeg">
-                  <button data-pb="one-shot" class="active" title="Play the full sample">ONE SHOT</button>
-                  <button data-pb="gate" title="Follow the INPUT gate envelope">GATE</button>
-                </div>
-                <button class="chip toggle" id="loopBtn" title="Repeat the trimmed sample for up to 2 s">LOOP</button>
-              </div>
             </div>
             <div class="trigger-bottom">
               <div class="fader-bank" id="faderBank"></div>
@@ -306,6 +298,6 @@
 <div class="toast" id="toast"></div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=197"></script>
+<script src="app.js?v=198"></script>
 </body>
 </html>
