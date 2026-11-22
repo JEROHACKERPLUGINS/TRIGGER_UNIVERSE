@@ -600,6 +600,7 @@ AAX **no** se necesita.
 25. **TRIGGER proporcional**: el split detector/editor pasó a `2fr/3fr` (40/60) en todos los tamaños; el gap y el banco de faders usan medidas fluidas (`min(8vw,12vh)`), la altura de los faders escala con el slot y la fila inferior del editor recibe algo más de altura para que el panel SLOT no desborde en ventanas anchas y bajas. Probado en 900×1200, 1280×720, 1366×768, 1400×900, 1600×700 y 1920×1080 sin overflow.
 26. **Edición numérica por doble click**: todos los valores numéricos editables (8 knobs del detector, MIX, OUTPUT master, 8 niveles de fader, TONE/CUT/VEL SENS/GAIN, START/END/FADE IN/FADE OUT, A/D/S/R y OFFSET) se vuelven editables en su lugar con doble click, sin ventana flotante. Enter confirma, Esc cancela, el blur confirma y abrir otro valor confirma el anterior. Acepta coma o punto decimal y sufijos `%`, `ms`, `s`, `Hz`, `k`, `dB` y `st`; clampa al rango del parámetro y redondea al step.
 27. **Faders centrados**: el nivel en dB de cada fader queda centrado bajo el track y el badge de fase pasa a una segunda línea centrada; el número editable conserva exactamente esa posición.
+28. **Doble click en faders**: el click sobre un valor numérico ya no se propaga al contenedor, así el fader no se re-renderiza entre los dos clicks y la edición in-place funciona en los 8 niveles. Se auditaron los 31 valores numéricos (detector, MIX, OUTPUT, faders, tone, waveform, ADSR y offset) con la secuencia de click completa.
 
 ---
 

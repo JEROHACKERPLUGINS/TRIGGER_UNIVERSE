@@ -154,6 +154,7 @@ function bindNumericEdit(el, opts) {
   if (!el) return;
   el.classList.add('num-editable');
   if (!el.title && !el.dataset.tip) el.title = 'Double-click to edit';
+  el.addEventListener('click', e => e.stopPropagation());
   el.addEventListener('dblclick', e => {
     if (el.classList.contains('num-editing')) return;
     e.preventDefault();
@@ -1537,6 +1538,7 @@ $('#faderBank').addEventListener('click', e => {
     updateInspector();
     return;
   }
+  if (e.target.closest('.num-editable')) return;
   const strip = e.target.closest('.slot-fader[data-slot]');
   if (!strip) return;
   selectSlot(+strip.dataset.slot);

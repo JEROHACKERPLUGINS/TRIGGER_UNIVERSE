@@ -110,6 +110,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - Acepta coma o punto decimal y sufijos (`1.2k` → 1200 Hz, `0.25s` → 250 ms). Clampa al rango del parámetro y redondea al step.
 - Los valores muestran cursor de texto y subrayado punteado al hover; el número en edición se resalta con un halo mint (rojo si el valor es inválido).
 - Los **niveles de los faders** quedan centrados y el badge de fase pasa a una segunda línea centrada.
+- Los valores numéricos detienen el click para que el contenedor (por ejemplo el fader) no se re-renderice entre los dos clicks; el doble click funciona igual en los 8 niveles.
 
 ## Actualización 21/11 — TRIGGER se estira uniformemente
 
