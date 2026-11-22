@@ -216,6 +216,68 @@ const CATEGORIES = [
 ];
 const CAT = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
 
+// ---------- category palettes ----------
+// "cvd" is Paul Tol's "light" scheme: designed to stay distinguishable for the common
+// colour-vision deficiencies (deuteranopia, protanopia, tritanopia) and readable on dark.
+const PALETTES = {
+  standard: Object.fromEntries(CATEGORIES.map(c => [c.id, c.color])),
+  cvd: { Kick: '#EE8866', Snare: '#77AADD', Clap: '#FFAABB', HHC: '#EEDD88', HHO: '#BBCC33',
+         Cymbal: '#AAAA00', Tom: '#44BB99', Perc: '#99DDFF', FX: '#DDDDDD' },
+};
+function loadVisualPrefs() {
+  const d = { palette: 'standard', shapes: false, scale: 100, reduceMotion: false, reduceTransparency: false };
+  try { return Object.assign(d, JSON.parse(localStorage.getItem('tu-visual') || '{}')); }
+  catch (e) { return d; }
+}
+const visualPrefs = loadVisualPrefs();
+function setCategoryPalette(name) {
+  const p = PALETTES[name] || PALETTES.standard;
+  CATEGORIES.forEach(c => { c.color = p[c.id]; });
+}
+setCategoryPalette(visualPrefs.palette);
+
+// Category shapes: a second cue besides colour (Settings → VISUAL → SHAPES).
+const CAT_SHAPE = { Kick: 'circle', Snare: 'square', Clap: 'triangle', HHC: 'diamond', HHO: 'triangleDown',
+                    Cymbal: 'hexagon', Tom: 'pentagon', Perc: 'cross', FX: 'star' };
+function shapePath(ctx, shape, x, y, r) {
+  ctx.beginPath();
+  const poly = (n, rot = -Math.PI / 2, rr = r) => {
+    for (let i = 0; i < n; i++) {
+      const a = rot + i * 2 * Math.PI / n;
+      i ? ctx.lineTo(x + rr * Math.cos(a), y + rr * Math.sin(a)) : ctx.moveTo(x + rr * Math.cos(a), y + rr * Math.sin(a));
+    }
+    ctx.closePath();
+  };
+  switch (shape) {
+    case 'square': { const s = r * .88; ctx.rect(x - s, y - s, 2 * s, 2 * s); break; }
+    case 'triangle': poly(3, -Math.PI / 2, r * 1.18); break;
+    case 'triangleDown': poly(3, Math.PI / 2, r * 1.18); break;
+    case 'diamond': poly(4, -Math.PI / 2, r * 1.15); break;
+    case 'hexagon': poly(6, 0, r * 1.05); break;
+    case 'pentagon': poly(5, -Math.PI / 2, r * 1.08); break;
+    case 'cross': { const w = r * .42, l = r * 1.1;
+      ctx.rect(x - l, y - w, 2 * l, 2 * w); ctx.rect(x - w, y - l, 2 * w, 2 * l); break; }
+    case 'star': {
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .55 : r * 1.25;
+        i ? ctx.lineTo(x + rr * Math.cos(a), y + rr * Math.sin(a)) : ctx.moveTo(x + rr * Math.cos(a), y + rr * Math.sin(a));
+      }
+      ctx.closePath(); break;
+    }
+    default: ctx.arc(x, y, r, 0, 6.2832);
+  }
+}
+// CSS clip-path versions for small DOM dots (legend swatches, similarity dots, file rows, slots)
+const SHAPE_CLIP = {
+  circle: 'circle(50%)', square: 'inset(6%)', triangle: 'polygon(50% 0,100% 100%,0 100%)',
+  triangleDown: 'polygon(0 0,100% 0,50% 100%)', diamond: 'polygon(50% 0,100% 50%,50% 100%,0 50%)',
+  hexagon: 'polygon(25% 3%,75% 3%,100% 50%,75% 97%,25% 97%,0 50%)',
+  pentagon: 'polygon(50% 0,100% 38%,81% 100%,19% 100%,0 38%)',
+  cross: 'polygon(32% 0,68% 0,68% 32%,100% 32%,100% 68%,68% 68%,68% 100%,32% 100%,32% 68%,0 68%,0 32%,32% 32%)',
+  star: 'polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)',
+};
+const isReducedMotion = () => !!visualPrefs.reduceMotion;
+
 const WORDS = {
   Kick:   ['Sub Anchor', 'Deep Orbit', 'Low Gravity', 'Concrete', 'Event Horizon', 'Pulse', 'Tectonic', 'Nebula', 'Basalt', 'Gravity Well'],
   Snare:  ['Wire Frame', 'Bright Halo', 'Ghost Signal', 'Rim Echo', 'Static Bloom', 'Cracked Light', 'Solar Flare', 'Tin Ghost', 'Paper Sky'],
@@ -493,7 +555,7 @@ function stopScrub() {
 function fadeScrubTrail() {
   cancelAnimationFrame(trailFadeRAF);
   const tr = state.scrubTrail;
-  if (tr.pts.length < 2) { tr.pts = []; tr.alpha = 1; tr.cut = 0; drawUniverse(); return; }
+  if (tr.pts.length < 2 || isReducedMotion()) { tr.pts = []; tr.alpha = 1; tr.cut = 0; drawUniverse(); return; }
   const t0 = performance.now(), dur = 2400;
   const step = now => {
     const k = clamp((now - t0) / dur, 0, 1);
@@ -614,15 +676,19 @@ function drawUniverse() {
     const depth = s.z ?? .5;
     const color = CAT[s.category].color;
     // 3D halo
-    ctx.globalAlpha = on ? (.045 + depth * .10) : .008;
+    const glowK = visualPrefs.palette === 'cvd' ? .62 : 1;   // pale CVD colours bloom to white otherwise
+    const shape = visualPrefs.shapes ? CAT_SHAPE[s.category] : 'circle';
+    ctx.globalAlpha = (on ? (.045 + depth * .10) : .008) * glowK;
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(p.x, p.y, 3.4 + depth * 5.4, 0, 6.2832); ctx.fill();
     // vivid core
-    ctx.globalAlpha = on ? (.40 + depth * .60) : .04;
-    ctx.beginPath(); ctx.arc(p.x, p.y, .9 + depth * 2.5, 0, 6.2832); ctx.fill();
+    ctx.globalAlpha = (on ? (.40 + depth * .60) : .04) * (glowK < 1 ? .85 : 1);
+    if (shape === 'circle') { ctx.beginPath(); ctx.arc(p.x, p.y, .9 + depth * 2.5, 0, 6.2832); }
+    else shapePath(ctx, shape, p.x, p.y, 1.6 + depth * 2.6);
+    ctx.fill();
     // specular highlight for depth
-    if (on && depth > .55) {
-      ctx.globalAlpha = .55 * depth;
+    if (on && depth > .55 && shape === 'circle') {
+      ctx.globalAlpha = .55 * depth * glowK;
       ctx.fillStyle = '#ffffff';
       ctx.beginPath(); ctx.arc(p.x - .8, p.y - .8, .55 + depth * .55, 0, 6.2832); ctx.fill();
       ctx.fillStyle = color;
@@ -785,7 +851,7 @@ function updateSimilarityUI() {
     const s = state.samples.find(x => x.id === id);
     if (!s) return '';
     const color = CAT[s.category].color;
-    return `<i class="${i === state.sim.index ? 'active' : ''}" data-id="${id}" data-index="${i}" style="background:${color};color:${color}" title="${s.name}"></i>`;
+    return `<i class="cat-mark ${i === state.sim.index ? 'active' : ''}" data-id="${id}" data-index="${i}" style="background:${color};color:${color};--shape:${SHAPE_CLIP[CAT_SHAPE[s.category]]}" title="${s.name}"></i>`;
   }).join('');
   count.textContent = `${state.sim.index + 1} / ${state.sim.list.length} · ${cur.name}`;
   if (prev) prev.disabled = state.sim.list.length < 2;
@@ -863,6 +929,11 @@ function softPanFor(s) {
 
 function animateViewTo(to, from = null, duration = 420) {
   cancelAnimationFrame(viewAnimRAF);
+  if (isReducedMotion()) {
+    const p = softPanFor(to);
+    state.view.panX = p.x; state.view.panY = p.y; state.travel = null;
+    drawUniverse(); return;
+  }
   const startPan = { x: state.view.panX, y: state.view.panY };
   const targetPan = softPanFor(to);
   const dist = Math.hypot(targetPan.x - startPan.x, targetPan.y - startPan.y);
@@ -942,10 +1013,12 @@ function setPlanetColor(hex) {
 }
 
 function spawnDragRing(x, y, rgb = dragRgb, strength = 1) {
+  if (isReducedMotion()) return;
   dragRings.push({ x, y, t: performance.now(), rgb, strength });
 }
 
 function spawnDragBurst(x, y, rgb = dragRgb) {
+  if (isReducedMotion()) return;
   const now = performance.now();
   for (let i = 0; i < 12; i++) {
     const a = (Math.PI * 2 * i) / 18 + Math.random() * .5;
@@ -1046,7 +1119,7 @@ function updateDragFx(now, dt) {
     dragPlanetScale += (1 - dragPlanetScale) * Math.min(1, .3 * dt);
     const last = dragTrailPts.length ? dragTrailPts[dragTrailPts.length - 1] : null;
     if (!last || now - last.t > 18 || Math.hypot(dragPos.x - last.x, dragPos.y - last.y) > 7) {
-      dragTrailPts.push({ x: dragPos.x, y: dragPos.y, t: now, rgb: dragRgb });
+      if (!isReducedMotion()) dragTrailPts.push({ x: dragPos.x, y: dragPos.y, t: now, rgb: dragRgb });
       if (Math.random() < .55) {
         dragSparks.push({
           x: dragPos.x + (Math.random() - .5) * 18,
@@ -1401,7 +1474,7 @@ function renderSlots() {
       <div class="slot${stateCls}${sel}" data-slot="${i}" data-kbd="${i + 1}"${smp ? ` style="--slot-color:${color}"` : ''} title="${smp ? `${smp.name} · click to audition · double-click to edit` : 'Drop a sample here · click to open TRIGGER'}">
         <div class="slot-head">
           <span class="slot-num">${String(i + 1).padStart(2, '0')}</span>
-          ${smp ? `<span class="slot-dot" style="background:${color};color:${color}"></span>` : ''}
+          ${smp ? `<span class="slot-dot cat-mark" style="background:${color};color:${color};--shape:${SHAPE_CLIP[CAT_SHAPE[smp.category]]}"></span>` : ''}
           ${smp ? `<button class="slot-clear" data-clear="${i}" title="Clear slot">×</button>` : ''}
         </div>
         ${smp
@@ -1910,7 +1983,7 @@ function renderFileList() {
     const color = CAT[s.category].color;
     const fav = state.favorites.has(s.id);
     return `<div class="file-row${sel}" data-id="${s.id}">
-      <span class="fn"><i class="fdot" style="background:${color};color:${color}"></i><span>${s.name}</span></span>
+      <span class="fn"><i class="fdot cat-mark" style="background:${color};color:${color};--shape:${SHAPE_CLIP[CAT_SHAPE[s.category]]}"></i><span>${s.name}</span></span>
       <span class="num">${fmtMs(s.dur)}</span>
       <button class="fav-btn${fav ? ' on' : ''}" data-id="${s.id}" title="${fav ? 'Remove favorite' : 'Add favorite'}">♥</button>
     </div>`;
@@ -2046,6 +2119,7 @@ function setView(mode) {
 $('#triggerBack').onclick = closeTriggerPage;
 
 function goHome() {
+  if ($('#visualPanel').classList.contains('show')) { setVisualOpen(false); return; }
   stopScrub();
   hideSimilarity();
   setSettingsOpen(false);
@@ -2078,6 +2152,7 @@ const KH = {
 function keyHintContext() {
   if (numericEditor) return 'edit';
   if (state.drag && dragStarted) return 'drag';
+  if ($('#visualPanel').classList.contains('show')) return 'settings';
   if ($('#settingsMenu').classList.contains('show')) return 'settings';
   if (state.viewMode === 'trigger') return 'trigger';
   if (state.viewMode === 'files') return 'files';
@@ -3091,6 +3166,62 @@ $('#settingsBtn').onclick = () => {
   hideSimilarity();
   setSettingsOpen(!$('#settingsMenu').classList.contains('show'));
 };
+// ---------- VISUAL panel (Settings → VISUAL…) ----------
+// apply prefs that live on the document (classes, zoom); safe to call before first render
+function applyDocumentPrefs() {
+  const root = document.documentElement;
+  root.classList.toggle('reduce-motion', !!visualPrefs.reduceMotion);
+  root.classList.toggle('reduce-transparency', !!visualPrefs.reduceTransparency);
+  root.classList.toggle('cat-shapes', !!visualPrefs.shapes);
+  root.style.zoom = visualPrefs.scale === 100 ? '' : String(visualPrefs.scale / 100);
+}
+applyDocumentPrefs();
+function renderVisualPanel() {
+  $$('#paletteSeg button').forEach(b => b.classList.toggle('active', b.dataset.palette === visualPrefs.palette));
+  $$('#scaleSeg button').forEach(b => b.classList.toggle('active', +b.dataset.scale === visualPrefs.scale));
+  $$('.vp-toggle[data-pref]').forEach(b => {
+    const on = !!visualPrefs[b.dataset.pref];
+    b.classList.toggle('on', on); b.setAttribute('aria-checked', on);
+  });
+  $('#paletteSwatches').innerHTML = CATEGORIES.map(c =>
+    `<span class="vp-swatch"><i class="cat-mark" style="background:${c.color};color:${c.color};--shape:${SHAPE_CLIP[CAT_SHAPE[c.id]]}"></i>${c.short}</span>`).join('');
+}
+function applyVisualPrefs() {
+  try { localStorage.setItem('tu-visual', JSON.stringify(visualPrefs)); } catch (e) {}
+  setCategoryPalette(visualPrefs.palette);
+  applyDocumentPrefs();
+  renderVisualPanel();
+  // repaint everything that shows category colours, then re-measure for the new scale
+  renderSlots(); renderFaders();
+  updateSimilarityUI();
+  if (state.viewMode === 'files') renderFileList();
+  window.dispatchEvent(new Event('resize'));
+  requestAnimationFrame(() => { resizeCanvas(); drawUniverse(); if (state.viewMode === 'trigger') resizeInput(); });
+}
+function setVisualOpen(open) {
+  if (open) { setSettingsOpen(false); renderVisualPanel(); }
+  $('#visualPanel').classList.toggle('show', open);
+}
+$('#menuVisual').onclick = () => setVisualOpen(true);
+$('#visualClose').onclick = () => setVisualOpen(false);
+$('#scaleSeg').addEventListener('click', e => {
+  const b = e.target.closest('button[data-scale]');
+  if (!b || +b.dataset.scale === visualPrefs.scale) return;
+  visualPrefs.scale = +b.dataset.scale;
+  applyVisualPrefs();
+});
+$('#visualPanel').addEventListener('click', e => {
+  const t = e.target.closest('.vp-toggle[data-pref]');
+  if (!t) return;
+  visualPrefs[t.dataset.pref] = !visualPrefs[t.dataset.pref];
+  applyVisualPrefs();
+});
+$('#paletteSeg').addEventListener('click', e => {
+  const b = e.target.closest('button[data-palette]');
+  if (!b || b.dataset.palette === visualPrefs.palette) return;
+  visualPrefs.palette = b.dataset.palette;
+  applyVisualPrefs();
+});
 $('#menuFolders').onclick = () => {
   setSettingsOpen(false);
   toast('Library folders: add/remove roots (demo)');
