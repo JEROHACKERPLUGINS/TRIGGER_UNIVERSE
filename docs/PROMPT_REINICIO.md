@@ -61,11 +61,11 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (
 - **Fase:** `Ø = 180°` (polaridad). Phase shift separado: 0° / 90° / 180° / 260°.
 - **Auto-phase:** corre al cargar un sample. Por defecto solo polaridad; offset en 0 salvo **TIMING** activo.
 - **Trigger Slots:** dock fijo de 8 recuadros de glass `01`–`08`, cuadrados y centrados, vacíos al inicio, con la misma textura glass que search/TRIGGER/Settings/OUTPUT. Al arrancar un drag se encienden con glow mint y se magnifican tipo Dock de macOS. Click en un slot lleno **audiciona** su sample; doble click lo abre en TRIGGER; click en uno vacío abre TRIGGER.
-- **Faders:** en la página TRIGGER, 8 faders verticales largos (≈116 px) alineados arriba de los slots, con meter, M/S/Ø y nivel.
-- **Editor:** vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre con doble click en un slot o con el corchete TRIGGER.
-- **Paneles del editor:** SAMPLE / ENVELOPE / TONE / SLOT, los 4 visibles a la vez en la página TRIGGER.
-- **Tab SLOT:** solo Auto Phase y sus controles. Sin Level/Pan/Tune/Mute/Solo/Pol.
-- **TRIGGER:** corchete vertical glass a la izquierda; abre la página full-screen. **Esc vuelve siempre a HOME**; el corchete vuelve a la vista anterior.
+- **Faders:** 8 faders verticales (≈136 px) alineados arriba de los slots, con meter, M/S/Ø y nivel. La tira de **AUTO PHASE** va arriba del banco y sigue al slot seleccionado.
+- **Editor:** vive dentro de la página TRIGGER y pertenece al slot seleccionado. **SAMPLE + ENVELOPE** comparten un panel grande (waveform + ADR) y **TONE** va a todo el ancho debajo.
+- **Paneles del editor:** **SAMPLE + ENVELOPE** (un solo panel) y **TONE** a todo el ancho. **AUTO PHASE** queda sobre los faders.
+- **Auto Phase:** tira horizontal sobre los faders con REF, re-analizar, TIMING, OFFSET y SHIFT; sin Level/Pan/Tune/Mute/Solo/Pol en el editor.
+- **TRIGGER:** corchete vertical glass a la izquierda; abre la página full-screen con detector PRE/POST, SAMPLE+ENVELOPE, TONE y faders con Auto Phase. **Esc vuelve siempre a HOME**; el corchete vuelve a la vista anterior.
 - **HOME** (ex Universe): vista principal full-bleed, nube de puntos 3D abstracta, sin ejes. Search arriba, similitud abajo. **Esc vuelve acá desde cualquier vista.**
 - **FILE SEARCH:** árbol tipo Finder con root en la carpeta elegida por el usuario; subcarpetas reales; samples reales primero.
 - **OUTPUT** arriba a la derecha, cápsula glass. **TRIGGER** es un corchete vertical glass a la izquierda y **SETTINGS** otro a la derecha. **AUTO PHASE ALL** vive en Settings.
@@ -79,9 +79,9 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (
 - HOME full-bleed con 1000 samples sintéticos + `SNARE.cm.wav` real.
 - Zoom con rueda anclado al cursor; pan con click derecho o Ctrl+click; click izquierdo en vacío solo cierra paneles; hover/snap dentro de un aura de 20 px con el nombre en la barra inferior.
 - FILE SEARCH con árbol, búsqueda, preview, audition al click en cada fila y ALT + drag a los 8 slots del dock. El dock queda siempre visible. El drag convierte el sample en una partícula del tamaño de su punto de HOME, con glow/estela, nombre sutil, magnetismo a slots y burst al soltar.
-- Editor integrado en la página TRIGGER con los 4 paneles SAMPLE / ENVELOPE / TONE / SLOT visibles a la vez.
+- Editor integrado en la página TRIGGER con el panel único **SAMPLE + ENVELOPE** y **TONE** a todo el ancho; Auto Phase sobre los faders.
 - Waveform real, start/end, fades, reverse, A/D/R, tone/cut, tune, pan, loop.
-- TRIGGER como página full-screen sin header de stats, con INPUT DETECTOR grande, los 4 paneles del editor visibles a la vez y banco de 8 faders largos; dock de 8 slots cuadrados vacíos para arrastrar samples.
+- TRIGGER como página full-screen sin header de stats, con INPUT DETECTOR PRE/POST, SAMPLE+ENVELOPE grande, TONE a todo el ancho, banco de 8 faders con Auto Phase y dock de 8 slots cuadrados.
 - Settings con AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS, AUDIO/MIDI.
 - SIMILARITY funcional: 33 vecinos por features, flechas y teclas ← →, seguimiento suave de HOME y línea animada.
 - Favoritos persistentes (`localStorage`) con corazón en la barra y en FILE SEARCH, más el nodo FAVORITES.

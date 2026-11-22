@@ -2109,6 +2109,8 @@ function updateInspector() {
   const smp = slotSample(slot);
   $('#selSlotBadge').textContent = `SLOT ${String(state.selectedSlot + 1).padStart(2, '0')}`;
   $('#selSampleTitle').textContent = smp ? smp.name : 'empty slot';
+  if ($('#apSlotBadge')) $('#apSlotBadge').textContent = `SLOT ${String(state.selectedSlot + 1).padStart(2, '0')}`;
+  if ($('#apSampleName')) $('#apSampleName').textContent = smp ? smp.name : 'empty slot';
   $('#selSampleMeta').textContent = smp
     ? `${CAT[smp.category].short} · ${fmtMs(smp.dur)}`
     : 'drag a sample from the browser';
@@ -2456,12 +2458,6 @@ $('#adsr').addEventListener('pointerdown', e => {
   window.addEventListener('pointerup', up);
 });
 
-$('#envReset').onclick = () => {
-  currentSlot().adsr = { a: 0, d: 120, end: 0, s: .5, p: 1, e: 0 };
-  fitAdsrToSample(currentSlot());
-  renderADSR(); toast('ADR reset');
-};
-
 // ---------- SLOT tab ----------
 $('#slotRef').onchange = e => { state.autoRef = e.target.value; };
 $('#slotTiming').onclick = () => {
@@ -2579,14 +2575,14 @@ function animateMaster() {
 
 // ---------- detector ----------
 const DET = [
-  { key: 'sens',   label: 'SENS',     min: 0,   max: 100,   val: 45,    unit: '%',  fmt: v => Math.round(v) + '%' },
-  { key: 'retrig', label: 'RETRIG',   min: 0,   max: 1000,  val: 50,    unit: 'ms', fmt: v => Math.round(v) + 'ms' },
-  { key: 'detail', label: 'DETAIL',   min: 0,   max: 100,   val: 50,    unit: '%',  fmt: v => Math.round(v) + '%' },
-  { key: 'low',    label: 'LOW CUT',  min: 20,  max: 20000, val: 30,    log: true, unit: 'Hz', fmt: v => fmtHz(v) },
-  { key: 'high',   label: 'HIGH CUT', min: 20,  max: 20000, val: 15000, log: true, unit: 'Hz', fmt: v => fmtHz(v) },
-  { key: 'supp',   label: 'SUPPRESS', min: 0,   max: 100,   val: 50,    unit: '%',  fmt: v => Math.round(v) + '%' },
-  { key: 'input',  label: 'INPUT',    min: -24, max: 24,    val: 0,     unit: 'dB', fmt: v => fmtDb(v) },
-  { key: 'output', label: 'OUTPUT',   min: -24, max: 24,    val: 0,     unit: 'dB', fmt: v => fmtDb(v) },
+  { key: 'input',  label: 'INPUT',    min: -24, max: 24,    val: 0,     unit: 'dB', fmt: v => fmtDb(v),           group: 'pre' },
+  { key: 'low',    label: 'LOW CUT',  min: 20,  max: 20000, val: 30,    log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'pre' },
+  { key: 'high',   label: 'HIGH CUT', min: 20,  max: 20000, val: 15000, log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'pre' },
+  { key: 'supp',   label: 'SUPPRESS', min: 0,   max: 100,   val: 50,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'pre' },
+  { key: 'sens',   label: 'SENS',     min: 0,   max: 100,   val: 45,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'post' },
+  { key: 'retrig', label: 'RETRIG',   min: 0,   max: 1000,  val: 50,    unit: 'ms', fmt: v => Math.round(v) + 'ms', group: 'post' },
+  { key: 'detail', label: 'DETAIL',   min: 0,   max: 100,   val: 50,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'post' },
+  { key: 'output', label: 'OUTPUT',   min: -24, max: 24,    val: 0,     unit: 'dB', fmt: v => fmtDb(v),           group: 'post' },
 ];
 
 function makeKnob(cfg) {
@@ -2628,7 +2624,7 @@ function makeKnob(cfg) {
   });
   return el;
 }
-DET.forEach(c => $('#detKnobs').appendChild(makeKnob(c)));
+DET.forEach(c => $(c.group === 'pre' ? '#detKnobsPre' : '#detKnobsPost').appendChild(makeKnob(c)));
 
 $('#gateBtn').onclick = () => {
   state.detector.gate = !state.detector.gate;

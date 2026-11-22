@@ -86,9 +86,9 @@ window.__setTriggerOpen(true)
 | 7 | Auto-phase | Corre automáticamente al cargar un sample. Por defecto **solo polaridad**; offset en 0 salvo que **TIMING** esté activo |
 | 8 | Slots | Dock fijo de 8 recuadros de glass **01–08**, cuadrados y centrados, vacíos al inicio |
 | 9 | Editor | Vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre con doble click en un slot (o click en uno vacío); el click en un slot lleno audiciona |
-| 10 | Paneles del editor | **SAMPLE / ENVELOPE / TONE / SLOT**, los 4 visibles a la vez en la página TRIGGER |
-| 11 | Tab SLOT | Solo **Auto Phase** y sus controles. Sin Level/Pan/Tune/Mute/Solo/Pol |
-| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR + editor/A-D-R + banco de 8 faders. El corchete vuelve a la vista anterior; **Esc siempre vuelve a HOME** |
+| 10 | Paneles del editor | **SAMPLE + ENVELOPE** en un solo panel grande (waveform + ADR) y **TONE** a todo el ancho; **AUTO PHASE** vive sobre el banco de faders |
+| 11 | Auto Phase | Tira horizontal sobre el banco de faders, atada al slot seleccionado: REF, re-analizar, TIMING, OFFSET y SHIFT |
+| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR PRE/POST + panel SAMPLE+ENVELOPE + TONE + banco de 8 faders con Auto Phase. El corchete vuelve a la vista anterior; **Esc siempre vuelve a HOME** |
 | 13 | HOME | Vista principal (ex Universe). Full-bleed, nube de puntos 3D abstracta, sin ejes de frecuencia/ms. Search arriba, similitud abajo. **Esc vuelve acá desde cualquier vista** |
 | 14 | FILE SEARCH | Árbol tipo Finder con root en la carpeta elegida por el usuario. Subcarpetas reales. Samples reales primero |
 | 15 | OUTPUT | Knob arriba a la derecha. Settings funcional. AUTO PHASE ALL vive en Settings |
@@ -244,21 +244,16 @@ Vive dentro de la página TRIGGER. Corresponde al slot seleccionado. Header con 
 
 Paneles (visibles a la vez en la página TRIGGER):
 
-1. **SAMPLE**
-   - Waveform real del sample del slot.
-   - Handles arrastrables de **start / end / fade in / fade out**.
-   - Readout en ms.
-   - **Reverse** real en Web Audio, con estado activo mint; queda junto a los readouts.
+1. **SAMPLE + ENVELOPE** (un solo panel grande, dos columnas internas)
+   - Izquierda: waveform real, handles de **start / end / fade in / fade out**, readouts en ms y **Reverse**.
+   - Derecha: **ENVELOPE · A/D/R** con tres puntos libres en X e Y, waveform fantasma detrás y readouts A/D/R editables.
    - Audition se hace clickeando un Trigger Slot lleno o una fila de FILE SEARCH.
    - Drag desde la waveform a otro slot.
-2. **ENVELOPE**
-   - A/D/R editable con tres puntos libres (sin hold ni sustain).
-   - Readout A/D/R y botón Reset.
-3. **TONE**
+2. **TONE** (todo el ancho)
    - TONE (−100…+100), CUT (0–100%), VEL SENS, GAIN.
    - PLAYBACK: ONE SHOT / GATE; LOOP.
-4. **SLOT**
-   - Solo **AUTO PHASE**:
+3. **AUTO PHASE** (no es panel del editor)
+   - Tira horizontal arriba del banco de faders, atada al slot seleccionado:
      - REF: INPUT / SLOT 1.
      - **RE-ANALYZE & ALIGN**.
      - **TIMING** on/off.
@@ -272,11 +267,12 @@ Paneles (visibles a la vez en la página TRIGGER):
 
 - Tercera página full-screen, como HOME o FILE SEARCH. Se abre con el **corchete TRIGGER** izquierdo; se vuelve con el mismo corchete (recuerda la vista anterior).
 - Sin fila de header: se quitaron título, INPUT, HITS y MASTER. El contenido arranca arriba; el corchete TRIGGER activo identifica la página.
-- **INPUT DETECTOR** a la izquierda, más grande: waveform del INPUT real (≈205 px de alto en 717 px de ventana), 8 knobs compactos en una sola fila (Sens, Retrig, Detail, Low, High, Supp, Input, Output), GATE, **▶ INPUT**, MIX.
-- **Editor de sample** a la derecha con los **4 paneles visibles al mismo tiempo**: SAMPLE y ENVELOPE/A-D-R arriba; TONE y SLOT abajo. El envelope tiene ≈158 px de alto.
+- **INPUT DETECTOR** a la izquierda, dividido en **PRE-TRIGGER** (INPUT, LOW CUT, HIGH CUT, SUPPRESS, GATE, ▶ INPUT) y **POST-TRIGGER** (SENS, RETRIG, DETAIL, OUTPUT, MIX), con la waveform del INPUT arriba.
+- **Editor de sample** a la derecha con **SAMPLE + ENVELOPE en un solo panel grande** (waveform arriba/izquierda y ADR a la derecha, con waveform fantasma) y **TONE a todo el ancho** debajo.
 - **Banco de 8 faders** arriba del dock, alineado columna a columna con los slots:
-  - Fader vertical largo (≈116 px), meter real, M/S/Ø, nivel dB y badge de fase.
-  - Click en un fader selecciona el slot para el editor.
+  - Fader vertical (≈136 px), meter real, M/S/Ø, nivel dB y badge de fase.
+  - **AUTO PHASE** en una tira horizontal arriba de los faders, atada al slot seleccionado.
+  - Click en un fader selecciona el slot para el editor y la tira de Auto Phase.
 - **Dock de 8 slots cuadrados** abajo, siempre visible en todas las vistas:
   - Recuadros de glass `01`–`08`, cuadrados y centrados, vacíos al inicio.
   - ALT + drag desde HOME o FILE SEARCH para asignar; el × vacía el slot. Click en un slot lleno **audiciona** su sample; doble click lo abre en TRIGGER.
@@ -605,6 +601,7 @@ AAX **no** se necesita.
 30. **Envelope A/D/R sin hold**: los tres puntos son libres en X e Y. Attack ajusta tiempo y pico; Decay ajusta tiempo y nivel; Release es el punto final, libre en tiempo y nivel, y por defecto cae al final del sample. No hay meseta de sustain: el release sale directamente del decay. El readout R es la duración desde el decay hasta el punto de release; editarlo mueve ese punto. Mover Decay no mueve el release. Reset A 0 / D 120, release al final del sample, pico 100%, nivel de decay 50% y nivel final 0%. El motor sigue soportando ADSR.
 31. **Waveform en el ADR**: el gráfico del envelope superpone la waveform del sample recortado (y reversible) como silueta tenue detrás de la línea. El release point queda por defecto al final de cada sample, de modo que R se recalcula por sample; su nivel final es libre.
 32. **SAMPLE limpio**: se quitaron los botones Audition y Normalize del panel SAMPLE. Audition queda en el click de un Trigger Slot lleno o una fila de FILE SEARCH; Reverse queda junto a los readouts de start/end/fades y se marca en mint cuando está activo. Se eliminó el playhead de audition.
+33. **TRIGGER 2.0**: el detector se dividió en **PRE-TRIGGER** (input, filtros, suppress, gate) y **POST-TRIGGER** (sens, retrig, detail, output, mix). SAMPLE y ENVELOPE se fusionaron en un solo panel grande, con la waveform a la izquierda y el ADR con waveform fantasma a la derecha. TONE pasó a todo el ancho. AUTO PHASE salió del editor y vive en una tira horizontal arriba de los faders, atada al slot seleccionado; el banco de faders se acortó para dar más alto al editor.
 
 ---
 

@@ -5,7 +5,7 @@ Fecha: 20/11/2026. Prototipo navegable en `prototype/` (`index.html`, `style.css
 ## Layout elegido (Opción A)
 
 - **HOME / File Search / TRIGGER full-bleed**: las tres páginas ocupan toda el área principal. HOME es la vista del mapa (ex Universe).
-- **Página TRIGGER**: INPUT DETECTOR grande + los 4 paneles del editor a la vez + banco de 8 faders largos, sin fila de título/INPUT/HITS/MASTER. Se abre desde el corchete vertical TRIGGER (izquierda).
+- **Página TRIGGER**: INPUT DETECTOR PRE/POST + panel único SAMPLE+ENVELOPE + TONE a todo el ancho + banco de 8 faders con Auto Phase, sin fila de título/INPUT/HITS/MASTER. Se abre desde el corchete vertical TRIGGER (izquierda).
 - **Dock fijo de 8 slots cuadrados** abajo, centrado y visible en todas las vistas: recuadros de glass vacíos donde se arrastran los samples.
 - **Search flotante** arriba de HOME, centrado, estilo XO.
 - **Similarity bar** flotante arriba del dock, estilo XO.
@@ -39,7 +39,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - Al comenzar un drag, los 8 se encienden con un glow mint más brillante y se magnifican con caída por proximidad, estilo Dock de macOS; sin contorno general. El slot magnetizado mantiene un glow más fuerte.
 - Arrancan **vacíos**: muestran `+` / `DROP`.
 - Al llenarse muestran dot de categoría, nombre y duración; el × los vacía.
-- En la página TRIGGER, arriba de cada slot hay un **fader vertical largo** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna. Los 4 paneles del editor (SAMPLE, ENVELOPE/A-D-R, TONE, SLOT) se ven al mismo tiempo.
+- En la página TRIGGER, arriba de cada slot hay un **fader vertical** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna. **AUTO PHASE** vive en una tira horizontal sobre el banco de faders. El editor tiene **SAMPLE + ENVELOPE** en un solo panel y **TONE** a todo el ancho.
 
 ## FILE SEARCH
 
@@ -64,7 +64,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - **La app es HOME**: logo y título centrados, search con toggle folder/HOME, OUTPUT + VU vertical a la derecha y corchetes verticales TRIGGER/SETTINGS en los bordes. No hay topbar separado.
 - **Search centrado** arriba, sin contorno de panel; **Similarity** flotante abajo.
 - **TRIGGER** es un corchete vertical glass a la izquierda; **SETTINGS** es su simétrico a la derecha. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/A-D-R + banco de faders. **Esc vuelve siempre a HOME**, desde cualquier vista.
-- **Editor de sample**: en la página TRIGGER se ven los 4 paneles a la vez (**SAMPLE / ENVELOPE / TONE / SLOT**); la barra de tabs quedó oculta. El panel SLOT conserva **AUTO PHASE** (REF, re-analizar, TIMING, resultado, OFFSET, SHIFT).
+- **Editor de sample**: **SAMPLE + ENVELOPE** comparten un panel grande (waveform a la izquierda, ADR con waveform fantasma a la derecha); **TONE** va debajo a todo el ancho. **AUTO PHASE** (REF, re-analizar, TIMING, OFFSET, SHIFT) está en la tira sobre los faders.
 - **Fase**: 0/90/180/260; **180 = Ø**. Los badges se mantienen en el editor.
 - **Slots**: solo números 01–08, sin faders.
 - **Audio real**: `prototype/samples/SNARE.cm.wav` se decodifica con Web Audio y el archivo completo es el **INPUT** del trigger. El botón **▶ INPUT** dispara los slots cargados en cada transiente detectado. Los slots arrancan vacíos; se llenan con ALT + drag.
@@ -102,6 +102,14 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - **♥** en la barra de similitud y en cada fila de FILE SEARCH agrega/quita favoritos.
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
+
+## Actualización 21/11 — TRIGGER 2.0
+
+- Detector dividido en **PRE-TRIGGER** (INPUT, LOW CUT, HIGH CUT, SUPPRESS, GATE, ▶ INPUT) y **POST-TRIGGER** (SENS, RETRIG, DETAIL, OUTPUT, MIX), con la waveform del INPUT arriba.
+- **SAMPLE + ENVELOPE** fusionados en un solo panel grande: waveform con trim/fades a la izquierda y ADR con waveform fantasma a la derecha.
+- **TONE** a todo el ancho debajo del panel.
+- **AUTO PHASE** salió del editor: tira horizontal sobre el banco de faders, atada al slot seleccionado.
+- El banco de faders se acortó para dar más altura al editor.
 
 ## Actualización 21/11 — limpieza del panel SAMPLE
 
