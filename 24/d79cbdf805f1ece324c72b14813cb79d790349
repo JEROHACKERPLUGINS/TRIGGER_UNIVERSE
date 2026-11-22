@@ -1,0 +1,32 @@
+prototype/index.html
+  s_aa8f4edfcf593f::t_9f8b878807b2a7 220
+  s_aa8f4edfcf593f::t_9fd6d9206a1bfd 7,111,136,221,230-231,252-253,266
+  s_aa8f4edfcf593f::t_187a1bdf5ec9d2 242
+prototype/app.js
+  s_aa8f4edfcf593f::t_79aa5d5e3e63e7 2069,2071,2087,2089-2090
+  s_aa8f4edfcf593f::t_9f8b878807b2a7 2156
+  s_aa8f4edfcf593f::t_9fd6d9206a1bfd 1397,2067-2068,2070,2072,2110-2144,3656-3664
+  s_aa8f4edfcf593f::t_187a1bdf5ec9d2 2060-2066,2073-2086,2091-2097,2099-2109
+  s_aa8f4edfcf593f::t_38637d90a0f1e8 2088,2098
+prototype/style.css
+  s_aa8f4edfcf593f::t_187a1bdf5ec9d2 1376-1387,1390
+  s_aa8f4edfcf593f::t_38637d90a0f1e8 1388-1389
+  s_aa8f4edfcf593f::t_9f8b878807b2a7 1396-1399
+  s_aa8f4edfcf593f::t_9fd6d9206a1bfd 1391-1395
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "24d79cbdf805f1ece324c72b14813cb79d790349",
+  "prompts": {},
+  "sessions": {
+    "s_aa8f4edfcf593f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b3604d4-9568-4964-8786-a55a7f32dba2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "micaela-balza <micaela.balza@waterplan.com>"
+    }
+  }
+}
