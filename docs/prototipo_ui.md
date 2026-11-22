@@ -111,6 +111,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - **Jerarquía:** INPUT VOLUME escala la waveform/detección; **DETAIL es el threshold** (línea dashed mint, independiente del volumen); SENSITIVITY ayuda con ghost notes; RETRIGGER es una **ventana ciega audible**, sin gráfica.
 - La waveform central muestra una **ventana de 2 s** (~6 transientes) que sigue al playhead, con el input en azul limpio, la línea de cero, la línea dashed de DETAIL con su label y las líneas naranjas de hit hasta el pico de cada transiente. **No dibuja el gate**: la atenuación se ve en el **VU GR rojo** al lado del medidor INPUT. El LED junto a GATE indica open/closed.
 - El **GATE es transient-driven**: no tiene threshold; ON/OFF + ATTACK/HOLD/RELEASE moldean el input original y no cambian la detección. Su reducción se ve en el **VU GR** rojo (bottom-up, 0–24 dB) al lado de INPUT.
+- **Todo el detector corre en vivo**: los slots se disparan hit por hit mientras suena el input; mover Detail/Sens/Retrigger/Suppress/filtros cambia los próximos disparos, y Gate/Volume/MIX/OUTPUT responden en el momento.
 - Cada knob del detector tiene tooltip con su rol; la waveform también explica sus colores/líneas al hover.
 - El **sample view** se angostó a ~34–36%; el detector ocupa ~64–66% (66/34 en ventanas angostas).
 - **TONE** sigue como tira full-width debajo del detector/editor.

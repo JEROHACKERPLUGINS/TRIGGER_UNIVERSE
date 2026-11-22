@@ -191,6 +191,9 @@ let inputStartCtxTime = 0;
 let inputPlaying = false;
 let inputTimers = [];
 let activeSlotSources = [];
+let liveHitTimer = null;
+let liveLastHitTime = 0;
+let liveTriggerCount = 0;
 let realInputBuffer = null;
 let realInputPeaks = null;
 let realHits = [];
@@ -3511,6 +3514,7 @@ function drawRealInput(now) {
 
 function stopInput() {
   inputPlaying = false;
+  stopLiveTriggers();
   inputTimers.forEach(t => clearTimeout(t)); inputTimers = [];
   if (inputSource) { try { inputSource.stop(); } catch (e) {} inputSource = null; }
   activeSlotSources.slice().forEach(s => { try { s.stop(); } catch (e) {} });
@@ -3525,6 +3529,34 @@ function stopInput() {
   const gr = $('#grMeterBar'); if (gr) gr.style.height = '0%';
 }
 
+const LIVE_LOOKAHEAD = 0.08; // schedule hits up to 80 ms ahead
+function startLiveTriggers() {
+  stopLiveTriggers();
+  liveLastHitTime = 0;
+  liveTriggerCount = 0;
+  liveHitTimer = setInterval(() => {
+    if (!inputPlaying || !audioCtx) return;
+    const playT = audioCtx.currentTime - inputStartCtxTime;
+    if (playT < 0) return;
+    const end = Math.min(realInputDuration, playT + LIVE_LOOKAHEAD);
+    if (end <= liveLastHitTime) return;
+    const due = realHits.filter(h => h.time > liveLastHitTime && h.time <= end);
+    liveLastHitTime = end;
+    for (const h of due) {
+      const abs = inputStartCtxTime + h.time;
+      // If the tab was throttled and the hit is already in the past, do not
+      // dump a burst of samples; only schedule hits that are still ahead.
+      if (abs < audioCtx.currentTime - 0.03) continue;
+      const when = Math.max(0, abs - audioCtx.currentTime - 0.02);
+      state.slots.forEach((_, i) => playSlot(i, when));
+      liveTriggerCount++;
+    }
+  }, 20);
+}
+function stopLiveTriggers() {
+  if (liveHitTimer) clearInterval(liveHitTimer);
+  liveHitTimer = null;
+}
 function playInput() {
   if (inputPlaying) { stopInput(); return; }
   if (!realInputBuffer) { toast('SNARE.cm still loading…'); return; }
@@ -3544,9 +3576,7 @@ function playInput() {
   scheduleGate(start);
   src.onended = () => { if (inputPlaying) stopInput(); };
   const btn = $('#inputPlay'); if (btn) btn.textContent = '■ STOP';
-  realHits.forEach(h => {
-    state.slots.forEach((_, i) => playSlot(i, 0.04 + h.time));
-  });
+  startLiveTriggers();
   inputTimers.push(setTimeout(() => { if (inputPlaying) stopInput(); }, (realInputDuration + 0.5) * 1000));
 }
 
@@ -3564,6 +3594,7 @@ window.__audio = {
   get gateEnv() { return realGateEnv; },
   get gateBlock() { return realGateBlock; },
   get inputStart() { return inputStartCtxTime; },
+  get live() { return { lastHit: liveLastHitTime, triggers: liveTriggerCount, playing: inputPlaying }; },
   get nodes() { return { gateGain, inputGain, dryGain, wetGain }; },
   get gains() { return { dry: dryGain && dryGain.gain.value, wet: wetGain && wetGain.gain.value, gate: gateGain && gateGain.gain.value, input: inputGain && inputGain.gain.value }; },
   detect: detectInputHits,
