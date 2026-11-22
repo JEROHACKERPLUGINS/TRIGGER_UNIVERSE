@@ -1268,3 +1268,72 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
 .ap-shift .seg button{font-size:8.5px}
 .trigger-view .det-group .knob-label{font-size:8.5px}
 .trigger-view .det-group .knob-val{font-size:8px}
+
+/* ---------- Slate-style detector columns + full-width TONE strip ---------- */
+.trigger-page-grid{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+.trigger-view .detector{display:grid;grid-template-columns:48px 60px 90px minmax(0,1fr) 76px 76px;
+  gap:6px;min-height:0;padding-top:6px;width:100%}
+.trigger-view .det-col{display:flex;flex-direction:column;gap:5px;min-width:0;min-height:0}
+.trigger-view .dc-head{font-size:8px;font-weight:650;letter-spacing:.14em;color:var(--mint);
+  opacity:.9;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trigger-view .dc-knobs{display:flex;flex-direction:column;align-items:center;justify-content:space-evenly;
+  gap:3px;flex:1;min-height:0;min-width:0}
+.trigger-view .dc-knobs.single{flex:0 0 auto;justify-content:flex-start;padding-top:1px}
+.trigger-view .dc-knobs .knob{gap:1px;min-width:0;max-width:100%}
+.trigger-view .dc-knobs .knob-dial{width:24px;height:24px}
+.trigger-view .dc-knobs .knob-label{font-size:7.5px;letter-spacing:.02em;max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trigger-view .dc-knobs .knob-val{font-size:7.5px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:100%}
+.trigger-view .det-wave{width:100%;height:100%;min-height:0;min-width:0;overflow:hidden;flex:none}
+.trigger-view .gate-toggle{width:100%;display:flex;align-items:center;justify-content:center;
+  font-size:8px;padding:3px 2px;flex:none}
+.trigger-view .gate-toggle.on{background:rgba(45,226,197,.16);border-color:rgba(45,226,197,.5);
+  color:var(--mint)}
+.trigger-view .input-play{width:100%;display:flex;align-items:center;justify-content:center;
+  font-size:7.5px;padding:3px 2px;flex:none;margin-top:auto;white-space:nowrap}
+.trigger-view .det-meter{display:flex;gap:3px;height:82px;flex:none;align-items:stretch;min-width:0}
+.trigger-view .dm-scale{display:flex;flex-direction:column;justify-content:space-between;
+  font-family:var(--mono);font-size:6px;line-height:1;color:var(--muted-2);text-align:right;flex:none}
+.trigger-view .dm-track{width:8px;border-radius:3px;background:rgba(255,255,255,.07);
+  position:relative;overflow:hidden;flex:none}
+.trigger-view .dm-track>i{position:absolute;left:0;right:0;bottom:0;height:0;border-radius:3px;
+  background:linear-gradient(to top,var(--mint),#B6FF9E);transition:height .08s}
+.trigger-view .dm-track::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(to top,transparent 0 5px,rgba(8,12,18,.55) 5px 7px)}
+.trigger-view .output-col .det-mix{font-size:7.5px;gap:3px;flex:none;margin-top:2px;min-width:0}
+.trigger-view .output-col .det-mix input{width:100%;min-width:0}
+.trigger-view .output-col .det-mix b{font-size:7px;min-width:20px}
+
+/* The inspector is now only the merged sample/envelope pane. */
+.trigger-view .inspector-body{display:grid;grid-template-columns:1fr;grid-template-rows:1fr;
+  gap:0;min-height:0}
+.trigger-view .panel[data-panel="sample"]{grid-area:1/1/2/2}
+.trigger-view .panel{padding:5px 8px 6px}
+
+/* Full-width TONE strip above Auto Phase. */
+.tone-strip{display:flex;align-items:center;gap:12px;flex:none;width:100%;min-height:54px;
+  padding:5px 12px;border:1px solid var(--line);border-radius:10px;
+  background:rgba(8,12,20,.34);color:var(--muted);min-width:0}
+.tone-strip-head{font-size:9px;font-weight:650;letter-spacing:.14em;color:var(--mint);flex:none}
+.tone-strip .tone-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px 18px;
+  flex:1;margin:0;min-width:0}
+.tone-strip .tone-grid label{font-size:8.5px;gap:1px;letter-spacing:.06em;min-width:0}
+.tone-strip .tone-grid b{font-size:9px}
+.tone-strip .tone-grid input{width:100%;height:3px}
+.tone-strip .playback-row{display:flex;align-items:center;gap:5px;flex:none;margin:0}
+.tone-strip .pb-label{font-size:8px}
+.tone-strip .seg button{font-size:8.5px;padding:2px 5px}
+.tone-strip .chip{font-size:8.5px;padding:3px 6px}
+
+/* Narrow sample column: 2-column readouts so they remain legible. */
+@media (max-width:1250px){
+  .trigger-view .sample-side .wave-readout{grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 6px}
+  .trigger-view .sample-side .wave-readout span{font-size:9px}
+  .trigger-view .sample-side .wave-readout b{font-size:9px}
+}
+
+.trigger-view .dm-scale{font-size:6.5px}
+
+/* Give the Slate-style detector more room; the sample view can be narrower. */
+.trigger-page-grid{grid-template-columns:minmax(0,16fr) minmax(0,9fr)}

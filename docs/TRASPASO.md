@@ -88,7 +88,7 @@ window.__setTriggerOpen(true)
 | 9 | Editor | Vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre con doble click en un slot (o click en uno vacío); el click en un slot lleno audiciona |
 | 10 | Paneles del editor | **SAMPLE + ENVELOPE** en un solo panel grande (waveform + ADR) y **TONE** a todo el ancho; **AUTO PHASE** vive sobre el banco de faders |
 | 11 | Auto Phase | Tira horizontal sobre el banco de faders, atada al slot seleccionado: REF, re-analizar, TIMING, OFFSET y SHIFT |
-| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR PRE/POST + panel SAMPLE+ENVELOPE + TONE + banco de 8 faders con Auto Phase. El corchete vuelve a la vista anterior; **Esc siempre vuelve a HOME** |
+| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR estilo Slate en columnas (GATE · INPUT · FILTER · waveform · DETECT · OUTPUT) + sample view angosto con SAMPLE+ENVELOPE + tira TONE full-width + banco de 8 faders con Auto Phase. El corchete vuelve a la vista anterior; **Esc siempre vuelve a HOME** |
 | 13 | HOME | Vista principal (ex Universe). Full-bleed, nube de puntos 3D abstracta, sin ejes de frecuencia/ms. Search arriba, similitud abajo. **Esc vuelve acá desde cualquier vista** |
 | 14 | FILE SEARCH | Árbol tipo Finder con root en la carpeta elegida por el usuario. Subcarpetas reales. Samples reales primero |
 | 15 | OUTPUT | Knob arriba a la derecha. Settings funcional. AUTO PHASE ALL vive en Settings |
@@ -267,8 +267,8 @@ Paneles (visibles a la vez en la página TRIGGER):
 
 - Tercera página full-screen, como HOME o FILE SEARCH. Se abre con el **corchete TRIGGER** izquierdo; se vuelve con el mismo corchete (recuerda la vista anterior).
 - Sin fila de header: se quitaron título, INPUT, HITS y MASTER. El contenido arranca arriba; el corchete TRIGGER activo identifica la página.
-- **INPUT DETECTOR** a la izquierda, dividido en **PRE-TRIGGER** (INPUT, LOW CUT, HIGH CUT, SUPPRESS, GATE, ▶ INPUT) y **POST-TRIGGER** (SENS, RETRIG, DETAIL, OUTPUT, MIX), con la waveform del INPUT arriba.
-- **Editor de sample** a la derecha con **SAMPLE + ENVELOPE en un solo panel grande** (waveform arriba/izquierda y ADR a la derecha, con waveform fantasma) y **TONE a todo el ancho** debajo.
+- **INPUT DETECTOR** a la izquierda (~64% del ancho), en columnas estilo Slate: **GATE** (ON/OFF, ATTACK, HOLD, RELEASE), **INPUT** (medidor + VOLUME + ▶ INPUT), **FILTER** (LOWCUT, HIGHCUT, SUPPRESS), **waveform central**, **DETECT** (SENSITIVITY, RETRIGGER, DETAIL) y **OUTPUT** (medidor + VOLUME + MIX).
+- **Sample view** a la derecha (~36% del ancho): **SAMPLE + ENVELOPE** en un solo panel (waveform a la izquierda, ADR con waveform fantasma a la derecha). **TONE** es una tira full-width debajo del detector/editor.
 - **Banco de 8 faders** arriba del dock, alineado columna a columna con los slots:
   - Fader vertical (≈136 px), meter real, M/S/Ø, nivel dB y badge de fase.
   - **AUTO PHASE** en una tira horizontal arriba de los faders, atada al slot seleccionado.
@@ -602,6 +602,7 @@ AAX **no** se necesita.
 31. **Waveform en el ADR**: el gráfico del envelope superpone la waveform del sample recortado (y reversible) como silueta tenue detrás de la línea. El release point queda por defecto al final de cada sample, de modo que R se recalcula por sample; su nivel final es libre.
 32. **SAMPLE limpio**: se quitaron los botones Audition y Normalize del panel SAMPLE. Audition queda en el click de un Trigger Slot lleno o una fila de FILE SEARCH; Reverse queda junto a los readouts de start/end/fades y se marca en mint cuando está activo. Se eliminó el playhead de audition.
 33. **TRIGGER 2.0**: el detector se dividió en **PRE-TRIGGER** (input, filtros, suppress, gate) y **POST-TRIGGER** (sens, retrig, detail, output, mix). SAMPLE y ENVELOPE se fusionaron en un solo panel grande, con la waveform a la izquierda y el ADR con waveform fantasma a la derecha. TONE pasó a todo el ancho. AUTO PHASE salió del editor y vive en una tira horizontal arriba de los faders, atada al slot seleccionado; el banco de faders se acortó para dar más alto al editor.
+34. **TRIGGER 2.1 — detector Slate**: el detector pasó a seis columnas (GATE con ON/OFF + ATTACK/HOLD/RELEASE; INPUT con medidor + VOLUME + ▶ INPUT; FILTER con LOWCUT/HIGHCUT/SUPPRESS; waveform central; DETECT con SENSITIVITY/RETRIGGER/DETAIL; OUTPUT con medidor + VOLUME + MIX). Se agregaron los medidores verticales de INPUT/OUTPUT, los volúmenes de entrada/salida quedaron conectados al audio y el sample view se angostó a ~36%. TONE pasó a una tira full-width; el split del detector es ~64/36.
 
 ---
 

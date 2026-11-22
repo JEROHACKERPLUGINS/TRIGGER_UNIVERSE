@@ -181,6 +181,7 @@ let audioCtx = null;
 let masterGain = null;
 let masterAnalyser = null;
 let inputGain = null;
+let detectorGain = null;
 let slotNodes = [];
 let meterRAF = null;
 let inputSource = null;
@@ -324,7 +325,7 @@ const state = {
   popoverSlot: null,
   autoRef: 'INPUT',
   autoTiming: false,
-  detector: { sens: 45, retrig: 50, detail: 50, low: 30, high: 15000, supp: 50, input: 0, output: 0, mix: 100, gate: false },
+  detector: { attack: .5, hold: 4, release: 450, sens: 45, retrig: 50, detail: 50, low: 30, high: 15000, supp: 50, input: 0, output: 0, mix: 100, gate: true },
 };
 
 function pickByCategory(cat, offset = 0) {
@@ -2575,14 +2576,17 @@ function animateMaster() {
 
 // ---------- detector ----------
 const DET = [
-  { key: 'input',  label: 'INPUT',    min: -24, max: 24,    val: 0,     unit: 'dB', fmt: v => fmtDb(v),           group: 'pre' },
-  { key: 'low',    label: 'LOW CUT',  min: 20,  max: 20000, val: 30,    log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'pre' },
-  { key: 'high',   label: 'HIGH CUT', min: 20,  max: 20000, val: 15000, log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'pre' },
-  { key: 'supp',   label: 'SUPPRESS', min: 0,   max: 100,   val: 50,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'pre' },
-  { key: 'sens',   label: 'SENS',     min: 0,   max: 100,   val: 45,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'post' },
-  { key: 'retrig', label: 'RETRIG',   min: 0,   max: 1000,  val: 50,    unit: 'ms', fmt: v => Math.round(v) + 'ms', group: 'post' },
-  { key: 'detail', label: 'DETAIL',   min: 0,   max: 100,   val: 50,    unit: '%',  fmt: v => Math.round(v) + '%', group: 'post' },
-  { key: 'output', label: 'OUTPUT',   min: -24, max: 24,    val: 0,     unit: 'dB', fmt: v => fmtDb(v),           group: 'post' },
+  { key: 'attack', label: 'ATTACK',      min: 0,   max: 200,   val: .5,    unit: 'ms', fmt: v => fmtMs(v), step: .1, decimals: 1, group: 'gate' },
+  { key: 'hold',   label: 'HOLD',        min: 0,   max: 500,   val: 4,     unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate' },
+  { key: 'release',label: 'RELEASE',     min: 0,   max: 2000,  val: 450,   unit: 'ms', fmt: v => fmtMs(v), step: 1,  decimals: 0, group: 'gate' },
+  { key: 'input',  label: 'VOLUME',      min: -24, max: 24,    val: 0,     unit: 'dB', fmt: v => fmtDb(v), step: .1, decimals: 1, group: 'input' },
+  { key: 'low',    label: 'LOWCUT',      min: 20,  max: 20000, val: 30,    log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'filter' },
+  { key: 'high',   label: 'HIGHCUT',     min: 20,  max: 20000, val: 15000, log: true, unit: 'Hz', fmt: v => fmtHz(v), group: 'filter' },
+  { key: 'supp',   label: 'SUPPRESS',    min: 0,   max: 100,   val: 50,    unit: '%', fmt: v => Math.round(v) + '%', group: 'filter' },
+  { key: 'sens',   label: 'SENSITIVITY', min: 0,   max: 100,   val: 45,    unit: '%', fmt: v => Math.round(v) + '%', group: 'detect' },
+  { key: 'retrig', label: 'RETRIGGER',   min: 0,   max: 1000,  val: 50,    unit: 'ms', fmt: v => Math.round(v) + ' ms', group: 'detect' },
+  { key: 'detail', label: 'DETAIL',      min: 0,   max: 100,   val: 50,    unit: '%', fmt: v => Math.round(v) + '%', group: 'detect' },
+  { key: 'output', label: 'VOLUME',      min: -24, max: 24,    val: 0,     unit: 'dB', fmt: v => fmtDb(v), step: .1, decimals: 1, group: 'output' },
 ];
 
 function makeKnob(cfg) {
@@ -2601,6 +2605,8 @@ function makeKnob(cfg) {
     ind.style.transform = `translateX(-50%) rotate(${-135 + 270 * toNorm(v)}deg)`;
     val.textContent = cfg.fmt(v);
     state.detector[cfg.key] = v;
+    if (cfg.key === 'input' && inputGain) inputGain.gain.value = dbToAmp(-9 + v);
+    if (cfg.key === 'output' && detectorGain) detectorGain.gain.value = dbToAmp(v);
     if (audioReady && ['sens', 'retrig', 'detail', 'supp'].includes(cfg.key)) detectInputHits();
   };
   render();
@@ -2608,9 +2614,9 @@ function makeKnob(cfg) {
     get: () => v,
     set: nv => { v = nv; render(); },
     min: cfg.min, max: cfg.max,
-    step: (cfg.unit === 'dB') ? .1 : 1,
+    step: cfg.step != null ? cfg.step : (cfg.unit === 'dB' ? .1 : 1),
     unit: cfg.unit,
-    decimals: (cfg.unit === 'dB') ? 1 : 0,
+    decimals: cfg.decimals != null ? cfg.decimals : (cfg.unit === 'dB' ? 1 : 0),
   });
   let sy = 0, sn = 0;
   dial.addEventListener('pointerdown', e => {
@@ -2624,12 +2630,22 @@ function makeKnob(cfg) {
   });
   return el;
 }
-DET.forEach(c => $(c.group === 'pre' ? '#detKnobsPre' : '#detKnobsPost').appendChild(makeKnob(c)));
+(function renderDetectorKnobs() {
+  const target = { gate: '#detKnobsGate', input: '#detKnobsInput', filter: '#detKnobsFilter', detect: '#detKnobsDetect', output: '#detKnobsOutput' };
+  DET.forEach(c => { const host = $(target[c.group]); if (host) host.appendChild(makeKnob(c)); });
+})();
 
+function updateGateButton() {
+  const btn = $('#gateBtn');
+  if (!btn) return;
+  btn.classList.toggle('on', state.detector.gate);
+  btn.textContent = state.detector.gate ? 'ON' : 'OFF';
+}
 $('#gateBtn').onclick = () => {
   state.detector.gate = !state.detector.gate;
-  $('#gateBtn').classList.toggle('on', state.detector.gate);
+  updateGateButton();
 };
+updateGateButton();
 $('#mix').addEventListener('input', e => {
   state.detector.mix = +e.target.value;
   $('#mixVal').textContent = Math.round(state.detector.mix) + '%';
@@ -2730,6 +2746,8 @@ function drawInput(now) {
   const lvl = -30 + Math.round(envAt(scan) * 26);
   const il = $('#inputLevel');
   if (il) il.textContent = (lvl >= 0 ? '+' : '') + lvl + ' dB';
+  const imb = $('#inputMeterBar');
+  if (imb) imb.style.height = clamp((lvl + 48) / 48 * 100, 2, 100) + '%';
 }
 let inputRAF = null;
 function startInputLoop() {
@@ -2830,8 +2848,11 @@ function ensureAudio() {
   masterAnalyser.fftSize = 512;
   masterGain.connect(masterAnalyser).connect(audioCtx.destination);
   inputGain = audioCtx.createGain();
-  inputGain.gain.value = dbToAmp(-9);
-  inputGain.connect(masterGain);
+  inputGain.gain.value = dbToAmp(-9 + (state.detector.input || 0));
+  detectorGain = audioCtx.createGain();
+  detectorGain.gain.value = dbToAmp(state.detector.output || 0);
+  detectorGain.connect(masterGain);
+  inputGain.connect(detectorGain);
   slotNodes = state.slots.map(() => {
     const cut = audioCtx.createBiquadFilter();
     cut.type = 'lowpass'; cut.frequency.value = 20000; cut.Q.value = 0.7;
@@ -2841,7 +2862,7 @@ function ensureAudio() {
     const pan = audioCtx.createStereoPanner();
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 256;
-    cut.connect(tone).connect(level).connect(pan).connect(analyser).connect(masterGain);
+    cut.connect(tone).connect(level).connect(pan).connect(analyser).connect(detectorGain);
     return { cut, tone, level, pan, analyser, buf: new Uint8Array(analyser.fftSize) };
   });
   syncAllSlotAudio();
@@ -3076,6 +3097,7 @@ function startMeters() {
       if (vu !== lastVu) {
         lastVu = vu;
         const ov = $('#outVuBar'); if (ov) ov.style.height = vu + '%';
+        const om = $('#outputMeterBar'); if (om) om.style.height = vu + '%';
       }
       if (vu !== lastMaster) {
         lastMaster = vu;
@@ -3177,6 +3199,8 @@ function detectInputHits() {
 
 function drawRealInput(now) {
   if (!realInputPeaks) return;
+  const imb = $('#inputMeterBar');
+  if (!inputPlaying && imb) imb.style.height = '2%';
   const ctx = inputCanvas.getContext('2d');
   ctx.clearRect(0, 0, inW, inH);
   const mid = inH / 2, amp = inH * .38;
@@ -3218,6 +3242,7 @@ function drawRealInput(now) {
         const idx = Math.min(realInputPeaks.length - 1, Math.floor(t * realInputPeaks.length));
         const db = 20 * Math.log10(Math.max(realInputPeaks[idx], .001));
         il.textContent = (db >= 0 ? '+' : '') + db.toFixed(0) + ' dB';
+        if (imb) imb.style.height = clamp((db + 48) / 48 * 100, 2, 100) + '%';
       }
     }
   }
