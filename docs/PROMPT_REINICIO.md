@@ -57,7 +57,7 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (
 - **Framework:** iPlug2. **No** migrar a JUCE.
 - **Formatos:** AU + VST3. **AAX fuera.**
 - **UI final:** React + TypeScript sobre WebView de iPlug2.
-- **Envelope:** **A/D/R** (attack, decay, release) con hold fijo al 62% + fade in/out + start/end/trim. **Sin time-stretch.**
+- **Envelope:** **A/D/R** (attack → decay al 50% → release a cero, tres etapas consecutivas, sin sustain) + fade in/out + start/end/trim. **Sin time-stretch.**
 - **Fase:** `Ø = 180°` (polaridad). Phase shift separado: 0° / 90° / 180° / 260°.
 - **Auto-phase:** corre al cargar un sample. Por defecto solo polaridad; offset en 0 salvo **TIMING** activo.
 - **Trigger Slots:** dock fijo de 8 recuadros de glass `01`–`08`, cuadrados y centrados, vacíos al inicio, con la misma textura glass que search/TRIGGER/Settings/OUTPUT. Al arrancar un drag se encienden con glow mint y se magnifican tipo Dock de macOS. Click en un slot lleno **audiciona** su sample; doble click lo abre en TRIGGER; click en uno vacío abre TRIGGER.

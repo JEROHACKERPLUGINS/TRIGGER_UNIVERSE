@@ -2290,7 +2290,7 @@ $('#wave').addEventListener('pointerdown', e => {
 });
 
 // ---------- ADR envelope ----------
-const ADR_HOLD = .62;
+const ADR_LEVEL = .5;
 function adsrGeom() { return { W: 360, H: 140, x0: 14, x1: 346, y0: 18, y1: 120 }; }
 
 function renderADSR() {
@@ -2298,11 +2298,10 @@ function renderADSR() {
   if (!slot) return;
   const { a, d, r } = slot.adsr;
   const { x0, x1, y0, y1 } = adsrGeom();
-  const hold = Math.max(120, (a + d + r) * .16);
-  const total = Math.max(300, a + d + hold + r);
+  const total = Math.max(900, (a + d + r) * 1.18);
   const X = t => x0 + (t / total) * (x1 - x0);
   const Y = v => y1 - v * (y1 - y0);
-  const pts = [[X(0), Y(0)], [X(a), Y(1)], [X(a + d), Y(ADR_HOLD)], [X(a + d + hold), Y(ADR_HOLD)], [X(total), Y(0)]];
+  const pts = [[X(0), Y(0)], [X(a), Y(1)], [X(a + d), Y(ADR_LEVEL)], [X(a + d + r), Y(0)]];
   const line = pts.map((p, i) => `${i ? 'L' : 'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
   const area = `${line} L ${X(total).toFixed(1)} ${y1} L ${x0} ${y1} Z`;
   const c = '#2DE2C5';
@@ -2319,8 +2318,8 @@ function renderADSR() {
     <path d="${area}" fill="url(#ag)"/>
     <path d="${line}" fill="none" stroke="${c}" stroke-width="1.8" stroke-linejoin="round"/>
     <circle data-h="attack" cx="${X(a)}" cy="${Y(1)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:ew-resize"/>
-    <circle data-h="decay" cx="${X(a + d)}" cy="${Y(ADR_HOLD)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:ew-resize"/>
-    <circle data-h="release" cx="${X(a + d + hold + r)}" cy="${Y(0)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:ew-resize"/>
+    <circle data-h="decay" cx="${X(a + d)}" cy="${Y(ADR_LEVEL)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:ew-resize"/>
+    <circle data-h="release" cx="${X(a + d + r)}" cy="${Y(0)}" r="4.5" fill="#fff" stroke="${c}" stroke-width="2" style="cursor:ew-resize"/>
   `;
   $('#aVal').textContent = fmtMs(a);
   $('#dVal').textContent = fmtMs(d);
@@ -2355,12 +2354,11 @@ $('#adsr').addEventListener('pointerdown', e => {
     const nx = clamp((ev.clientX - rect.left) / rect.width, 0, 1);
     const sx = x0 + nx * (x1 - x0);
     const { a, d, r } = slot.adsr;
-    const hold = Math.max(120, (a + d + r) * .16);
-    const total = Math.max(300, a + d + hold + r);
+    const total = Math.max(900, (a + d + r) * 1.18);
     const t = ((sx - x0) / (x1 - x0)) * total;
     if (h.dataset.h === 'attack') slot.adsr.a = clamp(t, 0, 2000);
     if (h.dataset.h === 'decay') slot.adsr.d = clamp(t - slot.adsr.a, 0, 2000);
-    if (h.dataset.h === 'release') slot.adsr.r = clamp(t - (slot.adsr.a + slot.adsr.d + hold), 0, 5000);
+    if (h.dataset.h === 'release') slot.adsr.r = clamp(t - (slot.adsr.a + slot.adsr.d), 0, 5000);
     renderADSR();
   };
   const up = () => {
@@ -2943,18 +2941,19 @@ function scheduleSlot(ctx, i, when) {
   if (node) fade.connect(node.cut); else fade.connect(masterGain);
   const t0 = ctx.currentTime + 0.02 + (when || 0) + Math.max(0, s.offset) / 1000;
   const total = len / rate;
-  const a = Math.max(0.001, s.adsr.a / 1000);
-  const d = Math.max(0.001, s.adsr.d / 1000);
-  const r = Math.max(0.001, s.adsr.r / 1000);
+  let a = Math.max(0.001, s.adsr.a / 1000);
+  let d = Math.max(0.001, s.adsr.d / 1000);
+  let r = Math.max(0.001, s.adsr.r / 1000);
+  const envTotal = a + d + r;
+  const fit = envTotal > total ? total / envTotal : 1;
+  a *= fit; d *= fit; r *= fit;
   const peak = clamp(dbToAmp(s.gain), 0, 4);
-  const sus = peak * ADR_HOLD;
+  const mid = peak * ADR_LEVEL;
   const g = env.gain;
   g.setValueAtTime(0, t0);
-  g.linearRampToValueAtTime(peak, t0 + Math.min(a, total * .9));
-  g.linearRampToValueAtTime(sus, t0 + Math.min(a + d, total * .95));
-  const relStart = Math.max(t0 + a + d, t0 + total - r);
-  g.setValueAtTime(sus, relStart);
-  g.linearRampToValueAtTime(0, relStart + Math.min(r, Math.max(0.005, total - (relStart - t0))));
+  g.linearRampToValueAtTime(peak, t0 + a);
+  g.linearRampToValueAtTime(mid, t0 + a + d);
+  g.linearRampToValueAtTime(0, t0 + a + d + r);
   const f = fade.gain;
   const fi = Math.min(s.fadeIn / 1000, total * .9);
   const fo = Math.min(s.fadeOut / 1000, total * .9);

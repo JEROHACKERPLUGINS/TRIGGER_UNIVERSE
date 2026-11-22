@@ -81,7 +81,7 @@ window.__setTriggerOpen(true)
 | 2 | Formatos | **AU + VST3**. **AAX fuera** por decisión del usuario |
 | 3 | UI final | **React + TypeScript** sobre el bridge WebView de iPlug2 |
 | 4 | Prototipo | HTML/CSS/JS sin build step, porque no hay Node instalado |
-| 5 | Envelope | **A/D/R** en la UI (attack, decay, release) con hold fijo al 62%; el motor sigue soportando ADSR. Incluye fade in/out + start/end/trim. **Sin time-stretch** |
+| 5 | Envelope | **A/D/R** en la UI: attack → decay a un nivel fijo del 50% → release a cero, sin sustenido ni meseta; el motor sigue soportando ADSR. Incluye fade in/out + start/end/trim. **Sin time-stretch** |
 | 6 | Fase | **Ø = 180°** (polaridad). **Phase shift separado**: 0° / 90° / 180° / 260° |
 | 7 | Auto-phase | Corre automáticamente al cargar un sample. Por defecto **solo polaridad**; offset en 0 salvo que **TIMING** esté activo |
 | 8 | Slots | Dock fijo de 8 recuadros de glass **01–08**, cuadrados y centrados, vacíos al inicio |
@@ -320,7 +320,7 @@ No es un solo hit: es una **secuencia de snare** con 11 golpes principales, ghos
   - playbackRate (tune),
   - start/end,
   - fades in/out,
-  - A/D/R (attack/decay/release, hold fijo al 62%),
+  - A/D/R (attack/decay/release, nivel de decay fijo al 50%),
   - gain por slot,
   - lowpass (cut) + high shelf (tone),
   - pan,
@@ -602,7 +602,7 @@ AAX **no** se necesita.
 27. **Faders centrados**: el nivel en dB de cada fader queda centrado bajo el track y el badge de fase pasa a una segunda línea centrada; el número editable conserva exactamente esa posición.
 28. **Doble click en faders**: el click sobre un valor numérico ya no se propaga al contenedor, así el fader no se re-renderiza entre los dos clicks y la edición in-place funciona en los 8 niveles. Se auditaron los valores numéricos (detector, MIX, OUTPUT, faders, tone, waveform, A/D/R y offset) con la secuencia de click completa.
 29. **Editor numérico neutro**: se quitó el halo mint, el subrayado punteado y el cambio de color al hover. El valor editable se indica solo con un recuadro gris de 1 px y fondo apenas más claro; la selección de texto también usa gris. El estado inválido mantiene un borde rojo tenue.
-30. **Envelope A/D/R**: se eliminó Sustain de la UI. El envelope queda en Attack, Decay y Release con un hold fijo al 62% del nivel; el gráfico muestra tres handles y tres readouts, el decay solo se mueve en horizontal y el reset vuelve a A 0 / D 250 / R 300. El scheduler de Web Audio usa el mismo hold fijo.
+30. **Envelope A/D/R**: se eliminó Sustain de la UI. Attack sube al pico, Decay baja a un nivel fijo del 50% y Release cae a cero inmediatamente después: tres etapas consecutivas, sin meseta. El gráfico muestra tres handles; el release tiene margen para arrastrarse. Si A+D+R supera la duración del sample, el scheduler escala las tres etapas para entrar completas y evitar clicks; si es más corto, el resto del sample queda en silencio. Reset A 0 / D 250 / R 300.
 
 ---
 
