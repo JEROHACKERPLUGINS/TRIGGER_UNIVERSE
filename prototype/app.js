@@ -425,7 +425,7 @@ const state = {
   popoverSlot: null,
   autoRef: 'INPUT',
   autoTiming: false,
-  detector: { attack: .5, hold: 4, release: 450, sens: 51, retrig: 16, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: true },
+  detector: { attack: .5, hold: 4, release: 450, sens: 51, retrig: 16, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: true, gateThreshold: -24 },
 };
 
 function pickByCategory(cat, offset = 0) {
@@ -2940,7 +2940,11 @@ function filterDetection(data, sr) {
   if (high < 20000) out = applyBiquad(out, biquadCoeffs('lp', high, sr));
   return out;
 }
+const DETAIL_MAX = 1.5;
 function detailThreshold() {
+  return (clamp(state.detector.detail, 0, 100) / 100) * DETAIL_MAX;
+}
+function detailFrac() {
   return clamp(state.detector.detail, 0, 100) / 100;
 }
 function gainReductionPct(gateV) {
@@ -2948,37 +2952,81 @@ function gainReductionPct(gateV) {
   const db = -20 * Math.log10(Math.max(gateV, .001));
   return clamp(db / 24 * 100, 0, 100);
 }
-// The gate is transient-driven: it opens on every detected hit and its
-// attack/hold/release shape the tail of the original input. It does not
-// change detection. This matches Slate Trigger's gate behavior.
-function computeGateEnvFromHits(hits, length, sr) {
-  if (!state.detector.gate) { realGateEnv = null; realGateBlock = 0; return null; }
-  const block = Math.max(8, Math.round(sr * 0.005));
-  const n = Math.ceil(length / block);
+// The gate is a standard threshold gate on the original input, like C1 Gate:
+// the arrow on the input meter sets the threshold and attack/hold/release shape
+// the gain reduction. Detection stays independent (Detail/Sensitivity/Retrigger).
+function computeGateEnvFromInput() {
+  if (!state.detector.gate || !realInputBuffer) { realGateEnv = null; realGateBlock = 0; return null; }
+  const raw = realInputBuffer.getChannelData(0);
+  const sr = realInputBuffer.sampleRate;
+  const volAmp = dbToAmp(state.detector.input);
+  const thr = dbToAmp(state.detector.gateThreshold);
+  const block = Math.max(1, Math.round(sr * 0.001)); // 1 ms resolution
+  const n = Math.ceil(raw.length / block);
   const env = new Float32Array(n);
   const atk = Math.max(0, state.detector.attack / 1000);
   const hold = Math.max(0, state.detector.hold / 1000);
   const rel = Math.max(0, state.detector.release / 1000);
-  const blockDur = block / sr;
+  const dt = block / sr;
+  let gain = 0, holdLeft = 0;
   for (let b = 0; b < n; b++) {
-    const t = b * blockDur;
-    let g = 0;
-    for (let h = 0; h < hits.length; h++) {
-      const dt = t - hits[h].time;
-      if (dt < 0) continue;
-      let v = 0;
-      if (dt < atk) v = atk > 0 ? dt / atk : 1;
-      else if (dt < atk + hold) v = 1;
-      else if (dt < atk + hold + rel) v = rel > 0 ? 1 - (dt - atk - hold) / rel : 0;
-      else continue;
-      if (v > g) g = v;
+    let peak = 0;
+    const start = b * block, finish = Math.min(raw.length, start + block);
+    for (let i = start; i < finish; i++) {
+      const a = Math.abs(raw[i]) / realInputMax * volAmp;
+      if (a > peak) peak = a;
     }
-    env[b] = g;
+    const open = peak >= thr;
+    if (open) holdLeft = hold;
+    const target = (open || holdLeft > 0) ? 1 : 0;
+    if (!open && holdLeft > 0) holdLeft = Math.max(0, holdLeft - dt);
+    if (target > 0 && atk <= 0) gain = 1;
+    else if (target <= 0 && rel <= 0) gain = 0;
+    else {
+      const tau = target > gain ? atk : rel;
+      if (tau <= 0) gain = target;
+      else gain += (target - gain) * (1 - Math.exp(-dt / tau));
+    }
+    env[b] = gain;
   }
   realGateEnv = env;
   realGateBlock = block;
   return env;
 }
+function setGateThreshold(v) {
+  state.detector.gateThreshold = clamp(v, -48, 0);
+  const btn = $('#gateThresh');
+  if (btn) btn.style.bottom = (clamp((state.detector.gateThreshold + 48) / 48, 0, 1) * 100).toFixed(2) + '%';
+  const lab = $('#gateThreshVal');
+  if (lab) lab.textContent = fmtDb(state.detector.gateThreshold);
+  scheduleDetect();
+}
+
+(function initGateThreshold() {
+  const btn = $('#gateThresh');
+  if (!btn) return;
+  setGateThreshold(state.detector.gateThreshold);
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    const wrap = btn.parentElement;
+    const rect = wrap.getBoundingClientRect();
+    const move = ev => {
+      const pct = clamp((rect.bottom - ev.clientY) / Math.max(1, rect.height), 0, 1);
+      setGateThreshold(-48 + pct * 48);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+  bindNumericEdit($('#gateThreshVal'), {
+    get: () => state.detector.gateThreshold,
+    set: v => setGateThreshold(v),
+    min: -48, max: 0, step: .5, unit: 'dB', decimals: 1, default: -24,
+  });
+})();
 function gateValueAt(t) {
   if (!state.detector.gate || !realGateEnv || !realInputDuration) return 1;
   const idx = clamp(Math.floor(t / realInputDuration * realGateEnv.length), 0, realGateEnv.length - 1);
@@ -2990,6 +3038,11 @@ function scheduleGate(startTime) {
   gateGain.gain.setValueAtTime(1, audioCtx.currentTime);
   if (!state.detector.gate || !realGateEnv || !realInputBuffer) return;
   const blockDur = realGateBlock / realInputBuffer.sampleRate;
+  const duration = realGateEnv.length * blockDur;
+  try {
+    gateGain.gain.setValueCurveAtTime(realGateEnv, startTime, duration);
+    return;
+  } catch (e) {}
   gateGain.gain.setValueAtTime(realGateEnv[0], startTime);
   for (let b = 1; b < realGateEnv.length; b++) {
     gateGain.gain.linearRampToValueAtTime(realGateEnv[b], startTime + b * blockDur);
@@ -3005,6 +3058,11 @@ function rescheduleGate() {
   }
   const blockDur = realGateBlock / realInputBuffer.sampleRate;
   const startIdx = clamp(Math.floor((now - inputStartCtxTime) / blockDur), 0, realGateEnv.length - 1);
+  const curve = realGateEnv.subarray(startIdx);
+  try {
+    gateGain.gain.setValueCurveAtTime(curve, now, curve.length * blockDur);
+    return;
+  } catch (e) {}
   gateGain.gain.setValueAtTime(realGateEnv[startIdx], now);
   for (let b = startIdx + 1; b < realGateEnv.length; b++) {
     const t = inputStartCtxTime + b * blockDur;
@@ -3037,6 +3095,7 @@ function drawInput(now) {
   const ctx = inputCanvas.getContext('2d');
   ctx.clearRect(0, 0, inW, inH);
   const mid = inH / 2, amp = Math.max(10, mid - 6);
+  const waveAmp = amp / DETAIL_MAX;
   const volAmp = dbToAmp(state.detector.input);
   const detailThr = detailThreshold();
   const gateOn = state.detector.gate;
@@ -3067,28 +3126,37 @@ function drawInput(now) {
     }
     return g;
   };
-  const trace = () => {
+  const rawPeak = t => Math.min(1, envAt(t) * volAmp);
+  const postPeak = t => rawPeak(t) * (gateOn ? synthGateAt(t) : 1);
+  const trace = peakFn => {
     ctx.beginPath();
     for (let x = 0; x <= inW; x++) {
       const t = x / inW;
-      const y = mid - Math.min(1, envAt(t) * volAmp) * amp;
+      const y = mid - peakFn(t) * waveAmp;
       x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     for (let x = inW; x >= 0; x--) {
       const t = x / inW;
-      ctx.lineTo(x, mid + Math.min(1, envAt(t) * volAmp) * amp * .8);
+      ctx.lineTo(x, mid + peakFn(t) * waveAmp * .65);
     }
     ctx.closePath();
   };
-  trace();
-  ctx.fillStyle = 'rgba(118,190,255,.42)';
+  trace(postPeak);
+  ctx.fillStyle = 'rgba(118,190,255,.40)';
   ctx.fill();
-  trace();
+  trace(postPeak);
   ctx.strokeStyle = 'rgba(255,255,255,.22)';
   ctx.lineWidth = 1;
   ctx.stroke();
+  trace(rawPeak);
+  ctx.fillStyle = 'rgba(255,105,105,.075)';
+  ctx.fill();
+  trace(rawPeak);
+  ctx.strokeStyle = 'rgba(255,125,125,.28)';
+  ctx.lineWidth = .8;
+  ctx.stroke();
 
-  const dy = mid - detailThr * amp;
+  const dy = mid - detailFrac() * amp;
   ctx.setLineDash([3, 3]);
   ctx.strokeStyle = 'rgba(45,226,197,.52)';
   ctx.beginPath(); ctx.moveTo(0, dy); ctx.lineTo(inW, dy); ctx.stroke();
@@ -3102,9 +3170,9 @@ function drawInput(now) {
 
   for (let k = 0; k < transientAt.length; k++) {
     const x = transientAt[k] * inW;
-    const peak = Math.max(.04, Math.min(1, envAt(transientAt[k]) * volAmp));
-    const top = mid - peak * amp;
-    const bottom = mid + peak * amp * .8;
+    const peak = Math.max(.04, postPeak(transientAt[k]));
+    const top = mid - peak * waveAmp;
+    const bottom = mid + peak * waveAmp * .65;
     ctx.strokeStyle = 'rgba(255,150,90,.4)';
     ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
     ctx.fillStyle = 'rgba(255,150,90,.8)';
@@ -3138,7 +3206,7 @@ function drawInput(now) {
   if (gled) gled.classList.toggle('on', gateOn && gateV > .5);
   const gr = $('#grMeterBar');
   if (gr) gr.style.height = (gateOn ? gainReductionPct(gateV) : 0) + '%';
-  const peak = Math.min(1, envAt(scan) * volAmp * gateV);
+  const peak = Math.min(1, envAt(scan) * volAmp);
   const lvl = Math.round(20 * Math.log10(Math.max(peak, .001)));
   const il = $('#inputLevel');
   if (il) il.textContent = (lvl >= 0 ? '+' : '') + Math.max(-48, lvl) + ' dB';
@@ -3315,8 +3383,8 @@ function ensureAudio() {
   wetGain.gain.value = clamp(state.detector.mix, 0, 100) / 100;
   dryGain.connect(masterGain);
   wetGain.connect(masterGain);
-  gateGain.connect(inputGain);
-  inputGain.connect(dryGain);
+  inputGain.connect(gateGain);
+  gateGain.connect(dryGain);
   slotNodes = state.slots.map(() => {
     const cut = audioCtx.createBiquadFilter();
     cut.type = 'lowpass'; cut.frequency.value = 20000; cut.Q.value = 0.7;
@@ -3623,6 +3691,7 @@ function detectInputHits() {
   if (!realInputBuffer) return realHits;
   const raw = realInputBuffer.getChannelData(0);
   const sr = realInputBuffer.sampleRate;
+  computeGateEnvFromInput();
   const data = filterDetection(raw, sr);
   const sensGain = Math.pow(2, (state.detector.sens - 50) / 25);
   const volAmp = dbToAmp(state.detector.input);
@@ -3636,8 +3705,10 @@ function detectInputHits() {
   const win = Math.round(0.005 * sr);
   let fast = 0, slow = 0, supTh = 0, hold = 0, capturing = false, peak = 0, cap = 0, armed = true;
   const hits = [];
+  const gateOn = state.detector.gate && realGateEnv;
   for (let i = 0; i < data.length; i++) {
-    const x = Math.abs(data[i]) * normGain;
+    let x = Math.abs(data[i]) * normGain;
+    if (gateOn) x *= realGateEnv[Math.min(realGateEnv.length - 1, Math.floor(i / realGateBlock))];
     fast = Math.max(x, fast * fastRel);
     slow += (x - slow) * slowCoef;
     supTh *= Math.exp(-1 / (0.05 * sr));
@@ -3662,7 +3733,6 @@ function detectInputHits() {
     }
   }
   realHits = hits;
-  computeGateEnvFromHits(hits, raw.length, sr);
   const el = $('#triggerCount'); if (el) el.textContent = String(hits.length);
   return hits;
 }
@@ -3687,35 +3757,45 @@ function drawRealInput(now) {
     : 0;
   const tAt = x => winStart + (x / inW) * winDur;
   const xAt = t => ((t - winStart) / winDur) * inW;
-  const peakAt = x => {
+  const waveAmp = amp / DETAIL_MAX;
+  const rawPeakAt = x => {
     const t = tAt(x);
     const idx = clamp(Math.floor(t / realInputDuration * realInputPeaks.length), 0, realInputPeaks.length - 1);
     return Math.min(1, realInputPeaks[idx] * volAmp);
   };
-  const traceWave = () => {
+  const gateAtX = x => state.detector.gate ? gateValueAt(tAt(x)) : 1;
+  const peakAt = x => rawPeakAt(x) * gateAtX(x);
+  const traceWave = peakFn => {
     ctx.beginPath();
     for (let x = 0; x < inW; x++) {
-      const y = mid - peakAt(x) * amp;
+      const y = mid - peakFn(x) * waveAmp;
       x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     for (let x = inW - 1; x >= 0; x--) {
-      ctx.lineTo(x, mid + peakAt(x) * amp * .65);
+      ctx.lineTo(x, mid + peakFn(x) * waveAmp * .65);
     }
     ctx.closePath();
   };
-  // Plain input waveform: the gate is audible, not drawn here.
-  traceWave();
-  ctx.fillStyle = 'rgba(118,190,255,.42)';
+  // Blue: post-gate detector signal. Soft red ghost on top: pre-gate input.
+  traceWave(peakAt);
+  ctx.fillStyle = 'rgba(118,190,255,.40)';
   ctx.fill();
-  traceWave();
-  ctx.strokeStyle = 'rgba(170,210,255,.30)';
+  traceWave(peakAt);
+  ctx.strokeStyle = 'rgba(170,210,255,.28)';
   ctx.lineWidth = 1;
+  ctx.stroke();
+  traceWave(rawPeakAt);
+  ctx.fillStyle = 'rgba(255,105,105,.075)';
+  ctx.fill();
+  traceWave(rawPeakAt);
+  ctx.strokeStyle = 'rgba(255,125,125,.28)';
+  ctx.lineWidth = .8;
   ctx.stroke();
   // zero line
   ctx.strokeStyle = 'rgba(255,255,255,.18)';
   ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(inW, mid); ctx.stroke();
   // Detail threshold line: fixed display level, independent of Input Volume.
-  const dy = mid - detailThr * amp;
+  const dy = mid - detailFrac() * amp;
   ctx.setLineDash([3, 3]);
   ctx.strokeStyle = 'rgba(45,226,197,.52)';
   ctx.beginPath(); ctx.moveTo(0, dy); ctx.lineTo(inW, dy); ctx.stroke();
@@ -3731,8 +3811,8 @@ function drawRealInput(now) {
     if (h.time < winStart || h.time > winStart + winDur) continue;
     const x = xAt(h.time);
     const peak = Math.max(.04, peakAt(x));
-    const top = mid - peak * amp;
-    const bottom = mid + peak * amp * .65;
+    const top = mid - peak * waveAmp;
+    const bottom = mid + peak * waveAmp * .65;
     ctx.strokeStyle = 'rgba(255,150,90,.55)';
     ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
     ctx.fillStyle = 'rgba(255,150,90,.85)';
@@ -3759,7 +3839,7 @@ function drawRealInput(now) {
     const near = realHits.some(h => Math.abs(h.time - playT) < 0.006);
     if (led) led.classList.toggle('on', near);
     const idx = clamp(Math.floor(playT / realInputDuration * realInputPeaks.length), 0, realInputPeaks.length - 1);
-    const peak = Math.min(1, realInputPeaks[idx] * volAmp * gateV);
+    const peak = Math.min(1, realInputPeaks[idx] * volAmp);
     const db = 20 * Math.log10(Math.max(peak, .001));
     const il = $('#inputLevel');
     if (il) il.textContent = (db >= 0 ? '+' : '') + db.toFixed(0) + ' dB';
@@ -3826,7 +3906,7 @@ function playInput() {
   detectInputHits();
   const src = ctx.createBufferSource();
   src.buffer = realInputBuffer;
-  src.connect(gateGain);
+  src.connect(inputGain);
   const start = ctx.currentTime + 0.06;
   inputSource = src;
   inputStartCtxTime = start;

@@ -1657,3 +1657,34 @@ html.cat-shapes .sim-dots i.cat-mark.active{width:11px;height:11px}
   .trigger-bottom .fader-bank{height:var(--fader-h)}
   .auto-phase-panel{position:static;width:min(100%,440px);height:auto;min-height:0}
 }
+
+/* ---------- C1-style gate threshold arrow on the input meter ---------- */
+.trigger-view .gate-col .dc-head{justify-content:space-between;gap:4px}
+.trigger-view .gate-head-label{display:flex;align-items:center;gap:5px;min-width:0}
+.trigger-view .gate-thresh-val{font-family:var(--mono);font-size:6.5px;font-weight:500;
+  letter-spacing:0;color:#FF9A72;white-space:nowrap;cursor:text;flex:none}
+.trigger-view .input-col .dm-track-wrap{position:relative;display:flex;align-items:stretch;
+  height:100%;flex:none}
+.trigger-view .input-col .dm-track-wrap .dm-track{height:100%}
+.trigger-view .gate-thresh{position:absolute;left:-5px;right:-13px;height:9px;border:0;padding:0;
+  background:transparent;cursor:ns-resize;z-index:3;transform:translateY(50%);
+  -webkit-appearance:none;appearance:none}
+.trigger-view .gate-thresh::before{content:"";position:absolute;left:0;right:9px;top:50%;
+  height:1px;background:#FF9A72;opacity:.95;box-shadow:0 0 5px rgba(255,138,92,.45)}
+.trigger-view .gate-thresh::after{content:"";position:absolute;right:0;top:50%;
+  transform:translateY(-50%);border-top:4px solid transparent;border-bottom:4px solid transparent;
+  border-left:5px solid #FF9A72}
+.trigger-view .gate-thresh:hover::before{background:#FFC0A2}
+.trigger-view .gate-thresh:focus-visible{outline:none}
+
+/* Input meter scale aligned to the actual dB mapping (0 at top, -48 at bottom). */
+.trigger-view .input-col .dm-scale{position:relative;display:block;width:14px;height:100%;flex:none;
+  font-size:6px;line-height:1}
+.trigger-view .input-col .dm-scale span{position:absolute;right:1px;transform:translateY(50%);
+  font-family:var(--mono);font-size:6px;line-height:1;white-space:nowrap;color:var(--muted-2)}
+.trigger-view .input-col .dm-scale span:nth-child(1){bottom:95%}
+.trigger-view .input-col .dm-scale span:nth-child(2){bottom:90%}
+.trigger-view .input-col .dm-scale span:nth-child(3){bottom:84%}
+.trigger-view .input-col .dm-scale span:nth-child(4){bottom:71%}
+.trigger-view .input-col .dm-scale span:nth-child(5){bottom:50%}
+.trigger-view .input-col .dm-scale span:nth-child(6){bottom:4%}
