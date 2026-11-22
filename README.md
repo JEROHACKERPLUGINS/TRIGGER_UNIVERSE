@@ -59,7 +59,7 @@ Controles principales:
 - **HOME** (el mapa de samples) sirve para **descubrir, editar y asignar** samples; no es un beatmaker.
 - Fuera de alcance: step sequencer, patrones A/B, groove, swing, nudge, BPM sync y preset browser.
 - El motor de Trigger existente se **audita y reutiliza**; no se reemplaza sin una razón técnica documentada.
-- El envelope de amplitud (**A/D/R**: attack, decay y release, con nivel de decay fijo al 50%) y Phase/Align (polaridad + alineación temporal) son sistemas **independientes**, aunque compartan panel visual.
+- El envelope de amplitud (**A/D/R**: attack, decay y release) tiene el punto de decay libre en tiempo y nivel; el release queda anclado al final del sample. Phase/Align (polaridad + alineación temporal) es un sistema **independiente**, aunque comparta panel visual.
 - Los ocho slots son destinos independientes de drag & drop; reemplazar uno no debe afectar a los demás.
 - La edición es **no destructiva**: nunca modifica el archivo de sample original.
 

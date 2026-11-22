@@ -21,7 +21,7 @@ El editor vive dentro de la página TRIGGER y corresponde al slot seleccionado (
 
 - **SLOT**: Level, Pan, Tune, Mute/Solo/Ø, Auto Phase (REF INPUT / SLOT 1), Timing, Offset, Shift 0°/90°/180°/260°.
 - **SAMPLE**: waveform, start/end, fade in/out, reverse, normalize, audition.
-- **ENVELOPE**: A/D/R editable: attack, decay al 50% y release a cero, sin sustain ni meseta.
+- **ENVELOPE**: A/D/R editable: attack, punto de decay libre (tiempo + nivel) y release anclado al final del sample, sin control separado de sustain.
 - **TONE**: tone, cut, velocity sensitivity, gain, playback one-shot/gate, loop.
 
 El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: buscar → **ALT + drag** a un slot del dock → **doble click** en el slot para abrir TRIGGER y editar. Un click simple en un slot lleno audiciona su sample.
@@ -106,9 +106,10 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 ## Actualización 21/11 — envelope A/D/R
 
 - Se eliminó **Sustain** del envelope. Quedan **Attack, Decay y Release**, cada uno con su handle y su readout editable.
-- El decay baja hasta un nivel fijo del 50% del pico y el release arranca inmediatamente después: tres etapas consecutivas, sin meseta. Si A+D+R supera el sample, las tres etapas se escalan para entrar completas.
-- Los handles de attack, decay y release se mueven en horizontal; el release tiene margen a la derecha para poder arrastrarse. Al soltar, el gráfico y el audio usan los mismos tres valores.
-- El panel pasa a llamarse **ENVELOPE · ADR** y el reset a **Reset ADR** (A 0 / D 250 / R 300).
+- El **punto de decay es libre en X e Y**: la X cambia el tiempo de decay y la Y el nivel de hold. No hay un control S separado; el nivel se toma del punto.
+- El **release queda anclado al final del sample**: su handle está al inicio del release y se mueve en horizontal para cambiar su duración; el extremo en cero no se mueve.
+- El eje del gráfico usa la duración del sample; A, D y R se limitan entre sí para que las tres etapas entren completas.
+- El panel pasa a llamarse **ENVELOPE · ADR** y el reset a **Reset ADR** (A 0 / D 120 / R 80, hold 50%).
 
 ## Actualización 21/11 — edición numérica por doble click
 
