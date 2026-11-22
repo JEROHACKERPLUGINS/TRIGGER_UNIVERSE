@@ -21,7 +21,7 @@ El editor vive dentro de la página TRIGGER y corresponde al slot seleccionado (
 
 - **SLOT**: Level, Pan, Tune, Mute/Solo/Ø, Auto Phase (REF INPUT / SLOT 1), Timing, Offset, Shift 0°/90°/180°/260°.
 - **SAMPLE**: waveform, start/end, fade in/out, reverse, normalize, audition.
-- **ENVELOPE**: ADSR editable.
+- **ENVELOPE**: A/D/R editable (attack, decay, release; hold fijo al 62%).
 - **TONE**: tone, cut, velocity sensitivity, gain, playback one-shot/gate, loop.
 
 El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: buscar → **ALT + drag** a un slot del dock → **doble click** en el slot para abrir TRIGGER y editar. Un click simple en un slot lleno audiciona su sample.
@@ -39,7 +39,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - Al comenzar un drag, los 8 se encienden con un glow mint más brillante y se magnifican con caída por proximidad, estilo Dock de macOS; sin contorno general. El slot magnetizado mantiene un glow más fuerte.
 - Arrancan **vacíos**: muestran `+` / `DROP`.
 - Al llenarse muestran dot de categoría, nombre y duración; el × los vacía.
-- En la página TRIGGER, arriba de cada slot hay un **fader vertical largo** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna. Los 4 paneles del editor (SAMPLE, ENVELOPE/ADSR, TONE, SLOT) se ven al mismo tiempo.
+- En la página TRIGGER, arriba de cada slot hay un **fader vertical largo** con meter real, M/S/Ø, nivel dB y badge de fase, alineado columna a columna. Los 4 paneles del editor (SAMPLE, ENVELOPE/A-D-R, TONE, SLOT) se ven al mismo tiempo.
 
 ## FILE SEARCH
 
@@ -63,7 +63,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 
 - **La app es HOME**: logo y título centrados, search con toggle folder/HOME, OUTPUT + VU vertical a la derecha y corchetes verticales TRIGGER/SETTINGS en los bordes. No hay topbar separado.
 - **Search centrado** arriba, sin contorno de panel; **Similarity** flotante abajo.
-- **TRIGGER** es un corchete vertical glass a la izquierda; **SETTINGS** es su simétrico a la derecha. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/ADSR + banco de faders. **Esc vuelve siempre a HOME**, desde cualquier vista.
+- **TRIGGER** es un corchete vertical glass a la izquierda; **SETTINGS** es su simétrico a la derecha. Abre una **tercera página full-screen** con INPUT DETECTOR + editor/A-D-R + banco de faders. **Esc vuelve siempre a HOME**, desde cualquier vista.
 - **Editor de sample**: en la página TRIGGER se ven los 4 paneles a la vez (**SAMPLE / ENVELOPE / TONE / SLOT**); la barra de tabs quedó oculta. El panel SLOT conserva **AUTO PHASE** (REF, re-analizar, TIMING, resultado, OFFSET, SHIFT).
 - **Fase**: 0/90/180/260; **180 = Ø**. Los badges se mantienen en el editor.
 - **Slots**: solo números 01–08, sin faders.
@@ -102,6 +102,13 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - **♥** en la barra de similitud y en cada fila de FILE SEARCH agrega/quita favoritos.
 - Los favoritos se guardan en `localStorage` (`tu:favorites:v1`) y sobreviven al reload.
 - **FAVORITES** es un nodo fijo arriba del árbol; muestra el contador y una lista propia. Si está vacío, indica cómo agregar favoritos.
+
+## Actualización 21/11 — envelope A/D/R
+
+- Se eliminó **Sustain** del envelope. Quedan **Attack, Decay y Release**, cada uno con su handle y su readout editable.
+- El nivel de hold es fijo (62% del pico): el decay baja hasta ahí y el release arranca cerca del final del sample.
+- El handle de decay ahora solo se mueve en horizontal; al soltar, el gráfico y el audio usan los mismos tres valores.
+- El panel pasa a llamarse **ENVELOPE · ADR** y el reset a **Reset ADR** (A 0 / D 250 / R 300).
 
 ## Actualización 21/11 — edición numérica por doble click
 
@@ -191,7 +198,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 - TRIGGER, INPUT DETECTOR y el editor/ADSR se unificaron en una **tercera página full-screen**, abierta desde el corchete TRIGGER izquierdo.
 - En esta primera pasada, el drawer inferior desapareció y quedaron **8 slots de glass** en un dock fijo abajo. La segunda pasada (layout Slate Trigger) recuperó los faders arriba de los slots dentro de la página TRIGGER.
 - **ALT + drag** desde el Universe o FILE SEARCH asigna el sample a un slot; el × lo vacía.
-- Click en un slot abre la página TRIGGER con ese slot cargado; el editor abre en **ENVELOPE (ADSR)**.
+- Click en un slot abre la página TRIGGER con ese slot cargado; el editor abre en **ENVELOPE (A/D/R)**.
 - El paneo suave del Universe deja libre el dock y el waveform del INPUT solo corre con la página TRIGGER visible.
 
 ## Actualización 21/11 — file browser

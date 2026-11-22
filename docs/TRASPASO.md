@@ -14,7 +14,7 @@
 2. Un **universo visual de samples** estilo XO: nube de puntos, búsqueda, similitud, exploración.
 3. Un **mixer de 8 slots** con edición no destructiva por capa.
 
-El usuario busca un sample en HOME o en FILE SEARCH, lo arrastra a uno de los 8 slots del dock, entra a la página TRIGGER para editarlo (sample, ADSR, tone, phase) y el INPUT dispara las capas cargadas.
+El usuario busca un sample en HOME o en FILE SEARCH, lo arrastra a uno de los 8 slots del dock, entra a la página TRIGGER para editarlo (sample, A/D/R, tone, phase) y el INPUT dispara las capas cargadas.
 
 **No es un beatmaker.** Quedan fuera de alcance: step sequencer, patrones, groove, swing, BPM sync y preset browser.
 
@@ -81,14 +81,14 @@ window.__setTriggerOpen(true)
 | 2 | Formatos | **AU + VST3**. **AAX fuera** por decisión del usuario |
 | 3 | UI final | **React + TypeScript** sobre el bridge WebView de iPlug2 |
 | 4 | Prototipo | HTML/CSS/JS sin build step, porque no hay Node instalado |
-| 5 | Envelope | **ADSR real** (agregar Decay al motor) + fade in/out + start/end/trim. **Sin time-stretch** |
+| 5 | Envelope | **A/D/R** en la UI (attack, decay, release) con hold fijo al 62%; el motor sigue soportando ADSR. Incluye fade in/out + start/end/trim. **Sin time-stretch** |
 | 6 | Fase | **Ø = 180°** (polaridad). **Phase shift separado**: 0° / 90° / 180° / 260° |
 | 7 | Auto-phase | Corre automáticamente al cargar un sample. Por defecto **solo polaridad**; offset en 0 salvo que **TIMING** esté activo |
 | 8 | Slots | Dock fijo de 8 recuadros de glass **01–08**, cuadrados y centrados, vacíos al inicio |
 | 9 | Editor | Vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre con doble click en un slot (o click en uno vacío); el click en un slot lleno audiciona |
 | 10 | Paneles del editor | **SAMPLE / ENVELOPE / TONE / SLOT**, los 4 visibles a la vez en la página TRIGGER |
 | 11 | Tab SLOT | Solo **Auto Phase** y sus controles. Sin Level/Pan/Tune/Mute/Solo/Pol |
-| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR + editor/ADSR + banco de 8 faders. El corchete vuelve a la vista anterior; **Esc siempre vuelve a HOME** |
+| 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR + editor/A-D-R + banco de 8 faders. El corchete vuelve a la vista anterior; **Esc siempre vuelve a HOME** |
 | 13 | HOME | Vista principal (ex Universe). Full-bleed, nube de puntos 3D abstracta, sin ejes de frecuencia/ms. Search arriba, similitud abajo. **Esc vuelve acá desde cualquier vista** |
 | 14 | FILE SEARCH | Árbol tipo Finder con root en la carpeta elegida por el usuario. Subcarpetas reales. Samples reales primero |
 | 15 | OUTPUT | Knob arriba a la derecha. Settings funcional. AUTO PHASE ALL vive en Settings |
@@ -251,7 +251,7 @@ Paneles (visibles a la vez en la página TRIGGER):
    - **▶ Audition**, **Reverse** (real en Web Audio), **Normalize** (toast demo).
    - Drag desde la waveform a otro slot.
 2. **ENVELOPE**
-   - ADSR editable con handles.
+   - A/D/R editable con handles (sin sustain).
    - Readout A/D/S/R y botón Reset.
 3. **TONE**
    - TONE (−100…+100), CUT (0–100%), VEL SENS, GAIN.
@@ -272,7 +272,7 @@ Paneles (visibles a la vez en la página TRIGGER):
 - Tercera página full-screen, como HOME o FILE SEARCH. Se abre con el **corchete TRIGGER** izquierdo; se vuelve con el mismo corchete (recuerda la vista anterior).
 - Sin fila de header: se quitaron título, INPUT, HITS y MASTER. El contenido arranca arriba; el corchete TRIGGER activo identifica la página.
 - **INPUT DETECTOR** a la izquierda, más grande: waveform del INPUT real (≈205 px de alto en 717 px de ventana), 8 knobs compactos en una sola fila (Sens, Retrig, Detail, Low, High, Supp, Input, Output), GATE, **▶ INPUT**, MIX.
-- **Editor de sample** a la derecha con los **4 paneles visibles al mismo tiempo**: SAMPLE y ENVELOPE/ADSR arriba; TONE y SLOT abajo. El ADSR tiene ≈158 px de alto.
+- **Editor de sample** a la derecha con los **4 paneles visibles al mismo tiempo**: SAMPLE y ENVELOPE/A-D-R arriba; TONE y SLOT abajo. El envelope tiene ≈158 px de alto.
 - **Banco de 8 faders** arriba del dock, alineado columna a columna con los slots:
   - Fader vertical largo (≈116 px), meter real, M/S/Ø, nivel dB y badge de fase.
   - Click en un fader selecciona el slot para el editor.
@@ -320,7 +320,7 @@ No es un solo hit: es una **secuencia de snare** con 11 golpes principales, ghos
   - playbackRate (tune),
   - start/end,
   - fades in/out,
-  - ADSR (attack/decay/sustain/release),
+  - A/D/R (attack/decay/release, hold fijo al 62%),
   - gain por slot,
   - lowpass (cut) + high shelf (tone),
   - pan,
@@ -600,8 +600,9 @@ AAX **no** se necesita.
 25. **TRIGGER proporcional**: el split detector/editor pasó a `2fr/3fr` (40/60) en todos los tamaños; el gap y el banco de faders usan medidas fluidas (`min(8vw,12vh)`), la altura de los faders escala con el slot y la fila inferior del editor recibe algo más de altura para que el panel SLOT no desborde en ventanas anchas y bajas. Probado en 900×1200, 1280×720, 1366×768, 1400×900, 1600×700 y 1920×1080 sin overflow.
 26. **Edición numérica por doble click**: todos los valores numéricos editables (8 knobs del detector, MIX, OUTPUT master, 8 niveles de fader, TONE/CUT/VEL SENS/GAIN, START/END/FADE IN/FADE OUT, A/D/S/R y OFFSET) se vuelven editables en su lugar con doble click, sin ventana flotante. Enter confirma, Esc cancela, el blur confirma y abrir otro valor confirma el anterior. Acepta coma o punto decimal y sufijos `%`, `ms`, `s`, `Hz`, `k`, `dB` y `st`; clampa al rango del parámetro y redondea al step.
 27. **Faders centrados**: el nivel en dB de cada fader queda centrado bajo el track y el badge de fase pasa a una segunda línea centrada; el número editable conserva exactamente esa posición.
-28. **Doble click en faders**: el click sobre un valor numérico ya no se propaga al contenedor, así el fader no se re-renderiza entre los dos clicks y la edición in-place funciona en los 8 niveles. Se auditaron los 31 valores numéricos (detector, MIX, OUTPUT, faders, tone, waveform, ADSR y offset) con la secuencia de click completa.
+28. **Doble click en faders**: el click sobre un valor numérico ya no se propaga al contenedor, así el fader no se re-renderiza entre los dos clicks y la edición in-place funciona en los 8 niveles. Se auditaron los valores numéricos (detector, MIX, OUTPUT, faders, tone, waveform, A/D/R y offset) con la secuencia de click completa.
 29. **Editor numérico neutro**: se quitó el halo mint, el subrayado punteado y el cambio de color al hover. El valor editable se indica solo con un recuadro gris de 1 px y fondo apenas más claro; la selección de texto también usa gris. El estado inválido mantiene un borde rojo tenue.
+30. **Envelope A/D/R**: se eliminó Sustain de la UI. El envelope queda en Attack, Decay y Release con un hold fijo al 62% del nivel; el gráfico muestra tres handles y tres readouts, el decay solo se mueve en horizontal y el reset vuelve a A 0 / D 250 / R 300. El scheduler de Web Audio usa el mismo hold fijo.
 
 ---
 

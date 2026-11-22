@@ -57,7 +57,7 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (
 - **Framework:** iPlug2. **No** migrar a JUCE.
 - **Formatos:** AU + VST3. **AAX fuera.**
 - **UI final:** React + TypeScript sobre WebView de iPlug2.
-- **Envelope:** ADSR real (agregar Decay) + fade in/out + start/end/trim. **Sin time-stretch.**
+- **Envelope:** **A/D/R** (attack, decay, release) con hold fijo al 62% + fade in/out + start/end/trim. **Sin time-stretch.**
 - **Fase:** `Ø = 180°` (polaridad). Phase shift separado: 0° / 90° / 180° / 260°.
 - **Auto-phase:** corre al cargar un sample. Por defecto solo polaridad; offset en 0 salvo **TIMING** activo.
 - **Trigger Slots:** dock fijo de 8 recuadros de glass `01`–`08`, cuadrados y centrados, vacíos al inicio, con la misma textura glass que search/TRIGGER/Settings/OUTPUT. Al arrancar un drag se encienden con glow mint y se magnifican tipo Dock de macOS. Click en un slot lleno **audiciona** su sample; doble click lo abre en TRIGGER; click en uno vacío abre TRIGGER.
@@ -80,7 +80,7 @@ Abrir <http://127.0.0.1:8765/>. Para escuchar: apretá el corchete **TRIGGER** (
 - Zoom con rueda anclado al cursor; pan con click derecho o Ctrl+click; click izquierdo en vacío solo cierra paneles; hover/snap dentro de un aura de 20 px con el nombre en la barra inferior.
 - FILE SEARCH con árbol, búsqueda, preview, audition al click en cada fila y ALT + drag a los 8 slots del dock. El dock queda siempre visible. El drag convierte el sample en una partícula del tamaño de su punto de HOME, con glow/estela, nombre sutil, magnetismo a slots y burst al soltar.
 - Editor integrado en la página TRIGGER con los 4 paneles SAMPLE / ENVELOPE / TONE / SLOT visibles a la vez.
-- Waveform real, start/end, fades, reverse, ADSR, tone/cut, tune, pan, loop.
+- Waveform real, start/end, fades, reverse, A/D/R, tone/cut, tune, pan, loop.
 - TRIGGER como página full-screen sin header de stats, con INPUT DETECTOR grande, los 4 paneles del editor visibles a la vez y banco de 8 faders largos; dock de 8 slots cuadrados vacíos para arrastrar samples.
 - Settings con AUTO PHASE ALL, FLIP ALL POLARITY, LIBRARY FOLDERS, AUDIO/MIDI.
 - SIMILARITY funcional: 33 vecinos por features, flechas y teclas ← →, seguimiento suave de HOME y línea animada.
