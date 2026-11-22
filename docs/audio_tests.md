@@ -150,6 +150,7 @@ El detector ahora captura el **pico real** del transiente y su `peakTime`; antes
 | Gate ATTACK 0 | envolvente = 1 desde el bloque anterior al pico |
 | Offset −5 ms / +50 ms | aplicado dentro del lookahead / clamp al próximo bloque |
 | 900×1200 · 1076×717 · 1280×800 · 1920×1080 | sin overflow ni solapamiento entre paneles |
+| Marcadores vs pico post-gate a 3/10/30/60/90/110 s | diferencia **≤3 px** (antes ~18 px a 30 s y ~40 px a 60 s por drift de buckets) |
 | Salir de TRIGGER con INPUT sonando | INPUT y disparos se detienen; gate vuelve a 1 |
 | VISUAL con Esc | vuelve a HOME; SETTINGS/VISUAL se cierran al cambiar de vista |
 | Doble click en slot | abre TRIGGER con una sola audición (DOM estable) |

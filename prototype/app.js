@@ -3852,16 +3852,19 @@ async function loadRealAudio() {
       waveLabel.textContent = 'SN TOP 1';
       waveLabel.title = 'SN TOP 1COMMIT.18_01 · 0:17–2:20 · real input';
     }
-    // 5 ms peak buckets: a 2 s window gets ~400 buckets on a long input.
+    // 5 ms peak buckets. Use fractional bucket boundaries (data.length / n)
+    // instead of a truncated integer step: a fixed step accumulates a
+    // time-axis drift over the 2 min track, so the hit markers stop lining up
+    // with the transients later in the file.
     const n = Math.max(1200, Math.ceil(full.duration * 200));
     const data = full.getChannelData(0);
-    const step = Math.max(1, Math.floor(data.length / n));
     realInputPeaks = new Float32Array(n);
     let maxPeak = 1e-6;
     for (let i = 0; i < n; i++) {
+      const start = Math.floor(i * data.length / n);
+      const end = Math.max(start + 1, Math.floor((i + 1) * data.length / n));
       let p = 0;
-      const end = Math.min(data.length, (i + 1) * step);
-      for (let j = i * step; j < end; j++) p = Math.max(p, Math.abs(data[j]));
+      for (let j = start; j < Math.min(data.length, end); j++) p = Math.max(p, Math.abs(data[j]));
       realInputPeaks[i] = p;
       maxPeak = Math.max(maxPeak, p);
     }
@@ -4179,6 +4182,7 @@ window.__audio = {
   get gateEnv() { return realGateEnv; },
   get gateBlock() { return realGateBlock; },
   get inputStart() { return inputStartCtxTime; },
+  setPlayhead(t) { if (audioCtx) inputStartCtxTime = audioCtx.currentTime - clamp(t, 0, realInputDuration); },
   get live() { return { lastHit: liveLastHitTime, triggers: liveTriggerCount, playing: inputPlaying, velocity: liveLastVelocity }; },
   get nodes() { return { gateGain, inputGain, dryGain, wetGain }; },
   get meter() {

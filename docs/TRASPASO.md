@@ -633,6 +633,8 @@ AAX **no** se necesita.
 
 46. **Auditoría integral (22/11)**: la detección se normaliza a 0 dBFS, así Detail 100 da 0 hits a cualquier Input Volume; la velocity conserva el nivel pre-clamp para que los samples sigan respondiendo. Se corrigió el rearm con Detail 0 (antes solo disparaba una vez porque `fast < thr*0.5` nunca se cumplía). Los marcadores usan la velocity real del hit. PLAYBACK GATE sigue la envolvente del gate del INPUT; LOOP se extendió a 2 s con envolvente abierta y fade-out; Reverse abre la envolvente completa y restaura la forward. Los offsets negativos se aplican dentro del lookahead. Al salir de TRIGGER se detiene el INPUT y los disparos. Los modales SETTINGS/VISUAL se cierran al cambiar de vista o clickear afuera; Esc desde VISUAL vuelve a HOME; Space sobre un botón enfocado no dispara el INPUT. La selección de slot ya no reconstruye el DOM (double-click confiable) y los botones M/S/Ø refrescan su estado. La escala VISUAL se limita a 90/100 para evitar que el layout fijo se solape con el dock. Se verificaron 900×1200, 1076×717, 1280×800 y 1920×1080 sin overflow ni solapamientos.
 
+47. **Fix drift de la waveform**: los 24.600 buckets de picos se calculaban con un `step = floor(data.length / n)`, que dejaba 0,28 s sin cubrir y acumulaba un corrimiento de ~0,14 s a los 60 s del track. Los marcadores usaban el tiempo real y la waveform el tiempo del bucket, así que a medida que avanzaba el input se separaban. Ahora cada bucket usa límites fraccionales uniformes (`i * data.length / n`) y el eje coincide con el tiempo real. Verificado a 3, 10, 30, 60, 90 y 110 s: marcadores dentro de ±3 px del pico post-gate.
+
 ---
 
 ## 16. Prompt de reinicio

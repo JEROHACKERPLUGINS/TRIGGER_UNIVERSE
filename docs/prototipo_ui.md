@@ -284,7 +284,7 @@ El browser (HOME / File Search) solo selecciona y preescucha. El flujo es: busca
 
 - **DETAIL 100 = 0 hits a cualquier Input Volume:** la señal de detección se normaliza a 0 dBFS; la velocity conserva el nivel pre-clamp para que los samples sigan respondiendo.
 - **Detail 0** ya no queda trabado en un solo hit: el rearm usa un piso absoluto (`0.01`) además de `thr * 0.5`.
-- Los **marcadores naranjas** usan la velocity real del hit y el `peakTime` del detector; en la versión actual caen dentro de pocos píxeles del pico.
+- Los **marcadores naranjas** usan la velocity real del hit y el `peakTime` del detector; en la versión actual caen dentro de pocos píxeles del pico. Los buckets de la waveform usan límites fraccionales uniformes: se corrigió el drift que a los 60 s corría el eje ~0,14 s y desalineaba los marcadores.
 - **PLAYBACK GATE** sigue la envolvente del gate del INPUT en los disparos en vivo; **ONE SHOT** reproduce el sample completo. **LOOP** repite hasta 2 s con la envolvente abierta. **Reverse** invierte el audio y abre la envolvente completa para que el transiente invertido se escuche; al volver restaura la envolvente forward.
 - **OFFSET** negativo se aplica dentro del lookahead; si cae en el pasado se clampa al próximo bloque.
 - **Salir de TRIGGER** (Esc, corchete, F, view toggle) detiene el INPUT y los disparos. Los modales SETTINGS/VISUAL se cierran al cambiar de vista o clickear afuera; **Esc desde VISUAL vuelve a HOME**.
