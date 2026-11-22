@@ -40,7 +40,16 @@ Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el
 - **Selección múltiple estilo Finder** (`multiSel`, scopes `env` / `knobs` / `faders` / `slots`): click = uno; **Shift o Cmd+click = sumar/quitar de a uno**; recuadro desde cualquier espacio vacío (también el negro entre paneles); click afuera deselecciona salvo sobre algo seleccionado; mover uno mueve el grupo; Cmd+A; Delete borra puntos. **Faders y slots nunca se mezclan.** Pasar a UNIVERSE deselecciona todo.
 - **Teclado**: **Tab** alterna TRIGGER ↔ UNIVERSE; **1–8** reproducen el slot; **Alt+1–8** cargan el sample (HOME/FILE SEARCH: el seleccionado; TRIGGER: el del editor). Arrastrar el sample del editor a un slot: desde su nombre arriba de la waveform.
 - **Bugs viejos arreglados**: click en vacío del editor dejaba el sample pegado al cursor (ahora el drag termina también en `pointerup`).
-- **Ojo con la caché**: al tocar `app.js`/`style.css`, subir `?v=` en `index.html` (va en `v=208`) y en `detector-worklet.js?v=` dentro de `app.js`; si no, Chrome sigue usando la copia vieja.
+- **BOUNCE · MODIFIED SAMPLES** (abajo a la izquierda de TRIGGER, espejo del panel de Auto Phase): pide una carpeta (`showDirectoryPicker`) y escribe un WAV 24-bit por cada Trigger Slot cargado (o solo los slots seleccionados) tal cual suena en la mezcla, a velocity 1: START, envelope con todos sus puntos, reverse, tune, TONE/CUT, GAIN, polaridad, **nivel del fader, pan (sale siempre estéreo) y OFFSET de Auto Phase** (positivo = silencio antes del golpe; negativo = recorta el arranque). Mute/solo se ignoran; 90° no tiene DSP todavía. Ojo: si el WAV bounceado se vuelve a cargar con el mismo OFFSET, se aplica dos veces. Nunca toca el original y no pisa archivos: si ya existe agrega ` 2`. Sin selector de carpetas en el browser, cae a Descargas. Render offline (`renderSlotOffline`) con la misma cadena que la reproducción: diferencia máx. 0,0035 contra una referencia calculada aparte; polaridad: correlación −1.
+- **TONE con fase cero** (decisión de arquitectura, vale también para el C++): CUT (pasa-bajos 12 dB/oct, 200 Hz–20 kHz) y TONE (shelf ±12 dB en 4 kHz) **ya no son filtros IIR en tiempo real**. Como cada slot reproduce un sample fijo, el EQ se aplica al sample fuera del audio thread: FFT → magnitud de los mismos filtros (fase descartada) → IFFT (`zeroPhaseEq`, `slotPlayBuffer`, cacheado por sample/reverse/CUT/TONE; ~4–18 ms por cambio). Así las capas quedan **en fase entre sí y con el input con cualquier EQ**, sin latencia. Medido: corrimiento de fase 0,0–0,2° en 500 Hz–4 kHz para CUT 50/75 y TONE ±100 (antes: hasta −149° con CUT 50 y ±53° con TONE ±100); magnitud idéntica a la curva anterior. **CUT arranca en 100% (sin filtro)**. El cambio de EQ se oye desde el siguiente disparo. En C++: mismo esquema (render offline del sample procesado + swap atómico), nada de IIR por voz.
+- **Bounce a la frecuencia nativa**: el sample real se decodifica además a su sample rate original (48 kHz) y el bounce sale a esa frecuencia, sin el remuestreo a 44,1 kHz del contexto. El procesamiento es float 32; solo el WAV de salida es 24-bit.
+- **GATE AUTO THRESHOLD**: la primera vez que suena el INPUT, la flecha del threshold se mueve sola (etiqueta mint **AUTO**) hacia el hueco entre el bleed y los golpes, usando solo lo ya escuchado; desde que encuentra el primer punto ideal sigue afinando **5 s de play** y se **bloquea** (aunque el INPUT siga sonando; si lo detenés antes, se bloquea ahí). Después no se mueve más salvo a mano. Mover el threshold a mano termina el aprendizaje; **Alt+click** en la flecha o el valor lo vuelve a −24 dB y lo re-arma. Algoritmo: picos de 10 ms → máximos locales ≥ 6 dB sobre la mediana → división Otsu en dB (bleed / golpes) → mitad entre p95 del bleed y p5 de los golpes (si se solapan, 3 dB bajo el golpe más suave); necesita ≥ 8 golpes. En SN TOP 1 encuentra el punto a los 4,6 s y se bloquea a los 9,6 s en **−16,5 dB**: pasan 135/135 golpes y el gate abre en 0/203 picos de bleed (con −24 dB abría en 128/203; abierto 20,9% del tiempo vs 38,6%). En el prototipo el estado no se guarda entre recargas; en el plugin va en el estado del preset.
+- **AUTO PHASE global** (panel a la derecha de los faders, **dividido en dos tarjetas**: arriba la fase de **todos** los slots —ON/OFF, REF, MODO, RE-ANALYZE ALL y reporte de la suma— y abajo la fase **individual** del slot seleccionado —OFFSET, PHASE y resultado—; en ≤1000 px quedan lado a lado arriba de los faders): el título **AUTO PHASE** es el botón ON/OFF (verde = encendido). **REF** = INPUT o cualquiera de los 8 slots, **para todos** (el slot de referencia no se mueve y su canal dice REF). **MODO** = OFFSET / Ø / BOTH (default Ø). **RE-ANALYZE ALL** analiza todo. Debajo, para el slot seleccionado: **OFFSET escrito** (campo de texto, −5…+50 ms, Enter confirma, Alt+click borra la parte manual) y **PHASE** 0° / 90°. El resultado automático se guarda aparte de lo manual (`slot.ap`): polaridad efectiva = Ø manual XOR inversión auto; offset efectivo = trim manual + lag auto (`effPolarity`, `effOffset`), así apagar AUTO PHASE o cambiar el modo no pierde nada. El campo muestra el offset total; escribir un valor guarda la diferencia como trim. Los **canales con Ø o 90° se marcan en verde** (borde, badge y botón Ø). 90° sigue sin DSP. Se borró el popover viejo por slot.
+- **AUTO PHASE con audio real** (ya no simulado, `computePhaseAlignment`): el criterio es la energía de la **suma real** (REF + todas las capas) en 3 bandas de fase cero: **LOW 40–250 Hz decide la polaridad** (gana la que deja más low), **LOW-MID 250 Hz–1,5 kHz** no puede perder más de 1 dB (sin huecos en el cuerpo) y, entre esos offsets, **HIGH > 1,5 kHz elige el offset fino** (ataque junto); además LOW no puede caer más de 0,5 dB. Pasos: (1) anclar cada capa al REF (lags −5…+10 ms); (2) afinar cada capa contra REF + las otras capas ya alineadas (±1,5 ms) hasta que nada cambie; (3) reportar en el panel `SUM LOW +x dB · BODY +y dB` contra no hacer nada, avisar pares que se siguen cancelando (`02↔05 cancel`) y capas que tocan el límite de −5 ms (aire antes del golpe → **⇥ TRANSIENT**). REF = INPUT usa el promedio de los golpes más fuertes alineados en el onset del detector (equivale exactamente a sumar la energía sobre todos esos golpes). Las capas se analizan como suenan (START, envelope, tune, EQ, gain, nivel) a velocity 1, sin polaridad/offset/pan. Cambiar REF o MODO re-analiza; cambios de TONE/tune/START piden **RE-ANALYZE ALL**. Validado: copia con START +2 ms → **+2,0 ms**, corr 1,00; copia invertida → **Ø**, corr 1,00; 4 capas contra SN TOP 1 en 244 ms, y verificación con otro filtro: LOW **+1,8 dB**, cuerpo **+2,5 dB**, agudos +0,1 dB. Con SNARE.cm sin recortar el análisis caía en Ø −4,7 ms (parche por los ~12 ms de aire); con ⇥ TRANSIENT queda en −0,4 ms sin invertir.
+- **Lecturas de fase vencidas en rojo**: el análisis guarda una huella de lo que usó (sample, START, reverse, tune, TONE/CUT, GAIN, envelope, nivel del fader, VOLUME del input, REF y modo). Si algo de eso cambia después, **RE-ANALYZE ALL** (con pulso), el reporte de la suma, el resultado del slot y la lectura de fase + borde superior de los **canales afectados** se ponen en **rojo** hasta re-analizar. Si cambia la REF (el slot de referencia o el VOLUME del input), se marcan todos. Pan, mute/solo y los Ø/offsets manuales no cuentan.
+- **RE-ANALYZE: primero fase, después offset**: (0) ubica el golpe en el tiempo con el contorno del ataque (|LOW-MID + HIGH| suavizado 0,5 ms), que no depende de la polaridad —si no, un atraso puro se lee como fase: 2 ms ≈ 144° a 200 Hz—; (1) mide la **fase en LOW** contra el objetivo en ese punto y, si es **≥ 90°, invierte (Ø)**; (2) con la polaridad fija, ajusta el **offset fino ±1,5 ms** para acercarlo a donde tiene que ir (LOW −0,5 dB, cuerpo −1 dB, máximo HIGH). El offset ya no puede "arreglar" la fase saltando medio ciclo. El slot muestra `Δφ 134° → Ø`. Validado con el snare como REF: copias corridas 0/2/3,5/6 ms → +0/+2,0/+3,5/+6,0 ms sin invertir; copias invertidas corridas 0/2/1/0,5 ms → Ø +0/+2,0/+1,0/+0,5 ms.
+- **PHASE por slot = 0° / 90°** (decisión 22/11): se quitaron 180° y 260° del selector. La polaridad (Ø, 180°) sigue en el botón Ø de cada canal y en el modo Ø de Auto Phase; el ajuste fino lo hace el OFFSET escrito. 90° sigue sin DSP en el prototipo (all-pass/Hilbert en C++).
+- **Ojo con la caché**: al tocar `app.js`/`style.css`, subir `?v=` en `index.html` (va en `v=224`) y en `detector-worklet.js?v=` dentro de `app.js`; si no, Chrome sigue usando la copia vieja.
 - **GitHub**: el repo `JEROHACKERPLUGINS/TRIGGER_UNIVERSE` se puede leer pero Claude no puede hacer push (falta instalar la Claude GitHub App en esa org). Los cambios se commitean desde la Mac.
 
 ---
@@ -104,12 +113,12 @@ window.__setTriggerOpen(true)
 | 3 | UI final | **React + TypeScript** sobre el bridge WebView de iPlug2 |
 | 4 | Prototipo | HTML/CSS/JS sin build step, porque no hay Node instalado |
 | 5 | Envelope | **A/D/R** en la UI con tres puntos libres en X e Y: attack (tiempo + pico), decay (tiempo + nivel) y release (punto final libre en tiempo + nivel). Sin hold ni sustain; el release queda por defecto al final del sample y R es la duración desde el decay hasta ese punto. El motor sigue soportando ADSR. Incluye fade in/out + start/end/trim. **Sin time-stretch** |
-| 6 | Fase | **Ø = 180°** (polaridad). **Phase shift separado**: 0° / 90° / 180° / 260° |
-| 7 | Auto-phase | Corre automáticamente al cargar un sample. Por defecto **solo polaridad**; offset en 0 salvo que **TIMING** esté activo |
+| 6 | Fase | **Ø = 180°** (polaridad, botón Ø del canal y Auto Phase). **Phase shift por slot: 0° / 90°** (180°/260° quitados del selector el 22/11; el OFFSET escrito hace el ajuste fino) |
+| 7 | Auto-phase | **Global**: ON/OFF, una REF (INPUT o cualquiera de los 8 slots) y un MODO (OFFSET / Ø / BOTH) para todos los slots. Corre al cargar un sample o cambiar la REF. Default ON, REF INPUT, modo **Ø**. El resultado se guarda aparte de lo manual |
 | 8 | Slots | Dock fijo de 8 recuadros de glass **01–08**, cuadrados y centrados, vacíos al inicio |
 | 9 | Editor | Vive dentro de la página TRIGGER y pertenece al slot seleccionado (default SLOT 01). Se abre con doble click en un slot (o click en uno vacío); el click en un slot lleno audiciona |
 | 10 | Paneles del editor | **SAMPLE + ENVELOPE** en una sola waveform (sample + trim/fades + curva A/D/R) y **TONE** compacta a todo el ancho; **AUTO PHASE** vive en un panel vertical al lado del banco de faders |
-| 11 | Auto Phase | Panel vertical al lado del banco de faders, atado al slot seleccionado: REF, re-analizar, TIMING, OFFSET y SHIFT |
+| 11 | Auto Phase | Panel vertical al lado del banco de faders: título = botón ON/OFF, REF, MODO, RE-ANALYZE ALL; por slot seleccionado OFFSET **escrito** (no knob/fader) y PHASE 0/90. Canales con Ø/90° en verde |
 | 12 | TRIGGER | Tercera página full-screen, se abre con el corchete vertical TRIGGER (izquierda). Contiene INPUT DETECTOR estilo Slate en cinco columnas (GATE · INPUT · FILTER · waveform · DETECT) + sample view angosto con una sola waveform SAMPLE + ENVELOPE + tira TONE full-width + banco de 8 faders con Auto Phase. OUTPUT y MIX están en la cápsula master superior. El corchete vuelve a la vista anterior; **Esc siempre vuelve a HOME** |
 | 13 | HOME | Vista principal (ex Universe). Full-bleed, nube de puntos 3D abstracta, sin ejes de frecuencia/ms. Search arriba, similitud abajo. **Esc vuelve acá desde cualquier vista** |
 | 14 | FILE SEARCH | Árbol tipo Finder con root en la carpeta elegida por el usuario. Subcarpetas reales. Samples reales primero |
@@ -283,7 +292,7 @@ Paneles (visibles a la vez en la página TRIGGER):
      - **TIMING** on/off.
      - Resultado: `corr`, polaridad, offset o `suggested`.
      - OFFSET manual (−5…+50 ms).
-     - SHIFT: 0° / 90° / 180° / 260°.
+     - PHASE: 0° / 90° (Ø en el canal).
 
 **Fase y badges:** 180° = Ø. El botón Ø y el segmento 180° son recíprocos. Los badges de fase se mantienen en el editor.
 
@@ -360,9 +369,9 @@ Paneles (visibles a la vez en la página TRIGGER):
 
 ### 8.3 Limitaciones del prototipo
 
-- **90° y 260° no se aplican al audio**: solo se guardan y se muestran. El DSP real va en C++ (all-pass / Hilbert).
+- **90° no se aplica al audio**: solo se guardan y se muestran. El DSP real va en C++ (all-pass / Hilbert).
 - **180° sí se aplica** como inversión de polaridad (gain −1).
-- El **auto-phase es simulado**: lag/polaridad/confianza determinísticos por `sample.id`. La UX es real; el análisis no.
+- El **auto-phase analiza el audio real** (suma por bandas, ver §2.1); falta pasarlo al C++.
 - **Offsets negativos** se aplican adelantando el sample dentro del lookahead (20–80 ms); si el resultado cae en el pasado se clampa al próximo bloque de audio. El rango de UI es −5…+50 ms.
 - **Velocity:** los disparos del INPUT usan el pico real del transiente; el preview de hover/audition usa velocity 1.
 - **ALT + drag fuera de un slot** muestra el toast de export a Finder; el drag real al Finder queda para el plugin.
@@ -493,8 +502,8 @@ AAX **no** se necesita.
 
 ### 11.2 Prototipo
 
-- Auto-phase simulado.
-- 90°/260° sin DSP.
+- Auto-phase real en el prototipo; falta en C++.
+- 90° sin DSP.
 - Offsets negativos aplicados dentro del lookahead y clampeados al próximo bloque si caen en el pasado.
 - Velocity aplicada en los disparos del INPUT (pico real); el preview usa velocity 1.
 - ONE SHOT / GATE y LOOP retirados de TONE; Reverse usa envolvente completa.
@@ -543,7 +552,7 @@ AAX **no** se necesita.
 
 - Extender `Slot` con Decay, Start/End, fades, Phase Shift y Align.
 - Implementar **GCC-PHAT** en C++ y tests con el snare real + una segunda capa.
-- Implementar **90°/260°** con all-pass/Hilbert por slot.
+- Implementar **90°** con all-pass/Hilbert por slot.
 - Validar offsets negativos contra el lookahead.
 
 ### Paso 4 — Slots / mixer (Fase 4)

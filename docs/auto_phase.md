@@ -76,6 +76,17 @@ El motor actual reporta **5 ms de lookahead** (`TransientDetector::LatencySample
 - Samples con loop: analizar solo el primer ataque.
 - Capas con polaridad ya invertida manualmente: permitir override y marcar como manual.
 
-## 8. Estado en el prototipo
+## 8. Estado en el prototipo (22/11/2026)
 
-El prototipo actual **simula** el análisis (lag/polaridad/confianza determinísticos por sample) para validar la UX. La implementación real usará GCC-PHAT y una línea de delay por slot en el `SlotEngine`, con el límite de lookahead documentado.
+El prototipo **analiza el audio real** (`computePhaseAlignment` en `prototype/app.js`) y el criterio cambió respecto de §3: en vez de correlacionar cada capa contra la referencia por separado, se maximiza la **energía de la suma real** (REF + todas las capas), así las capas suman bien con el input **y entre ellas**.
+
+1. Bandas de fase cero: LOW 40–250 Hz, LOW-MID 250 Hz–1,5 kHz, HIGH > 1,5 kHz.
+2. **Dónde**: se ubica el golpe en el tiempo con el contorno del ataque (|LOW-MID + HIGH| suavizado 0,5 ms), independiente de la polaridad (−5…+10 ms). Sin esto un atraso puro se lee como fase (2 ms ≈ 144° a 200 Hz).
+3. **Fase primero**: en ese punto se mide la diferencia de fase en LOW contra el objetivo; **≥ 90° → Ø**.
+4. **Offset después**: con la polaridad fija, ajuste fino ±1,5 ms: candidatos que no pierden más de 0,5 dB de LOW ni 1 dB de LOW-MID; entre ellos, el que más HIGH deja (ataque alineado).
+5. Refinamiento de cada capa contra REF + las demás (fase en su posición actual, offset ±1,5 ms alrededor del anclaje) hasta converger.
+6. Reporte: ganancia de LOW y cuerpo contra no hacer nada, pares que se cancelan (correlación LOW+MID < −0,15) y capas en el límite de −5 ms.
+
+REF = INPUT usa el promedio de los golpes más fuertes alineados en el onset del detector: la energía sumada sobre K golpes es igual (salvo constantes) a la energía contra su promedio. GCC-PHAT sigue siendo útil para ubicar el transiente en material ruidoso; el criterio de suma por bandas es el que decide. Global: ON/OFF, una REF (INPUT o un slot) y un MODO (OFFSET / Ø / BOTH) para todos; el resultado se guarda aparte de los ajustes manuales.
+
+Validación: copias corridas 0/2/3,5/6 ms → +0/+2,0/+3,5/+6,0 ms sin invertir; copias invertidas corridas 0/2/1/0,5 ms → Ø +0/+2,0/+1,0/+0,5 ms (Δφ 180°); 4 capas contra SN TOP 1 en 244 ms; verificación con filtros distintos: LOW +1,8 dB, cuerpo +2,5 dB, agudos +0,1 dB.

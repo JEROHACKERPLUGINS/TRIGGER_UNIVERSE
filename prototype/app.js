@@ -164,6 +164,7 @@ function bindNumericEdit(el, opts) {
     if (document.activeElement === el) el.blur();
     const min = read('min'), max = read('max');
     opts.set(snapNumeric(def, opts.step, min, max));
+    if (opts.onReset) opts.onReset();
     el.classList.add('num-reset');
     clearTimeout(el._numResetTimer);
     el._numResetTimer = setTimeout(() => el.classList.remove('num-reset'), 180);
@@ -311,6 +312,8 @@ document.addEventListener('pointerdown', e => {
 // SVG during the click, so e.target can already be detached).
 document.addEventListener('pointerdown', e => {
   if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  // BOUNCE reads the slot selection, so clicking it must not clear it.
+  if (e.composedPath().some(el => el.id === 'bounceBtn')) return;
   if (SEL_SCOPES.every(k => !multiSel[k].size)) {
     // nothing multi-selected: a click outside the item areas forgets the anchors
     if (!e.composedPath().some(el => el.id === 'slots' || el.id === 'faderBank' || el.id === 'wave' || el.id === 'detectorPanel'))
@@ -591,9 +594,11 @@ const state = {
   dragAlt: false,
   pan: null,
   popoverSlot: null,
-  autoRef: 'INPUT',
-  autoTiming: false,
-  detector: { attack: .5, hold: 30, release: 150, sens: 51, retrig: 30, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: true, gateThreshold: -24 },
+  // AUTO PHASE is global: one switch, one reference and one mode for all 8
+  // slots. ref = 'INPUT' or a slot index 0..7 (that slot is left untouched and
+  // the others align to it). mode = 'offset' | 'polarity' | 'both'.
+  ap: { on: true, ref: 'INPUT', mode: 'polarity' },
+  detector: { attack: .5, hold: 30, release: 150, sens: 51, retrig: 30, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: true, gateThreshold: -24, gateAuto: 'learn' },
 };
 
 function pickByCategory(cat, offset = 0) {
@@ -606,12 +611,12 @@ function buildSlots() {
     sampleId: null,
     level: 0, pan: 0, tune: 0,
     mute: false, solo: false,
-    polarity: false, shift: 0, offset: 0,
-    autoPhase: false, corr: 0, suggestedLag: 0,
+    polarity: false, shift: 0, offset: 0, // manual: Ø, 90° shift, offset trim (ms)
+    ap: null,                             // AUTO PHASE result: { lag, invert, corr } | { isRef }
     adsr: { a: 0, d: 120, end: 800, s: .5, p: 1, e: 0 },
     start: 0, end: 1, fadeIn: 0, fadeOut: 0,
     reverse: false,
-    tone: 0, cut: 50, velSens: 100, gain: 0,
+    tone: 0, cut: 100, velSens: 100, gain: 0,
     playback: 'one-shot', loop: false,
   }));
 }
@@ -1660,11 +1665,14 @@ $('#editorGrip').addEventListener('mousedown', e => {
 function meterW(level) { return clamp((level + 60) / 66 * 100, 3, 100); }
 
 function phaseBadge(s) {
-  const off = s.offset ? `${s.offset > 0 ? '+' : ''}${s.offset.toFixed(1)}ms` : '';
-  const shift = s.shift || (s.polarity ? 180 : 0);
-  if (!shift && !s.polarity) return off || '—';
-  const label = `${shift}°`;
-  return off ? `${label} ${off}` : label;
+  if (s.ap && s.ap.isRef && state.ap.on) return 'REF';
+  const o = effOffset(s);
+  const off = o ? `${o > 0 ? '+' : ''}${o.toFixed(1)}ms` : '';
+  const parts = [];
+  if (effPolarity(s)) parts.push('Ø');
+  if (s.shift === 90) parts.push('90°');
+  if (off) parts.push(off);
+  return parts.length ? parts.join(' ') : '—';
 }
 
 function renderSlots() {
@@ -1718,6 +1726,7 @@ function faderDbToPos(db) {
 function renderFaders() {
   const host = $('#faderBank');
   if (!host) return;
+  requestAnimationFrame(checkApStale);
   slotMeterVals.fill(-1);
   const anySolo = state.slots.some(s => s.solo);
   host.innerHTML = state.slots.map((s, i) => {
@@ -1728,7 +1737,7 @@ function renderFaders() {
     const empty = smp ? '' : ' empty';
     const ph = phaseBadge(s);
     return `
-      <div class="slot-fader${sel}${dim}${empty}" data-slot="${i}">
+      <div class="slot-fader${sel}${dim}${empty}${smp && (effPolarity(s) || s.shift === 90) ? ' phase-mod' : ''}" data-slot="${i}">
         <div class="sf-head">
           <span class="sf-num">${String(i + 1).padStart(2, '0')}</span>
           ${smp ? `<span class="sf-dot" style="background:${color};color:${color}"></span>` : ''}
@@ -1749,7 +1758,7 @@ function renderFaders() {
         <div class="sf-btns">
           <button data-act="m" data-slot="${i}" class="${s.mute ? 'on' : ''}" title="Mute">M</button>
           <button data-act="s" data-slot="${i}" class="${s.solo ? 'on solo' : ''}" title="Solo">S</button>
-          <button data-act="o" data-slot="${i}" class="${s.polarity ? 'on phase' : ''}" title="Polarity">Ø</button>
+          <button data-act="o" data-slot="${i}" class="${effPolarity(s) ? 'on phase' : ''}" title="Polarity (180°)${apAutoInv(s) ? ' · inverted by AUTO PHASE' : ''}">Ø</button>
         </div>
       </div>`;
   }).join('');
@@ -1779,9 +1788,11 @@ function clearSlot(i) {
   s.sampleId = null;
   s.label = `SLOT ${String(i + 1).padStart(2, '0')}`;
   s.mute = false; s.solo = false;
-  s.autoPhase = false; s.corr = 0; s.suggestedLag = 0;
+  s.ap = null;
   delete s._forwardEnv;
   s.polarity = false; s.shift = 0; s.offset = 0;
+  if (state.ap.ref === i) { state.ap.ref = 'INPUT'; toast('AUTO PHASE reference slot cleared · back to INPUT'); }
+  analyzeAllPhase();
   syncSlotAudio(i);
   renderSlots();
   if (state.selectedSlot === i) {
@@ -1916,12 +1927,12 @@ $('#faderBank').addEventListener('click', e => {
     const i = +btn.dataset.slot, s = state.slots[i];
     // M/S/Ø on a selected strip apply the same new state to every selected one.
     const ks = multiSel.faders.has(i) && multiSel.faders.size > 1 ? [...multiSel.faders] : [i];
-    const mute = !s.mute, solo = !s.solo, pol = !s.polarity;
+    const mute = !s.mute, solo = !s.solo, pol = !effPolarity(s);
     ks.forEach(k => {
       const t = state.slots[k];
       if (btn.dataset.act === 'm') t.mute = mute;
       if (btn.dataset.act === 's') t.solo = solo;
-      if (btn.dataset.act === 'o') { t.polarity = pol; t.shift = pol ? 180 : 0; }
+      if (btn.dataset.act === 'o') t.polarity = pol !== apAutoInv(t);
     });
     selectSlot(i);
     renderSlots();
@@ -1947,63 +1958,311 @@ function assignSample(i, smp) {
   s.envPts = [];
   s.start = 0; s.end = 1; s.fadeIn = 0; s.fadeOut = 0;
   s.reverse = false;
-  s.tone = 0; s.cut = 50; s.velSens = 100; s.gain = 0;
+  s.tone = 0; s.cut = 100; s.velSens = 100; s.gain = 0;
   s.playback = 'one-shot'; s.loop = false;
   delete s._forwardEnv;
   s.polarity = false; s.shift = 0; s.offset = 0;
-  s.autoPhase = false; s.corr = 0; s.suggestedLag = 0;
+  s.ap = null;
   fitAdsrToSample(s);
   selectSlot(i);
-  applyAutoPhase(i, state.autoRef, true);
+  analyzeAllPhase();
   if (state.selectedSlot === i && $('.inspector').classList.contains('show')) updateInspector();
   toast(`${smp.name} → TRIGGER SLOT ${String(i + 1).padStart(2, '0')} · auto phase ready`);
 }
 
 // ---------- AUTO PHASE ----------
-function applyAutoPhase(i, ref, silent) {
-  const s = state.slots[i];
-  const smp = slotSample(s);
-  if (!smp) { if (!silent) toast('Slot is empty'); return; }
-  const seed = smp.id * (ref === 'SLOT 1' ? 13 : 17);
-  const corr = 0.62 + ((seed * 7) % 34) / 100;
-  let lag = ((seed * 29) % 70) / 10 - 1.5;
-  if (ref === 'SLOT 1' && i !== 0) lag += 0.7;
-  const invert = (seed % 4 === 0);
-  s.polarity = invert;
-  s.shift = invert ? 180 : 0;
-  s.suggestedLag = +lag.toFixed(1);
-  s.offset = state.autoTiming ? +lag.toFixed(1) : 0;
-  s.autoPhase = true;
-  s.corr = +corr.toFixed(2);
-  s.autoRef = ref;
+// The analysis is still simulated (deterministic per sample and reference);
+// the UX and the way results are applied are the real ones. The result is kept
+// apart from the manual settings, so switching AUTO PHASE off (or changing the
+// mode) never loses anything:
+//   effective polarity = manual Ø  XOR  (auto inversion, if mode has Ø)
+//   effective offset   = manual trim  +  (auto lag, if mode has OFFSET)
+const apUsesOffset = () => state.ap.on && state.ap.mode !== 'polarity';
+const apUsesPolarity = () => state.ap.on && state.ap.mode !== 'offset';
+const apAutoLag = s => (apUsesOffset() && s.ap && !s.ap.isRef ? s.ap.lag : 0);
+const apAutoInv = s => !!(apUsesPolarity() && s.ap && !s.ap.isRef && s.ap.invert);
+const effOffset = s => clamp((s.offset || 0) + apAutoLag(s), -5, 50);
+const effPolarity = s => !!s.polarity !== apAutoInv(s);
+function apRefLabel(ref = state.ap.ref) {
+  return ref === 'INPUT' ? 'INPUT' : `SLOT ${String(ref + 1).padStart(2, '0')}`;
+}
+// ---------- AUTO PHASE analysis (real audio) ----------
+// Goal: every layer sums well with the reference AND with the other layers.
+// The criterion is the energy of the real sum (REF + all layers) in 3 bands:
+//   LOW 40–250 Hz      → decides each layer's polarity (most low wins)
+//   LOW-MID 250–1.5 k  → body: no offset may open a hole here (≤ 1 dB loss)
+//   HIGH > 1.5 kHz     → fine offset: the attack lines up
+// Steps: (1) anchor every layer to the REF (lags −5…+10 ms); (2) refine each
+// layer against REF + the other aligned layers (±1.5 ms around its anchor)
+// until nothing changes; (3) report how much LOW / body the sum gained vs
+// doing nothing, and flag pairs that still cancel each other.
+// REF = INPUT uses the average of the loudest input hits, aligned on the
+// detector's onset (where the slots fire). Averaging is exact here: the summed
+// energy over K hits equals the energy against their average. Layers are
+// rendered as they sound (START, envelope, tune, EQ, gain, fader level) at
+// velocity 1, without polarity, offset or pan.
+const AP_BANDS = [[40, 250], [250, 1500], [1500, 24000]];
+const AP_LOW_TOL_DB = 0.5, AP_MID_TOL_DB = 1.0;
+let apRunId = 0;
+state.apBusy = false;
+state.apReport = null;
+
+function apBandSplit(x, sr) {
+  // zero-phase band split (raised-cosine edges), same filter for every signal
+  let n = 1; while (n < x.length * 2) n <<= 1;
+  const out = AP_BANDS.map(() => new Float32Array(x.length));
+  const reBase = new Float64Array(n), imBase = new Float64Array(n);
+  reBase.set(x);
+  fftInPlace(reBase, imBase, false);
+  AP_BANDS.forEach(([lo, hi], b) => {
+    const re = reBase.slice(), im = imBase.slice();
+    const edge = f => {
+      const w = 0.2; // ±20% transition
+      const up = f <= lo * (1 - w) ? 0 : f >= lo * (1 + w) ? 1 : .5 - .5 * Math.cos(Math.PI * (f - lo * (1 - w)) / (2 * lo * w));
+      const dn = f <= hi * (1 - w) ? 1 : f >= hi * (1 + w) ? 0 : .5 + .5 * Math.cos(Math.PI * (f - hi * (1 - w)) / (2 * hi * w));
+      return up * dn;
+    };
+    for (let k = 0; k < n; k++) { const g = edge((k <= n / 2 ? k : n - k) * sr / n); re[k] *= g; im[k] *= g; }
+    fftInPlace(re, im, true);
+    for (let t = 0; t < x.length; t++) out[b][t] = re[t];
+  });
+  return out;
+}
+
+async function apLayerSignal(i) {
+  const buf = await renderSlotOffline(i, { analysis: true });
+  if (!buf) return null;
+  const n = buf.length, out = new Float32Array(n);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let t = 0; t < n; t++) out[t] += d[t] / buf.numberOfChannels;
+  }
+  return out;
+}
+
+async function computePhaseAlignment() {
+  const ctx = ensureAudio();
+  if (!ctx) return null;
+  const sr = ctx.sampleRate;
+  const ms = v => Math.round(v * sr / 1000);
+  const PRE = ms(5), POST = ms(120), NEG = ms(5), POS = ms(10), REF_D = ms(1.5);
+  const O = PRE + POS + 8, T = O + POST + NEG + 8;
+  const W0 = O - PRE, W1 = O + POST;
+  const ref = state.ap.ref;
+  const loaded = state.slots.map((x, i) => (slotSample(x) ? i : -1)).filter(i => i >= 0);
+  // --- reference signal (placed with its onset at index O)
+  const R = new Float32Array(T);
+  if (ref === 'INPUT') {
+    if (!realInputBuffer) return { error: 'INPUT still loading' };
+    const hits = (realHits && realHits.length ? realHits : detectInputHits()).slice();
+    if (!hits.length) return { error: 'no input hits (check DETAIL)' };
+    hits.sort((p, q) => q.peak - p.peak);
+    const use = hits.slice(0, clamp(Math.ceil(hits.length / 4), 1, 16));
+    const raw = realInputBuffer.getChannelData(0);
+    const vol = dbToAmp(state.detector.input || 0);
+    use.forEach(h => {
+      const at = Math.round(h.time * sr) - O;
+      for (let t = 0; t < T; t++) { const j = at + t; if (j >= 0 && j < raw.length) R[t] += raw[j] * vol / use.length; }
+    });
+  } else {
+    const sig = await apLayerSignal(ref);
+    if (!sig) return { error: `${apRefLabel(ref)} is empty` };
+    for (let t = 0; O + t < T && t < sig.length; t++) R[O + t] = sig[t];
+  }
+  // --- layers (unshifted, onset at O)
+  const layers = [];
+  for (const i of loaded) {
+    if (i === ref) continue;
+    const sig = await apLayerSignal(i);
+    if (!sig) continue;
+    const L = new Float32Array(T);
+    for (let t = 0; O + t < T && t < sig.length; t++) L[O + t] = sig[t];
+    layers.push({ i, L, B: apBandSplit(L, sr), d: 0, p: 1 });
+  }
+  const RB = apBandSplit(R, sr);
+  if (!layers.length) return { layers: [], report: null };
+  const allowLag = state.ap.mode !== 'polarity';
+  const allowPol = state.ap.mode !== 'offset';
+  const dot = (a, b, d) => { let s = 0; for (let t = W0; t < W1; t++) s += a[t] * b[t - d]; return s; };
+  const nrg = (b, d) => { let s = 0; for (let t = W0; t < W1; t++) { const v = b[t - d]; s += v * v; } return s; };
+  // band arrays of REF + every layer except `skip`, with their current d/p
+  const sumBands = skip => RB.map((rb, b) => {
+    const out = Float32Array.from(rb);
+    layers.forEach(l => { if (l === skip) return; const lb = l.B[b]; for (let t = W0; t < W1; t++) out[t] += l.p * lb[t - l.d]; });
+    return out;
+  });
+  const bandE = arr => { let s = 0; for (let t = W0; t < W1; t++) s += arr[t] * arr[t]; return s; };
+  // Phase first, offset second:
+  //  0) WHERE: locate the hit in time with the attack contour (smoothed
+  //     |LOW-MID + HIGH|), which ignores polarity. Without this a plain delay
+  //     reads as a phase problem (2 ms late ≈ 144° at 200 Hz).
+  //  1) PHASE: measure the LOW-band phase difference against the target at
+  //     that position. From 90° up the waves fight, so the layer is inverted (Ø).
+  //  2) OFFSET: with that polarity fixed, move it to where it has to go: keep
+  //     LOW within 0.5 dB and body within 1 dB of their best, then line up the
+  //     attack (most HIGH). The offset can no longer "fix" the phase by
+  //     jumping half a cycle.
+  function phaseAt(l, Sb, d) {
+    const c = dot(Sb[0], l.B[0], d), e = Math.sqrt(Math.max(1e-12, bandE(Sb[0]) * nrg(l.B[0], d)));
+    return Math.acos(clamp(c / e, -1, 1)) * 180 / Math.PI; // 0° = in phase, 180° = opposite
+  }
+  const ATT_SMOOTH = Math.exp(-1 / (0.0005 * sr)); // 0.5 ms contour
+  function attackEnv(B) {
+    const n = B[0].length, e = new Float32Array(n);
+    let v = 0;
+    for (let t = 0; t < n; t++) { v = Math.max(Math.abs(B[1][t] + B[2][t]), v * ATT_SMOOTH); e[t] = v; }
+    v = 0;
+    for (let t = n - 1; t >= 0; t--) { v = Math.max(e[t], v * ATT_SMOOTH); e[t] = v; }
+    return e;
+  }
+  function locate(lEnv, tEnv, lo, hi) {
+    let best = lo, bestV = -Infinity;
+    for (let d = lo; d <= hi; d++) {
+      const v = dot(tEnv, lEnv, d) / Math.sqrt(Math.max(1e-12, nrg(lEnv, d)));
+      if (v > bestV) { bestV = v; best = d; }
+    }
+    return best;
+  }
+  function choose(l, Sb, lo, hi, d0) {
+    const base = Sb.map(bandE);
+    const lags = [];
+    if (allowLag) for (let d = lo; d <= hi; d++) lags.push(d); else lags.push(0);
+    const rows = lags.map(d => {
+      const c = Sb.map((sb, b) => dot(sb, l.B[b], d));
+      const n = l.B.map(lb => nrg(lb, d));
+      return { d, c, n };
+    });
+    const tot = (r, p, b) => base[b] + r.n[b] + 2 * p * r.c[b];
+    // 1) phase at the current position decides the polarity
+    const phase = phaseAt(l, Sb, d0);
+    const bestP = allowPol && phase >= 90 ? -1 : 1;
+    let bestLow = -Infinity;
+    rows.forEach(r => { const v = tot(r, bestP, 0); if (v > bestLow) bestLow = v; });
+    // 2) offsets that keep LOW within 0.5 dB, then body within 1 dB
+    let cand = rows.filter(r => tot(r, bestP, 0) >= bestLow * Math.pow(10, -AP_LOW_TOL_DB / 10));
+    const bestMid = Math.max(...cand.map(r => tot(r, bestP, 1)));
+    cand = cand.filter(r => tot(r, bestP, 1) >= bestMid * Math.pow(10, -AP_MID_TOL_DB / 10));
+    // 3) among them, the one that lines up the attack (most HIGH)
+    let pick = cand[0];
+    cand.forEach(r => { if (tot(r, bestP, 2) > tot(pick, bestP, 2)) pick = r; });
+    const cAll = pick.c.reduce((a, v) => a + v, 0), nAll = pick.n.reduce((a, v) => a + v, 0), bAll = base.reduce((a, v) => a + v, 0);
+    return { d: pick.d, p: bestP, phase, corr: bestP * cAll / Math.sqrt(Math.max(1e-12, nAll * bAll)) };
+  }
+  // baseline: nothing applied
+  const base0 = sumBands(null).map(bandE);
+  // (1) anchor each layer to the REF alone
+  const refOnly = RB;
+  const refEnv = attackEnv(RB);
+  layers.forEach(l => {
+    // 0) where the hit is (polarity-free), 1) phase there, 2) fine offset ±1.5 ms
+    const at = allowLag ? locate(attackEnv(l.B), refEnv, -NEG, POS) : 0;
+    const lo = allowLag ? clamp(at - REF_D, -NEG, POS) : 0, hi = allowLag ? clamp(at + REF_D, -NEG, POS) : 0;
+    const r = choose(l, refOnly, lo, hi, at);
+    Object.assign(l, { d: r.d, p: r.p, anchor: r.d, corr: r.corr, phase0: r.phase });
+  });
+  // (2) refine against REF + the other aligned layers
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    layers.forEach(l => {
+      const lo = clamp(l.anchor - REF_D, -NEG, POS), hi = clamp(l.anchor + REF_D, -NEG, POS);
+      const r = choose(l, sumBands(l), lo, hi, l.d);
+      if (r.d !== l.d || r.p !== l.p) changed = true;
+      Object.assign(l, { d: r.d, p: r.p, corr: r.corr });
+    });
+    if (!changed) break;
+  }
+  const fin = sumBands(null).map(bandE);
+  const gain = b => 10 * Math.log10(Math.max(1e-12, fin[b]) / Math.max(1e-12, base0[b]));
+  // (3) pairs that still cancel (LOW + body)
+  const conflicts = [];
+  for (let a = 0; a < layers.length; a++) for (let b = a + 1; b < layers.length; b++) {
+    const A = layers[a], Bl = layers[b];
+    let xy = 0, xx = 0, yy = 0;
+    for (let t = W0; t < W1; t++) {
+      const x = A.p * (A.B[0][t - A.d] + A.B[1][t - A.d]);
+      const y = Bl.p * (Bl.B[0][t - Bl.d] + Bl.B[1][t - Bl.d]);
+      xy += x * y; xx += x * x; yy += y * y;
+    }
+    const c = xy / Math.sqrt(Math.max(1e-12, xx * yy));
+    if (c < -0.15) conflicts.push([A.i, Bl.i, +c.toFixed(2)]);
+  }
+  return {
+    // atLimit: wanted to play even earlier than −5 ms (the lookahead limit),
+    // usually air before the hit in the sample → trim START (⇥ TRANSIENT)
+    layers: layers.map(l => ({ i: l.i, lag: +(l.d * 1000 / sr).toFixed(1), invert: l.p < 0, corr: +Math.abs(l.corr).toFixed(2), phase: Math.round(l.phase0), atLimit: allowLag && l.d <= -NEG + ms(0.5) })),
+    report: { low: +gain(0).toFixed(1), body: +gain(1).toFixed(1), conflicts, limits: layers.filter(l => allowLag && l.d <= -NEG + ms(0.5)).map(l => l.i) },
+  };
+}
+
+async function analyzeAllPhase() {
+  const run = ++apRunId;
+  const ref = state.ap.ref;
+  state.slots.forEach((x, i) => { if (!slotSample(x)) x.ap = null; else if (ref === i) x.ap = { isRef: true }; });
+  state.apBusy = true;
+  updateAutoPhasePanel();
+  let res = null;
+  try { res = await computePhaseAlignment(); } catch (e) { console.error('[auto phase]', e); res = { error: String(e.message || e) }; }
+  if (run !== apRunId) return; // a newer analysis started
+  state.apBusy = false;
+  if (res && !res.error) {
+    state.slots.forEach((x, i) => { if (slotSample(x) && i !== ref) x.ap = null; });
+    res.layers.forEach(r => { state.slots[r.i].ap = { lag: r.lag, invert: r.invert, corr: r.corr, phase: r.phase, atLimit: r.atLimit }; });
+    state.apReport = res.report;
+    state.apFp = apFingerprint();
+  } else {
+    state.apReport = res ? { error: res.error } : null;
+  }
   renderSlots();
   syncAllSlotAudio();
-  if (state.selectedSlot === i && $('.inspector').classList.contains('show')) updateInspector();
-  if (!silent) {
-    const timing = state.autoTiming ? `${lag >= 0 ? '+' : ''}${lag.toFixed(1)} ms · ` : '';
-    toast(`AUTO PHASE ${invert ? '180° ' : ''}${timing}corr ${corr.toFixed(2)}`);
+  updateAutoPhasePanel();
+  return res;
+}
+// ---------- AUTO PHASE: stale readings ----------
+// The analysis keeps a fingerprint of everything it depends on. When any of it
+// changes afterwards (START, reverse, tune, TONE/CUT, GAIN, envelope, fader
+// level, the sample, the input VOLUME), RE-ANALYZE ALL, the sum report and the
+// phase readings of the affected channels turn red until you re-analyze.
+// Pan, mute/solo and your manual Ø / offsets do not count (not analyzed).
+const apSlotFp = x => JSON.stringify([x.sampleId, x.start, x.end, x.reverse, x.tune, x.tone, x.cut, x.gain, x.level, x.adsr, x.envPts]);
+function apFingerprint() {
+  return { g: JSON.stringify([state.ap.ref, state.ap.mode, state.detector.input]), slots: state.slots.map(apSlotFp) };
+}
+state.apFp = null;
+let apStaleSlots = new Set();
+function checkApStale() {
+  const fp = state.apFp;
+  const stale = new Set();
+  if (fp && state.ap.on && !state.apBusy) {
+    const cur = apFingerprint();
+    const loaded = state.slots.map((x, i) => (slotSample(x) ? i : -1)).filter(i => i >= 0);
+    const refStale = typeof state.ap.ref === 'number' && cur.slots[state.ap.ref] !== fp.slots[state.ap.ref];
+    if (cur.g !== fp.g || refStale) loaded.forEach(i => stale.add(i));
+    else loaded.forEach(i => { if (cur.slots[i] !== fp.slots[i]) stale.add(i); });
   }
+  apStaleSlots = stale;
+  const any = stale.size > 0;
+  const btn = $('#slotAuto');
+  if (btn) {
+    btn.classList.toggle('stale', any);
+    btn.title = any ? 'Parameters that affect the phase changed since the last analysis · re-analyze' : 'Re-analyze every loaded slot against the reference';
+  }
+  const rep = $('#apReport'); if (rep) rep.classList.toggle('stale', any);
+  const res = $('#slotResult'); if (res) res.classList.toggle('stale', stale.has(state.selectedSlot));
+  $$('#faderBank .slot-fader').forEach(el => el.classList.toggle('ap-stale', stale.has(+el.dataset.slot)));
+}
+setInterval(checkApStale, 250);
+
+function apSummary() {
+  const n = state.slots.filter(x => x.ap && !x.ap.isRef).length;
+  const what = { offset: 'offsets', polarity: 'Ø inversion', both: 'offsets + Ø' }[state.ap.mode];
+  return `${n} layer${n === 1 ? '' : 's'} · ${what} · ref ${apRefLabel()}`;
 }
 
 $('#autoPhaseAll').onclick = () => {
-  state.slots.forEach((s, i) => {
-    if (!slotSample(s)) return;
-    const smp = slotSample(s);
-    const seed = smp.id * 17;
-    s.polarity = (seed % 4 === 0);
-    s.shift = s.polarity ? 180 : 0;
-    s.suggestedLag = +((((seed * 29) % 70) / 10 - 1.5).toFixed(1));
-    s.offset = state.autoTiming ? s.suggestedLag : 0;
-    s.autoPhase = true;
-    s.corr = +(0.62 + ((seed * 7) % 34) / 100).toFixed(2);
-    s.autoRef = 'INPUT';
-  });
-  renderSlots();
-  syncAllSlotAudio();
-  if ($('.inspector').classList.contains('show')) updateInspector();
+  if (!state.ap.on) { state.ap.on = true; }
+  analyzeAllPhase();
   setSettingsOpen(false);
-  const loaded = state.slots.filter(s => slotSample(s)).length;
-  toast(`AUTO PHASE applied to ${loaded} layer${loaded === 1 ? '' : 's'} · ${state.autoTiming ? 'polarity + timing' : 'polarity only'} · ref INPUT`);
+  toast(`AUTO PHASE · ${apSummary()}`);
 };
 
 // ---------- slot popover ----------
@@ -2013,175 +2272,9 @@ function closeSlotPopover() {
   state.popoverSlot = null;
 }
 
-function openSlotPopover(i, anchor, keepPosition) {
-  if (!$('#slotPopover')) return;
-  if (!keepPosition && state.popoverSlot === i && $('#slotPopover').classList.contains('show')) {
-    closeSlotPopover(); return;
-  }
-  const s = state.slots[i];
-  const smp = slotSample(s);
-  const pop = $('#slotPopover');
-  pop.innerHTML = `
-    <div class="sp-head">
-      <span class="sp-badge">TRIGGER ${String(i + 1).padStart(2, '0')}</span>
-      <span class="sp-name">${s.label}</span>
-      <button class="sp-close" id="spClose">×</button>
-    </div>
-    <div class="sp-sample">${smp ? smp.name + ' · ' + smp.path : 'empty slot'}</div>
-    <div class="sp-grid">
-      <label class="sp-row">LEVEL<input type="range" id="spLevel" min="-60" max="6" step="0.1" value="${s.level}"><b id="spLevelVal">${fmtDb(s.level)}</b></label>
-      <label class="sp-row">PAN<input type="range" id="spPan" min="-100" max="100" step="1" value="${s.pan}"><b id="spPanVal">${panLabel(s.pan)}</b></label>
-      <label class="sp-row">TUNE<input type="range" id="spTune" min="-24" max="24" step="0.01" value="${s.tune}"><b id="spTuneVal">${s.tune.toFixed(2)} st</b></label>
-    </div>
-    <div class="sp-btns">
-      <button id="spM" class="${s.mute ? 'on' : ''}">MUTE</button>
-      <button id="spS" class="${s.solo ? 'on solo' : ''}">SOLO</button>
-      <button id="spO" class="${s.polarity ? 'on phase' : ''}">Ø POL</button>
-    </div>
-    <div class="sp-phase">
-      <div class="sp-phase-head">
-        <span>AUTO PHASE</span>
-        <span>REF <select id="spRef">
-          <option${state.autoRef === 'INPUT' ? ' selected' : ''}>INPUT</option>
-          <option${state.autoRef === 'SLOT 1' ? ' selected' : ''}>SLOT 1</option>
-        </select></span>
-      </div>
-      <div class="sp-auto-row">
-        <button class="sp-auto" id="spAuto">RE-ANALYZE &amp; ALIGN</button>
-        <button class="sp-timing ${state.autoTiming ? 'on' : ''}" id="spTiming" title="Apply the measured timing offset">TIMING</button>
-      </div>
-      <div class="sp-result" id="spResult">${s.autoPhase
-        ? `corr <b>${s.corr.toFixed(2)}</b> · ${s.polarity ? 'Ø inverted' : 'polarity OK'} · ${s.offset !== 0
-            ? `offset <b>${s.offset >= 0 ? '+' : ''}${s.offset.toFixed(1)} ms</b>`
-            : `suggested <b>${(s.suggestedLag || 0) >= 0 ? '+' : ''}${(s.suggestedLag || 0).toFixed(1)} ms</b>`}`
-        : 'Analyze polarity + timing against the reference.'}</div>
-      <label class="sp-row" style="margin-top:6px">OFFSET<input type="range" id="spOffset" min="-5" max="50" step="0.1" value="${s.offset}"><b id="spOffsetVal">${s.offset.toFixed(1)} ms</b></label>
-      <div class="sp-phase-row">
-        <span class="lbl">SHIFT</span>
-        <div class="seg" id="spShift">
-          <button data-shift="0" class="${s.shift === 0 ? 'active' : ''}">0°</button>
-          <button data-shift="90" class="${s.shift === 90 ? 'active' : ''}">90°</button>
-          <button data-shift="180" class="${s.shift === 180 ? 'active' : ''}">180°</button>
-          <button data-shift="260" class="${s.shift === 260 ? 'active' : ''}">260°</button>
-        </div>
-      </div>
-    </div>`;
-  pop.classList.add('show');
-
-  if (!keepPosition || !pop.dataset.pos) {
-    const w = 300, h = pop.offsetHeight || 260;
-    pop.style.left = Math.round((innerWidth - w) / 2) + 'px';
-    pop.style.top = Math.round(Math.max(16, (innerHeight - h) / 2 - 24)) + 'px';
-    pop.dataset.pos = '1';
-  }
-  state.popoverSlot = i;
-
-  $('#spClose').onclick = closeSlotPopover;
-  $('#spLevel').oninput = e => {
-    s.level = +e.target.value;
-    $('#spLevelVal').textContent = fmtDb(s.level);
-    const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(s.level);
-    const mt = $(`#meter-${i}`); if (mt) mt.style.height = meterW(s.level) + '%';
-  };
-  $('#spPan').oninput = e => {
-    s.pan = +e.target.value;
-    $('#spPanVal').textContent = panLabel(s.pan);
-    const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(s.pan)} · ${s.tune.toFixed(2)}`;
-  };
-  $('#spTune').oninput = e => {
-    s.tune = +e.target.value;
-    $('#spTuneVal').textContent = `${s.tune.toFixed(2)} st`;
-    const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(s.pan)} · ${s.tune.toFixed(2)}`;
-  };
-  $('#spM').onclick = () => { s.mute = !s.mute; renderSlots(); openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true); };
-  $('#spS').onclick = () => { s.solo = !s.solo; renderSlots(); openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true); };
-  $('#spO').onclick = () => {
-    if (s.shift === 180) { s.shift = 0; s.polarity = false; }
-    else { s.shift = 180; s.polarity = true; }
-    renderSlots();
-    openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true);
-  };
-  $('#spRef').onchange = e => { state.autoRef = e.target.value; };
-  $('#spTiming').onclick = () => {
-    state.autoTiming = !state.autoTiming;
-    if (!state.autoTiming) {
-      s.offset = 0;
-    }
-    renderSlots();
-    openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true);
-    toast(state.autoTiming
-      ? 'Timing ON · re-analyze to apply the suggested offset'
-      : 'Timing OFF · offset reset to 0');
-  };
-  $('#spAuto').onclick = () => {
-    const btn = $('#spAuto');
-    btn.classList.add('running');
-    btn.textContent = 'ANALYZING…';
-    setTimeout(() => {
-      applyAutoPhase(i, $('#spRef') ? $('#spRef').value : 'INPUT');
-    }, 550);
-  };
-  $('#spOffset').oninput = e => {
-    s.offset = +e.target.value;
-    s.autoPhase = true;
-    $('#spOffsetVal').textContent = `${s.offset.toFixed(1)} ms`;
-    renderSlots();
-  };
-  $('#spShift').onclick = e => {
-    const b = e.target.closest('button[data-shift]');
-    if (!b) return;
-    s.shift = +b.dataset.shift;
-    s.polarity = (s.shift === 180);
-    renderSlots();
-    openSlotPopover(i, $(`.slot[data-slot="${i}"]`), true);
-  };
-
-  bindNumericEdit($('#spLevelVal'), {
-    get: () => s.level,
-    set: v => {
-      s.level = v;
-      const r = $('#spLevel'); if (r) r.value = v;
-      const lab = $('#spLevelVal'); if (lab) lab.textContent = fmtDb(v);
-      const lv = $(`#slotLevel-${i}`); if (lv) lv.textContent = fmtDb(v);
-      const mt = $(`#meter-${i}`); if (mt) mt.style.height = meterW(v) + '%';
-      syncSlotAudio(i);
-    },
-    min: -60, max: 6, step: .1, unit: 'dB', decimals: 1, default: 0,
-  });
-  bindNumericEdit($('#spPanVal'), {
-    get: () => s.pan,
-    set: v => {
-      s.pan = v;
-      const r = $('#spPan'); if (r) r.value = v;
-      const lab = $('#spPanVal'); if (lab) lab.textContent = panLabel(v);
-      const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(v)} · ${s.tune.toFixed(2)}`;
-      syncSlotAudio(i);
-    },
-    min: -100, max: 100, step: 1, decimals: 0, default: 0,
-  });
-  bindNumericEdit($('#spTuneVal'), {
-    get: () => s.tune,
-    set: v => {
-      s.tune = v;
-      const r = $('#spTune'); if (r) r.value = v;
-      const lab = $('#spTuneVal'); if (lab) lab.textContent = `${v.toFixed(2)} st`;
-      const pt = $(`#slotPt-${i}`); if (pt) pt.textContent = `${panLabel(s.pan)} · ${v.toFixed(2)}`;
-      syncSlotAudio(i);
-    },
-    min: -24, max: 24, step: .01, unit: 'st', decimals: 2, default: 0,
-  });
-  bindNumericEdit($('#spOffsetVal'), {
-    get: () => s.offset,
-    set: v => {
-      s.offset = v;
-      s.autoPhase = true;
-      const r = $('#spOffset'); if (r) r.value = v;
-      const lab = $('#spOffsetVal'); if (lab) lab.textContent = `${v.toFixed(1)} ms`;
-      renderSlots();
-    },
-    min: -5, max: 50, step: .1, unit: 'ms', decimals: 1, default: 0,
-  });
-}
+// The old per-slot popover was replaced by the AUTO PHASE panel and the
+// fader strips; kept as a no-op for callers.
+function openSlotPopover() {}
 
 document.addEventListener('mousedown', e => {
   const pop = $('#slotPopover');
@@ -2644,16 +2737,7 @@ function updateInspector() {
     ? `${CAT[smp.category].short} · ${fmtMs(smp.dur)}`
     : 'drag a sample from the browser';
 
-  $('#slotRef').value = state.autoRef;
-  $('#slotTiming').classList.toggle('on', state.autoTiming);
-  $('#slotOffset').value = slot.offset;
-  $('#slotOffsetVal').textContent = `${slot.offset.toFixed(1)} ms`;
-  $$('#slotShift button').forEach(b => b.classList.toggle('active', +b.dataset.shift === slot.shift));
-  $('#slotResult').innerHTML = slot.autoPhase
-    ? `corr <b>${slot.corr.toFixed(2)}</b> · ${slot.polarity ? '180° inverted' : 'polarity OK'} · ${slot.offset !== 0
-        ? `offset <b>${slot.offset >= 0 ? '+' : ''}${slot.offset.toFixed(1)} ms</b>`
-        : `suggested <b>${(slot.suggestedLag || 0) >= 0 ? '+' : ''}${(slot.suggestedLag || 0).toFixed(1)} ms</b>`}`
-    : 'Select a sample in this slot.';
+  updateAutoPhasePanel();
 
   $('#sampleMeta').textContent = smp
     ? `${CAT[smp.category].short} · ${fmtMs(smp.dur)} · ${fmtHz(smp.bright)} · ${smp.path}`
@@ -3250,48 +3334,139 @@ bindNumericEdit($('#rVal'), {
   min: 0, max: () => envMax('r'), step: 1, unit: 'ms', decimals: 0, default: () => envMax('r'),
 });
 
-// ---------- SLOT tab ----------
-$('#slotRef').onchange = e => { state.autoRef = e.target.value; };
-$('#slotTiming').onclick = () => {
-  state.autoTiming = !state.autoTiming;
-  if (!state.autoTiming) currentSlot().offset = 0;
-  renderSlots(); updateInspector();
-  toast(state.autoTiming ? 'Timing ON · re-analyze to apply the offset' : 'Timing OFF · offset reset to 0');
+// ---------- AUTO PHASE panel ----------
+// Global: ON/OFF (the title), REF (INPUT or any of the 8 slots, for every
+// layer) and MODE (offsets, Ø inversion or both). Per selected slot: the
+// offset is typed (no knob/fader) and PHASE picks 0° or 90°. 180°/260° were
+// removed: polarity is the Ø button on the channel and the typed offset covers
+// the rest of the fine adjustment.
+function phaseChoice(s) { return s.shift === 90 ? 90 : 0; }
+function fmtOffset(v) { return `${v > 0 ? '+' : ''}${v.toFixed(1)}`; }
+function updateAutoPhasePanel() {
+  const panel = $('#autoPhaseBar');
+  if (!panel) return;
+  const ap = state.ap;
+  panel.classList.toggle('off', !ap.on);
+  const pw = $('#apPower');
+  pw.classList.toggle('on', ap.on);
+  pw.setAttribute('aria-pressed', ap.on ? 'true' : 'false');
+  // REF options: INPUT + the 8 slots (empty ones disabled)
+  const sel = $('#apRef');
+  const opts = ['<option value="INPUT">INPUT</option>'].concat(state.slots.map((x, i) => {
+    const smp = slotSample(x);
+    return `<option value="${i}"${smp ? '' : ' disabled'}>${String(i + 1).padStart(2, '0')} · ${smp ? smp.name : 'empty'}</option>`;
+  }));
+  const html = opts.join('');
+  if (sel._html !== html) { sel.innerHTML = html; sel._html = html; }
+  sel.value = String(ap.ref);
+  $$('#apMode button').forEach(b => b.classList.toggle('active', b.dataset.mode === ap.mode));
+  const slot = currentSlot();
+  const smp = slotSample(slot);
+  $('#apSlotBadge').textContent = `SLOT ${String(state.selectedSlot + 1).padStart(2, '0')}`;
+  $('#apSampleName').textContent = smp ? smp.name : 'empty slot';
+  const inp = $('#apOffset');
+  if (document.activeElement !== inp) inp.value = fmtOffset(effOffset(slot));
+  inp.disabled = !smp;
+  inp.classList.toggle('auto', !!apAutoLag(slot));
+  const choice = phaseChoice(slot);
+  $$('#slotShift button').forEach(b => b.classList.toggle('active', +b.dataset.shift === choice));
+  let res;
+  if (!smp) res = 'Drop a sample in this slot.';
+  else if (slot.ap && slot.ap.isRef) res = 'Reference layer · not moved';
+  else if (!slot.ap) res = ap.ref === 'INPUT' ? 'Not analyzed' : `${apRefLabel()} is empty`;
+  else {
+    const auto = [];
+    if (apAutoInv(slot)) auto.push('Ø');
+    if (apAutoLag(slot)) auto.push(`${fmtOffset(slot.ap.lag)} ms`);
+    const ph = Number.isFinite(slot.ap.phase) && apUsesPolarity() ? `Δφ <b>${slot.ap.phase}°</b>${slot.ap.phase >= 90 ? ' → Ø' : ''} · ` : '';
+    res = `${ph}corr <b>${slot.ap.corr.toFixed(2)}</b> · ${!ap.on ? 'AUTO off' : auto.length ? `auto <b>${auto.join(' ')}</b>` : 'already aligned'}`;
+    if (slot.ap.atLimit && apUsesOffset()) res += ` · <span class="warn" title="The sample has air before the hit: it would need more than −5 ms. Use ⇥ TRANSIENT on START.">−5 ms limit · ⇥ TRANSIENT</span>`;
+  }
+  $('#slotResult').innerHTML = res;
+  requestAnimationFrame(checkApStale);
+  const rep = $('#apReport');
+  if (rep) {
+    const r = state.apReport;
+    let html = '';
+    if (state.apBusy) html = 'analyzing…';
+    else if (r && r.error) html = `<span class="warn">${r.error}</span>`;
+    else if (r && ap.on) {
+      const f = v => `${v >= 0 ? '+' : ''}${v.toFixed(1)}`;
+      html = `SUM LOW <b>${f(r.low)} dB</b> · BODY <b>${f(r.body)} dB</b>`;
+      if (r.limits && r.limits.length && ap.mode !== 'polarity') html += `<br><span class="warn">⚠ ${r.limits.map(i => String(i + 1).padStart(2, '0')).join(' ')} at −5 ms · ⇥ TRANSIENT</span>`;
+      if (r.conflicts.length) html += `<br><span class="warn">⚠ ${r.conflicts.map(([a, b]) => `${String(a + 1).padStart(2, '0')}↔${String(b + 1).padStart(2, '0')}`).join(' ')} cancel</span>`;
+    }
+    rep.innerHTML = html;
+    rep.title = r && r.conflicts && r.conflicts.length ? 'These layers still cancel each other in LOW/body: try Ø or 90° on one of them' : 'Energy of the whole sum (REF + all layers) vs doing nothing';
+  }
+}
+$('#apPower').onclick = () => {
+  state.ap.on = !state.ap.on;
+  if (state.ap.on) analyzeAllPhase();
+  else { renderSlots(); syncAllSlotAudio(); updateAutoPhasePanel(); }
+  toast(state.ap.on ? `AUTO PHASE ON · ${apSummary()}` : 'AUTO PHASE OFF · manual Ø / offsets only');
 };
+$('#apRef').onchange = e => {
+  const v = e.target.value;
+  state.ap.ref = v === 'INPUT' ? 'INPUT' : +v;
+  analyzeAllPhase();
+  toast(`AUTO PHASE reference → ${apRefLabel()}`);
+};
+$('#apMode').addEventListener('click', e => {
+  const b = e.target.closest('button[data-mode]');
+  if (!b) return;
+  state.ap.mode = b.dataset.mode;
+  analyzeAllPhase(); // the joint result depends on what may change
+});
+$('#bounceBtn').onclick = () => bounceModifiedSamples();
+
 $('#slotAuto').onclick = () => {
   const btn = $('#slotAuto');
-  const target = state.selectedSlot;
-  const ref = state.autoRef;
   btn.classList.add('running');
   btn.textContent = 'ANALYZING…';
-  setTimeout(() => {
-    applyAutoPhase(target, ref);
+  if (!state.ap.on) state.ap.on = true;
+  analyzeAllPhase().then(res => {
     btn.classList.remove('running');
-    btn.textContent = 'RE-ANALYZE';
-  }, 550);
+    btn.textContent = 'RE-ANALYZE ALL';
+    if (res && !res.error) toast(`AUTO PHASE · ${apSummary()}`);
+  });
 };
-function setSlotOffset(v) {
+// Typed offset: the field shows the slot's total offset (auto + manual trim);
+// typing a value keeps the auto part and stores the difference as the trim.
+function commitApOffset() {
+  const inp = $('#apOffset');
   const s = currentSlot();
-  s.offset = clamp(v, -5, 50);
-  s.autoPhase = true;
-  $('#slotOffset').value = s.offset;
-  $('#slotOffsetVal').textContent = `${s.offset.toFixed(1)} ms`;
-  renderSlots();
-  $('#slotResult').innerHTML = `corr <b>${s.corr.toFixed(2)}</b> · ${s.polarity ? '180° inverted' : 'polarity OK'} · offset <b>${s.offset >= 0 ? '+' : ''}${s.offset.toFixed(1)} ms</b>`;
+  if (!slotSample(s)) return;
+  const v = parseFloat(String(inp.value).replace(',', '.').replace(/ms$/i, '').trim());
+  if (!Number.isFinite(v)) { inp.classList.add('invalid'); setTimeout(() => inp.classList.remove('invalid'), 600); inp.value = fmtOffset(effOffset(s)); return; }
+  const total = Math.round(clamp(v, -5, 50) * 10) / 10;
+  s.offset = Math.round((total - apAutoLag(s)) * 10) / 10;
+  inp.value = fmtOffset(effOffset(s));
+  renderSlots(); updateAutoPhasePanel();
 }
-$('#slotOffset').addEventListener('input', e => setSlotOffset(+e.target.value));
-bindNumericEdit($('#slotOffsetVal'), {
-  get: () => currentSlot().offset,
-  set: setSlotOffset,
-  min: -5, max: 50, step: .1, unit: 'ms', decimals: 1, default: 0,
-});
+(function bindApOffset() {
+  const inp = $('#apOffset');
+  inp.addEventListener('keydown', e => {
+    e.stopPropagation(); // typing digits must not fire the 1–8 slot keys
+    if (e.key === 'Enter') { e.preventDefault(); commitApOffset(); inp.blur(); }
+    else if (e.key === 'Escape') { e.preventDefault(); inp.value = fmtOffset(effOffset(currentSlot())); inp.blur(); }
+  });
+  inp.addEventListener('change', commitApOffset);
+  inp.addEventListener('focus', () => inp.select());
+  inp.addEventListener('pointerdown', e => {
+    if (!e.altKey) return; // Alt+click: manual trim back to 0
+    e.preventDefault();
+    currentSlot().offset = 0;
+    inp.blur(); renderSlots(); updateAutoPhasePanel();
+  });
+})();
 $('#slotShift').addEventListener('click', e => {
   const b = e.target.closest('button[data-shift]');
   if (!b) return;
   const s = currentSlot();
-  s.shift = +b.dataset.shift;
-  s.polarity = (s.shift === 180);
-  renderSlots(); syncAllSlotAudio(); updateInspector();
+  // 0° / 90° only; polarity (Ø) is untouched here
+  s.shift = +b.dataset.shift === 90 ? 90 : 0;
+  renderSlots(); syncAllSlotAudio(); updateAutoPhasePanel();
 });
 
 // ---------- tone / playback ----------
@@ -3320,7 +3495,7 @@ function bindToneNumeric(id, key, fmt, opts) {
   }, opts));
 }
 bindToneNumeric('#tone', 'tone', v => (v > 0 ? '+' : '') + v, { min: -100, max: 100, step: 1, decimals: 0, default: 0 });
-bindToneNumeric('#cut', 'cut', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0, default: 50 });
+bindToneNumeric('#cut', 'cut', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0, default: 100 });
 bindToneNumeric('#velSens', 'velSens', v => v + '%', { min: 0, max: 100, step: 1, unit: '%', decimals: 0, default: 100 });
 bindToneNumeric('#gain', 'gain', v => fmtDb(v), { min: -24, max: 24, step: .1, unit: 'dB', decimals: 1, default: 0 });
 
@@ -3689,7 +3864,9 @@ function computeInputPeakEnv() {
   realInputPeakEnv = peaks;
   return peaks;
 }
-function setGateThreshold(v) {
+function setGateThreshold(v, auto = false) {
+  // Any threshold set by hand ends AUTO learning for good.
+  if (!auto && state.detector.gateAuto === 'learn') setGateAuto('manual');
   state.detector.gateThreshold = clamp(v, -48, 0);
   const btn = $('#gateThresh');
   if (btn) btn.style.bottom = meterPct(state.detector.gateThreshold).toFixed(2) + '%';
@@ -3701,7 +3878,8 @@ function setGateThreshold(v) {
 (function initGateThreshold() {
   const btn = $('#gateThresh');
   if (!btn) return;
-  setGateThreshold(state.detector.gateThreshold);
+  setGateThreshold(state.detector.gateThreshold, true);
+  setGateAuto(state.detector.gateAuto || 'learn');
   btn.addEventListener('pointerdown', e => {
     if (e.altKey) return;
     e.preventDefault(); e.stopPropagation();
@@ -3721,14 +3899,112 @@ function setGateThreshold(v) {
   btn.addEventListener('click', e => {
     if (!e.altKey) return;
     e.preventDefault(); e.stopPropagation();
-    setGateThreshold(-24);
+    setGateThreshold(-24, true);
+    rearmGateAuto();
   });
   bindNumericEdit($('#gateThreshVal'), {
     get: () => state.detector.gateThreshold,
     set: v => setGateThreshold(v),
+    onReset: rearmGateAuto,
     min: -48, max: 0, step: .5, unit: 'dB', decimals: 1, default: -24,
   });
 })();
+
+// ---------- GATE AUTO THRESHOLD ----------
+// 'learn' (default): the first time the INPUT plays, the threshold glides to
+// the gap between the bleed and the real hits while the audio is heard (it
+// only uses what has already played, like the plugin would). When that first
+// first ideal point is found it keeps refining for GATE_AUTO_SETTLE_S seconds
+// of play and then locks ('locked'), even if the INPUT keeps playing (or
+// earlier, if you stop). After that it never moves unless you move it by hand
+// ('manual'). Alt+click on the arrow or the
+// value resets to −24 dB and re-arms the learning.
+// How: 10 ms peak windows of the input (post-VOLUME, pre-gate, the meter's
+// scale) → local maxima at least 6 dB over the median floor → Otsu split of
+// their levels in dB into "bleed" and "hits" → threshold halfway between the
+// loudest bleed (p95) and the quietest hits (p5). If they overlap, the hits
+// win: 3 dB under the quietest hit.
+const GATE_AUTO_MIN_HITS = 8;
+const GATE_AUTO_SETTLE_S = 5; // seconds of play after the first ideal point
+let gateAutoTimer = 0, gateAutoReady = false, gateAutoHeard = 0, gateAutoReadyAt = 0;
+function gateAutoIdeal(upToSec) {
+  const peaks = computeInputBlockPeaks();
+  if (!peaks || !(upToSec > 0)) return null;
+  const n = Math.min(peaks.length, Math.floor(upToSec * 1000));
+  const W = 10, m = Math.floor(n / W);
+  if (m < 100) return null;
+  const db = x => 20 * Math.log10(Math.max(x, 1e-6));
+  const w = new Float32Array(m);
+  for (let i = 0; i < m; i++) { let p = 0; for (let j = i * W; j < i * W + W; j++) p = Math.max(p, peaks[j]); w[i] = p; }
+  const floor = db(Float32Array.from(w).sort()[Math.floor(.5 * (m - 1))]);
+  const lm = [];
+  for (let i = 6; i < m - 6; i++) {
+    let top = true;
+    for (let k = -6; k <= 6; k++) if (w[i + k] > w[i]) { top = false; break; }
+    if (top) { const d = db(w[i]); if (d > floor + 6) { lm.push(d); i += 6; } }
+  }
+  if (lm.length < 4) return null;
+  lm.sort((a, b) => a - b);
+  const N = lm.length, tot = lm.reduce((a, b) => a + b, 0);
+  let best = -1, split = 1, s0 = 0;
+  for (let i = 1; i < N; i++) {
+    s0 += lm[i - 1];
+    const w0 = i / N, m0 = s0 / i, m1 = (tot - s0) / (N - i);
+    const v = w0 * (1 - w0) * (m0 - m1) ** 2;
+    if (v > best) { best = v; split = i; }
+  }
+  const lo = lm.slice(0, split), hi = lm.slice(split);
+  if (hi.length < GATE_AUTO_MIN_HITS) return null;
+  const loTop = lo[Math.floor(.95 * (lo.length - 1))], hiBot = hi[Math.floor(.05 * (hi.length - 1))];
+  const thr = hiBot > loTop ? (loTop + hiBot) / 2 : hiBot - 3;
+  return Math.round(clamp(Math.max(thr, floor + 6), -48, 0) * 2) / 2;
+}
+function setGateAuto(st) {
+  state.detector.gateAuto = st;
+  const tag = $('#gateAutoTag');
+  if (tag) {
+    tag.classList.toggle('on', st === 'learn');
+    tag.title = st === 'learn'
+      ? 'AUTO THRESHOLD: the first time you play the INPUT the threshold moves to the gap between bleed and hits, then locks'
+      : '';
+  }
+  const btn = $('#gateThresh');
+  if (btn) btn.classList.toggle('auto', st === 'learn');
+}
+function rearmGateAuto() {
+  stopGateAutoTimer();
+  setGateAuto('learn');
+  if (inputPlaying) startGateAuto();
+  toast('GATE AUTO THRESHOLD re-armed · it learns on the next listen');
+}
+function stopGateAutoTimer() { if (gateAutoTimer) clearInterval(gateAutoTimer); gateAutoTimer = 0; }
+function startGateAuto() {
+  stopGateAutoTimer();
+  if (state.detector.gateAuto !== 'learn') return;
+  gateAutoReady = false; gateAutoHeard = 0; gateAutoReadyAt = 0;
+  gateAutoTimer = setInterval(() => {
+    if (!inputPlaying || !audioCtx || state.detector.gateAuto !== 'learn') return;
+    const heard = clamp(audioCtx.currentTime - inputStartCtxTime - (rtNode ? RT_LOOKAHEAD : 0), 0, realInputDuration);
+    gateAutoHeard = heard;
+    const ideal = gateAutoIdeal(heard);
+    if (ideal == null) return;
+    if (!gateAutoReady) { gateAutoReady = true; gateAutoReadyAt = heard; }
+    const cur = state.detector.gateThreshold;
+    // glide instead of jumping, so the arrow is seen moving into place
+    setGateThreshold(Math.abs(ideal - cur) < .5 ? ideal : cur + (ideal - cur) * .35, true);
+    if (heard - gateAutoReadyAt >= GATE_AUTO_SETTLE_S) finishGateAuto();
+  }, 250);
+}
+// Called when the INPUT stops: the first full listen locks the threshold.
+function finishGateAuto() {
+  if (!gateAutoTimer) return;
+  stopGateAutoTimer();
+  if (state.detector.gateAuto !== 'learn' || !gateAutoReady) return;
+  const ideal = gateAutoIdeal(gateAutoHeard);
+  if (ideal != null) setGateThreshold(ideal, true);
+  setGateAuto('locked');
+  toast(`GATE AUTO THRESHOLD · ${fmtDb(state.detector.gateThreshold)} · locked`);
+}
 function gateValueAt(t) {
   if (!state.detector.gate || !realGateEnv || !realInputDuration) return 1;
   const idx = clamp(Math.floor(t / realInputDuration * realGateEnv.length), 0, realGateEnv.length - 1);
@@ -4012,10 +4288,7 @@ function stopInputLoop() {
 
 // ---------- top actions ----------
 $('#flipAll').onclick = () => {
-  state.slots.forEach(s => {
-    s.polarity = !s.polarity;
-    s.shift = s.polarity ? 180 : 0;
-  });
+  state.slots.forEach(s => { s.polarity = !s.polarity; });
   renderSlots();
   syncAllSlotAudio();
   if ($('.inspector').classList.contains('show')) updateInspector();
@@ -4194,17 +4467,16 @@ function ensureAudio() {
   gateGain.connect(dryGain);
   initDetectorWorklet(audioCtx);
   slotNodes = state.slots.map(() => {
-    const cut = audioCtx.createBiquadFilter();
-    cut.type = 'lowpass'; cut.frequency.value = 20000; cut.Q.value = 0.7;
-    const tone = audioCtx.createBiquadFilter();
-    tone.type = 'highshelf'; tone.frequency.value = 4000; tone.gain.value = 0;
+    // CUT / TONE are baked into the sample with zero phase (slotPlayBuffer),
+    // so the live chain has no IIR filters that would shift the phase.
+    const inp = audioCtx.createGain();
     const level = audioCtx.createGain();
     const pan = audioCtx.createStereoPanner();
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 1024;
-    cut.connect(tone).connect(level).connect(pan).connect(analyser).connect(wetGain);
+    inp.connect(level).connect(pan).connect(analyser).connect(wetGain);
     return {
-      cut, tone, level, pan, analyser,
+      inp, level, pan, analyser,
       fbuf: new Float32Array(analyser.fftSize),
       buf: new Uint8Array(analyser.fftSize),
     };
@@ -4220,10 +4492,8 @@ function syncSlotAudio(i) {
   const anySolo = state.slots.some(x => x.solo);
   const active = !s.mute && (!anySolo || s.solo);
   const amp = active ? dbToAmp(s.level) : 0;
-  slotNodes[i].level.gain.value = s.polarity ? -amp : amp;
+  slotNodes[i].level.gain.value = effPolarity(s) ? -amp : amp;
   slotNodes[i].pan.pan.value = clamp(s.pan / 100, -1, 1);
-  slotNodes[i].tone.gain.value = (s.tone / 100) * 12;
-  slotNodes[i].cut.frequency.value = clamp(200 * Math.pow(100, s.cut / 100), 200, 20000);
 }
 function syncAllSlotAudio() { state.slots.forEach((_, i) => syncSlotAudio(i)); }
 
@@ -4341,13 +4611,120 @@ function getReversedBuffer(smp) {
   return out;
 }
 
+// ---------- zero-phase slot EQ (CUT + TONE) ----------
+// A slot plays a fixed sample, so its EQ does not have to run in real time.
+// CUT (12 dB/oct low-pass, 200 Hz–20 kHz) and TONE (±12 dB high shelf at
+// 4 kHz) are applied to the sample itself, off the audio path: FFT → multiply
+// by the filters' magnitude only (same curve as the old biquads) → IFFT.
+// Zero phase means every frequency keeps its timing, so layers stay in phase
+// with each other and with the input whatever the EQ. No latency; the price is
+// a small symmetric pre-ring, inaudible with slopes this gentle. Rebuilt only
+// when the sample / reverse / CUT / TONE change (a few ms), then cached.
+const EQ_PAD = 4096; // zeros on each side: room for the filter ring, no wrap
+const eqIsFlat = s => (s.cut ?? 100) >= 100 && !s.tone;
+const eqCutHz = cut => clamp(200 * Math.pow(100, cut / 100), 200, 20000);
+const eqMagCtx = {};
+function eqMagnitude(sr, n, cut, tone) {
+  const c = eqMagCtx[sr] || (eqMagCtx[sr] = new OfflineAudioContext(1, 1, sr));
+  const bins = n / 2 + 1;
+  const f = new Float32Array(bins);
+  for (let k = 0; k < bins; k++) f[k] = Math.min(k * sr / n, sr / 2 - 1);
+  const mag = new Float32Array(bins).fill(1);
+  const m = new Float32Array(bins), ph = new Float32Array(bins);
+  const apply = node => {
+    node.getFrequencyResponse(f, m, ph);
+    for (let k = 0; k < bins; k++) mag[k] *= isFinite(m[k]) ? m[k] : 0;
+  };
+  if (cut < 100) {
+    const lp = c.createBiquadFilter();
+    lp.type = 'lowpass'; lp.Q.value = 0.7; lp.frequency.value = eqCutHz(cut);
+    apply(lp);
+  }
+  if (tone) {
+    const hs = c.createBiquadFilter();
+    hs.type = 'highshelf'; hs.frequency.value = 4000; hs.gain.value = tone / 100 * 12;
+    apply(hs);
+  }
+  return mag;
+}
+function fftInPlace(re, im, inverse) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (inverse ? 2 : -2) * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang), half = len >> 1;
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < half; k++) {
+        const a = i + k, b = a + half;
+        const xr = re[b] * cr - im[b] * ci, xi = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi;
+        re[a] += xr; im[a] += xi;
+        const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+      }
+    }
+  }
+  if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+}
+function zeroPhaseEq(buf, cut, tone) {
+  const sr = buf.sampleRate, len = buf.length, nCh = buf.numberOfChannels;
+  let n = 1; while (n < len + 2 * EQ_PAD) n <<= 1;
+  const mag = eqMagnitude(sr, n, cut, tone);
+  const out = new AudioBuffer({ numberOfChannels: nCh, length: len, sampleRate: sr });
+  // Two channels per FFT (L in re, R in im): the gain is real and symmetric,
+  // so the channels come back apart.
+  for (let c = 0; c < nCh; c += 2) {
+    const re = new Float64Array(n), im = new Float64Array(n);
+    re.set(buf.getChannelData(c), EQ_PAD);
+    if (c + 1 < nCh) im.set(buf.getChannelData(c + 1), EQ_PAD);
+    fftInPlace(re, im, false);
+    for (let k = 0; k < n; k++) { const g = mag[k <= n / 2 ? k : n - k]; re[k] *= g; im[k] *= g; }
+    fftInPlace(re, im, true);
+    out.copyToChannel(Float32Array.from(re.subarray(EQ_PAD, EQ_PAD + len)), c);
+    if (c + 1 < nCh) out.copyToChannel(Float32Array.from(im.subarray(EQ_PAD, EQ_PAD + len)), c + 1);
+  }
+  return out;
+}
+function reversedCopy(src) {
+  const out = new AudioBuffer({ numberOfChannels: src.numberOfChannels, length: src.length, sampleRate: src.sampleRate });
+  for (let ch = 0; ch < src.numberOfChannels; ch++) {
+    const a = src.getChannelData(ch), b = out.getChannelData(ch);
+    for (let i = 0; i < a.length; i++) b[i] = a[a.length - 1 - i];
+  }
+  return out;
+}
+// Buffer a slot plays: raw (or reversed) sample with CUT / TONE baked in.
+// native = the file's own sample rate (bounce); otherwise the context's rate.
+function slotPlayBuffer(s, smp, native = false) {
+  let raw;
+  if (native && smp.nativeBuffer) {
+    raw = s.reverse ? (smp._revNative || (smp._revNative = reversedCopy(smp.nativeBuffer))) : smp.nativeBuffer;
+  } else {
+    raw = s.reverse ? getReversedBuffer(smp) : getBuffer(smp);
+  }
+  if (!raw || eqIsFlat(s)) return raw;
+  const key = `${smp.id}|${s.reverse ? 1 : 0}|${s.cut}|${s.tone}|${raw.sampleRate}|${raw.length}`;
+  const slotKey = native ? '_eqNative' : '_eqLive';
+  const hit = s[slotKey];
+  if (hit && hit.key === key) return hit.buf;
+  const buf = zeroPhaseEq(raw, s.cut ?? 100, s.tone || 0);
+  // non-enumerable: the cache must not end up in saved state / JSON
+  Object.defineProperty(s, slotKey, { value: { key, buf }, writable: true, configurable: true, enumerable: false });
+  return buf;
+}
+
 function scheduleSlot(ctx, i, when, velocity = 1, gateStartSec = null, atTime = null) {
   const s = state.slots[i];
   const smp = slotSample(s);
   if (!smp) return null;
   const anySolo = state.slots.some(x => x.solo);
   if (s.mute || (anySolo && !s.solo)) return null;
-  const buf = s.reverse ? getReversedBuffer(smp) : getBuffer(smp);
+  const buf = slotPlayBuffer(s, smp);
   if (!buf) return null;
   const src = ctx.createBufferSource();
   src.buffer = buf;
@@ -4364,13 +4741,13 @@ function scheduleSlot(ctx, i, when, velocity = 1, gateStartSec = null, atTime = 
   const playGate = ctx.createGain();
   src.connect(env).connect(fade).connect(playGate);
   const node = slotNodes[i];
-  if (node) playGate.connect(node.cut); else playGate.connect(masterGain);
+  if (node) playGate.connect(node.inp); else playGate.connect(masterGain);
   // Negative offset means "play earlier": live triggers are scheduled with
   // lookahead, so the shift can be applied as long as we do not start in the
   // past. Manual auditions clamp to the next audio block.
   // atTime: absolute onset from the real-time detector (sample-accurate; a
   // relative 'when' would drift by the audio blocks rendered in between).
-  const wantedT0 = (atTime != null ? atTime : ctx.currentTime + 0.02 + (when || 0)) + s.offset / 1000;
+  const wantedT0 = (atTime != null ? atTime : ctx.currentTime + 0.02 + (when || 0)) + effOffset(s) / 1000;
   const t0 = Math.max(ctx.currentTime + 0.002, wantedT0);
   const total = len / rate;
   // Envelope from every point (A/D/R + extra points), in seconds from t0.
@@ -4446,6 +4823,164 @@ function playSlot(i, when = 0, velocity = 1, gateStartSec = null, atTime = null)
   return scheduleSlot(ctx, i, when, velocity, gateStartSec, atTime);
 }
 
+// ---------- BOUNCE MODIFIED SAMPLES ----------
+// Renders each loaded slot offline exactly as it sounds in the mix, at
+// velocity 1, at the sample's native rate: START, envelope with every point,
+// reverse, tune, TONE/CUT (zero phase), GAIN,
+// polarity, fader level, pan (always stereo) and the Auto Phase OFFSET
+// (positive = silence before the hit, negative = trims the head). Writes
+// 24-bit WAVs to a folder the user picks. Mute/solo are ignored and 90°
+// have no DSP in the prototype yet. The original files are never touched.
+async function renderSlotOffline(i, opts = {}) {
+  const an = !!opts.analysis; // AUTO PHASE: as it sounds, minus polarity / offset / pan
+  const s = state.slots[i];
+  const smp = slotSample(s);
+  if (!smp) return null;
+  // Native sample rate (48 kHz stays 48 kHz) with CUT / TONE baked in at zero phase.
+  const buf = slotPlayBuffer(s, smp, !an);
+  if (!buf) return null;
+  const sr = buf.sampleRate;
+  const rate = Math.pow(2, s.tune / 12);
+  const durSec = smp.dur / 1000;
+  const startSec = (s.reverse ? (1 - s.end) : s.start) * durSec;
+  const endSec = (s.reverse ? (1 - s.start) : s.end) * durSec;
+  const len = Math.max(0.005, endSec - startSec);
+  const total = len / rate;
+  const envPtsMs = slotEnvPoints(s, Math.max(1, (1 - s.start) * smp.dur));
+  const envLenSec = Math.max(0.002, envPtsMs[envPtsMs.length - 1].t / 1000);
+  const envK = envLenSec > total ? total / envLenSec : 1;
+  const envEndSec = Math.max(0.002, envLenSec * envK);
+  const offSec = an ? 0 : effOffset(s) / 1000;
+  const pre = Math.max(0, offSec);            // positive offset: leading silence
+  const trim = Math.max(0, -offSec);          // negative offset: cut the head
+  const outSec = pre + envEndSec + 0.004;
+  // analysis renders at the live context rate (the input's rate); the
+  // procedural samples are 48 kHz buffers and get resampled here
+  const outSr = an && audioCtx ? audioCtx.sampleRate : sr;
+  const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(outSec * outSr)), outSr);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = rate;
+  const env = ctx.createGain();
+  const fade = ctx.createGain();
+  const pol = ctx.createGain();
+  pol.gain.value = (!an && effPolarity(s) ? -1 : 1) * dbToAmp(s.level);
+  const pan = ctx.createStereoPanner();
+  pan.pan.value = an ? 0 : clamp(s.pan / 100, -1, 1);
+  src.connect(env).connect(fade).connect(pol).connect(pan).connect(ctx.destination);
+  const base = clamp(dbToAmp(s.gain), 0, 4);
+  const g = env.gain;
+  g.setValueAtTime(0, pre);
+  let lastT = 0;
+  for (let k = 1; k < envPtsMs.length; k++) {
+    const tk = Math.max(k === 1 ? 0.001 : lastT, envPtsMs[k].t / 1000 * envK);
+    g.linearRampToValueAtTime(base * envPtsMs[k].v, pre + tk);
+    lastT = tk;
+  }
+  g.linearRampToValueAtTime(0, pre + envEndSec + 0.004);
+  const f = fade.gain;
+  const fi = Math.min((s.fadeIn || 0) / 1000, total * .9);
+  const fo = Math.min((s.fadeOut || 0) / 1000, total * .9);
+  f.setValueAtTime(fi > 0 ? 0 : 1, pre);
+  if (fi > 0) f.linearRampToValueAtTime(1, pre + fi);
+  if (fo > 0) { f.setValueAtTime(1, pre + Math.max(fi, total - fo)); f.linearRampToValueAtTime(0, pre + total); }
+  src.start(pre, startSec, len);
+  const out = await ctx.startRendering();
+  const cut0 = Math.min(out.length - 1, Math.round(trim * sr));
+  if (!cut0) return out;
+  const trimmed = new AudioBuffer({ numberOfChannels: out.numberOfChannels, length: out.length - cut0, sampleRate: sr });
+  for (let c = 0; c < out.numberOfChannels; c++) trimmed.copyToChannel(out.getChannelData(c).subarray(cut0), c);
+  return trimmed;
+}
+
+function encodeWav24(audioBuf) {
+  const nCh = audioBuf.numberOfChannels, n = audioBuf.length, sr = audioBuf.sampleRate;
+  const bytes = 3, blockAlign = nCh * bytes, dataLen = n * blockAlign;
+  const out = new ArrayBuffer(44 + dataLen);
+  const v = new DataView(out);
+  const str = (o, t) => { for (let k = 0; k < t.length; k++) v.setUint8(o + k, t.charCodeAt(k)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + dataLen, true); str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, nCh, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * blockAlign, true); v.setUint16(32, blockAlign, true);
+  v.setUint16(34, 24, true); str(36, 'data'); v.setUint32(40, dataLen, true);
+  const chans = Array.from({ length: nCh }, (_, c) => audioBuf.getChannelData(c));
+  let o = 44, peak = 0;
+  for (let k = 0; k < n; k++) {
+    for (let c = 0; c < nCh; c++) {
+      const x = chans[c][k];
+      peak = Math.max(peak, Math.abs(x));
+      const q = Math.round(clamp(x, -1, 1) * 8388607);
+      v.setUint8(o, q & 255); v.setUint8(o + 1, (q >> 8) & 255); v.setUint8(o + 2, (q >> 16) & 255);
+      o += 3;
+    }
+  }
+  return { blob: new Blob([out], { type: 'audio/wav' }), peak };
+}
+
+const bounceFileBase = (i, smp) =>
+  `${String(i + 1).padStart(2, '0')} ${String(smp.name || 'sample').replace(/[\\/:*?"<>|]+/g, '_').trim()} (bounce)`;
+
+async function uniqueFileHandle(dir, base) {
+  for (let n = 1; n < 1000; n++) {
+    const name = n === 1 ? `${base}.wav` : `${base} ${n}.wav`;
+    try { await dir.getFileHandle(name); } catch (e) { return dir.getFileHandle(name, { create: true }); }
+  }
+  return dir.getFileHandle(`${base} ${Date.now()}.wav`, { create: true });
+}
+
+let bounceBusy = false;
+async function bounceModifiedSamples() {
+  if (bounceBusy) return;
+  // Selected Trigger Slots (Shift/Cmd+click or marquee) narrow the bounce;
+  // otherwise every loaded slot is bounced.
+  const loaded = state.slots.map((s, i) => slotSample(s) ? i : -1).filter(i => i >= 0);
+  const picked = loaded.filter(i => multiSel.slots.has(i));
+  const targets = picked.length ? picked : loaded;
+  if (!targets.length) { toast('BOUNCE · load a sample in a Trigger Slot first'); return; }
+  if (!ensureAudio()) { toast('Audio not available'); return; }
+  let dir = null;
+  if (window.showDirectoryPicker) {
+    try { dir = await window.showDirectoryPicker({ id: 'tu-bounce', mode: 'readwrite', startIn: 'music' }); }
+    catch (e) { if (e && e.name === 'AbortError') { toast('Bounce cancelled'); return; } dir = null; }
+  }
+  bounceBusy = true;
+  const btn = $('#bounceBtn');
+  btn.classList.add('busy');
+  let done = 0, clipped = 0;
+  try {
+    for (const i of targets) {
+      const smp = slotSample(state.slots[i]);
+      btn.querySelector('.bounce-sub').textContent = `${done + 1} / ${targets.length}`;
+      const rendered = await renderSlotOffline(i);
+      if (!rendered) continue;
+      const { blob, peak } = encodeWav24(rendered);
+      if (peak > 1) clipped++;
+      const base = bounceFileBase(i, smp);
+      if (dir) {
+        const fh = await uniqueFileHandle(dir, base);
+        const w = await fh.createWritable();
+        await w.write(blob); await w.close();
+      } else {
+        // No folder picker in this browser: fall back to downloads.
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = `${base}.wav`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      }
+      done++;
+    }
+    const where = dir ? ` → ${dir.name}` : ' → Downloads';
+    toast(`BOUNCED ${done} sample${done === 1 ? '' : 's'}${where}${clipped ? ` · ${clipped} clipped (lower GAIN)` : ''}`);
+  } catch (e) {
+    console.error('[bounce]', e);
+    toast(`Bounce failed · ${e && e.message ? e.message : e}`);
+  } finally {
+    bounceBusy = false;
+    btn.classList.remove('busy');
+    btn.querySelector('.bounce-sub').textContent = 'MODIFIED SAMPLES';
+  }
+}
+
 // Real peak from the analyser. Float data keeps the meter honest; the
 // byte fallback is only for old browsers. A short hold makes 1 ms transients
 // visible between 25 fps meter frames.
@@ -4510,6 +5045,25 @@ function startMeters() {
   meterRAF = requestAnimationFrame(loop);
 }
 
+// WAV sample rate from the 'fmt ' chunk, then decode at that rate.
+function wavSampleRate(bytes) {
+  const v = new DataView(bytes);
+  for (let o = 12; o + 8 <= v.byteLength; ) {
+    const id = String.fromCharCode(v.getUint8(o), v.getUint8(o + 1), v.getUint8(o + 2), v.getUint8(o + 3));
+    const size = v.getUint32(o + 4, true);
+    if (id === 'fmt ') return v.getUint32(o + 12, true);
+    o += 8 + size + (size & 1);
+  }
+  return 0;
+}
+async function decodeNative(bytes) {
+  try {
+    const sr = wavSampleRate(bytes);
+    if (!sr) return null;
+    return await new OfflineAudioContext(1, 1, sr).decodeAudioData(bytes);
+  } catch (e) { console.warn('[native decode]', e); return null; }
+}
+
 const INPUT_FILE = 'samples/SN_TOP_1COMMIT_17-140.wav';
 const SAMPLE_FILE = 'samples/SNARE.cm.wav';
 
@@ -4525,9 +5079,11 @@ async function loadRealAudio() {
     if (!sampleResp.ok) throw new Error('HTTP ' + sampleResp.status + ' · ' + SAMPLE_FILE);
     const ctx = ensureAudio();
     if (!ctx) return;
+    const sampleBytes = await sampleResp.arrayBuffer();
+    const sampleBytesNative = sampleBytes.slice(0); // decodeAudioData detaches its input
     const [full, snareFull] = await Promise.all([
       ctx.decodeAudioData(await inputResp.arrayBuffer()),
-      ctx.decodeAudioData(await sampleResp.arrayBuffer()),
+      ctx.decodeAudioData(sampleBytes),
     ]);
     realInputBuffer = full;
     realInputDuration = full.duration;
@@ -4565,10 +5121,19 @@ async function loadRealAudio() {
       slice.getChannelData(ch).set(snareFull.getChannelData(ch).subarray(start, end));
     }
     realSample.audioBuffer = slice;
+    // Same slice at the file's own rate (48 kHz), so BOUNCE does not resample.
+    decodeNative(sampleBytesNative).then(nat => {
+      if (!nat) return;
+      const nsr = nat.sampleRate, a = Math.floor(0.14 * nsr), b = Math.floor(0.65 * nsr);
+      const ns = new AudioBuffer({ numberOfChannels: nat.numberOfChannels, length: b - a, sampleRate: nsr });
+      for (let ch = 0; ch < nat.numberOfChannels; ch++) ns.copyToChannel(nat.getChannelData(ch).subarray(a, b), ch);
+      realSample.nativeBuffer = ns;
+    });
     realSample.dur = slice.duration * 1000;
     realSample.x = clamp(normLog(realSample.dur, DUR.min, DUR.max), .002, .998);
     realSample.y = clamp(normLog(2500, BRI.min, BRI.max), .002, .998);
     detectInputHits();
+    if (state.ap.ref === 'INPUT') analyzeAllPhase();
     const cur = currentSlotSample();
     if (cur && cur.isReal && $('.inspector').classList.contains('show')) updateInspector();
     drawUniverse();
@@ -4823,6 +5388,7 @@ function drawRealInput(now) {
 }
 
 function stopInput() {
+  finishGateAuto();
   inputPlaying = false;
   stopLiveTriggers();
   inputTimers.forEach(t => clearTimeout(t)); inputTimers = [];
@@ -4920,6 +5486,7 @@ function playInput() {
     inputTimers.push(setTimeout(() => { if (inputPlaying && inputSource === src) stopInput(); }, tail * 1000 + 50));
   };
   const btn = $('#inputPlay'); if (btn) btn.textContent = '■ STOP';
+  startGateAuto();
   if (!rt) startLiveTriggers();
   inputTimers.push(setTimeout(() => { if (inputPlaying && inputSource === src) stopInput(); }, (realInputDuration + tail + 0.5) * 1000));
 }
@@ -4994,7 +5561,7 @@ window.__updateInspector = updateInspector;
 // ---------- init ----------
 function init() {
   renderSlots();
-  state.slots.forEach((_, i) => applyAutoPhase(i, 'INPUT', true));
+  analyzeAllPhase();
   renderFolderTree();
   renderFileList();
   setInspectorTab('env');

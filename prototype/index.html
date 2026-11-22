@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=208">
+<link rel="stylesheet" href="style.css?v=224">
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -96,7 +96,7 @@
       </div>
       <div class="detector">
         <section class="det-col gate-col">
-          <div class="dc-head"><span class="gate-head-label">GATE<i class="gate-led" id="gateLed" title="Gate open/closed"></i></span><span class="gate-thresh-val" id="gateThreshVal" title="Gate threshold · drag the arrow on the input meter">−24.0 dB</span></div>
+          <div class="dc-head"><span class="gate-head-label">GATE<i class="gate-led" id="gateLed" title="Gate open/closed"></i></span><span class="gate-thresh-wrap"><span class="gate-auto-tag" id="gateAutoTag">AUTO</span><span class="gate-thresh-val" id="gateThreshVal" title="Gate threshold · drag the arrow on the input meter">−24.0 dB</span></span></div>
           <button class="chip toggle gate-toggle" id="gateBtn" title="Gate on the original input; lower MIX to hear it">ON</button>
           <div class="gate-body">
             <div class="dc-knobs gate-knobs" id="detKnobsGate"></div>
@@ -176,33 +176,43 @@
               <div class="tone-strip-head">TONE</div>
               <div class="tone-grid">
                 <label>TONE <input type="range" id="tone" min="-100" max="100" step="1" value="0"><b id="toneVal">0</b></label>
-                <label>CUT <input type="range" id="cut" min="0" max="100" step="1" value="50"><b id="cutVal">50%</b></label>
+                <label>CUT <input type="range" id="cut" min="0" max="100" step="1" value="100"><b id="cutVal">100%</b></label>
                 <label title="Velocity response: 0% = fixed level, 100% = full input dynamics">VELOCITY <input type="range" id="velSens" min="0" max="100" step="1" value="100"><b id="velSensVal">100%</b></label>
                 <label>GAIN <input type="range" id="gain" min="-24" max="24" step="0.1" value="0"><b id="gainVal">+0.0 dB</b></label>
               </div>
             </div>
             <div class="trigger-bottom">
+              <button class="bounce-btn" id="bounceBtn" title="Bounce modified samples: every loaded Trigger Slot (or only the selected ones) exactly as it sounds in the mix — START, envelope, reverse, tune, TONE/CUT, GAIN, polarity, fader level, pan and OFFSET — as stereo 24-bit WAVs in a folder you choose">
+                <span class="bounce-main">BOUNCE</span>
+                <span class="bounce-sub">MODIFIED SAMPLES</span>
+              </button>
               <div class="fader-bank" id="faderBank"></div>
               <aside class="auto-phase-panel" id="autoPhaseBar">
-                <div class="ap-head">
-                  <span class="ap-badge" id="apSlotBadge">SLOT 01</span>
-                  <span class="ap-name" id="apSampleName">empty slot</span>
+                <section class="ap-group ap-global" aria-label="Phase for all slots">
+                <button class="ap-power on" id="apPower" aria-pressed="true" title="AUTO PHASE on/off for all 8 slots · off = only your manual Ø / offsets"><i class="ap-led"></i>AUTO PHASE</button>
+                <label class="ap-ref" title="Phase reference for every slot: the INPUT or one of the 8 sounds (that one is not moved)">REF <select id="apRef"><option value="INPUT">INPUT</option></select></label>
+                <div class="seg ap-mode" id="apMode" title="What AUTO PHASE corrects on every slot">
+                  <button data-mode="offset" title="Time offsets only">OFFSET</button>
+                  <button data-mode="polarity" title="Polarity inversion only">Ø</button>
+                  <button data-mode="both" title="Offsets + polarity">BOTH</button>
                 </div>
-                <div class="ap-row">
-                  <span class="ap-ref">REF <select id="slotRef"><option>INPUT</option><option>SLOT 1</option></select></span>
-                  <button class="sp-timing" id="slotTiming">TIMING</button>
-                </div>
-                <button class="sp-auto" id="slotAuto" title="Re-analyze and align">RE-ANALYZE</button>
-                <label class="ap-offset">OFFSET <input id="slotOffset" type="range" min="-5" max="50" step="0.1" value="0"><b id="slotOffsetVal">0.0 ms</b></label>
-                <div class="ap-shift"><span class="lbl">SHIFT</span>
-                  <div class="seg" id="slotShift">
-                    <button data-shift="0" title="0° · no phase shift">0°</button>
-                    <button data-shift="90" title="90° · UI only in the prototype">90°</button>
-                    <button data-shift="180" title="180° · polarity inversion applied to audio">180°</button>
-                    <button data-shift="260" title="260° · UI only in the prototype">260°</button>
+                <button class="sp-auto" id="slotAuto" title="Re-analyze every loaded slot against the reference">RE-ANALYZE ALL</button>
+                <div class="ap-report" id="apReport"></div>
+                </section>
+                <section class="ap-group ap-slot" aria-label="Phase of the selected slot">
+                  <div class="ap-head">
+                    <span class="ap-badge" id="apSlotBadge">SLOT 01</span>
+                    <span class="ap-name" id="apSampleName">empty slot</span>
                   </div>
-                </div>
-                <div class="ap-result sp-result" id="slotResult">Select a sample in this slot.</div>
+                  <label class="ap-offset" title="Offset of this slot in ms (−5 … +50). Type it · Enter confirms · Alt+click clears your manual part">OFFSET <input id="apOffset" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" value="0.0"><span class="ap-unit">ms</span></label>
+                  <div class="ap-shift"><span class="lbl">PHASE</span>
+                    <div class="seg" id="slotShift">
+                      <button data-shift="0" title="0° · no shift">0°</button>
+                      <button data-shift="90" title="90° phase shift (all-pass) · UI only in the prototype · polarity is the Ø button on the channel">90°</button>
+                    </div>
+                  </div>
+                  <div class="ap-result sp-result" id="slotResult">Drop a sample in this slot.</div>
+                </section>
               </aside>
             </div>
           </div>
@@ -292,6 +302,6 @@
 <div class="toast" id="toast"></div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=208"></script>
+<script src="app.js?v=224"></script>
 </body>
 </html>
