@@ -1,19 +1,19 @@
-#define PLUG_NAME "DrumReplacer"
-#define PLUG_MFR "MyCompany"
+#define PLUG_NAME "TRIGGER UNIVERSE"
+#define PLUG_MFR "Dante"
 #define PLUG_VERSION_HEX 0x00010000
 #define PLUG_VERSION_STR "1.0.0"
-#define PLUG_UNIQUE_ID 'BQ5P'
-#define PLUG_MFR_ID 'MyCo'
-#define PLUG_URL_STR "https://iplug2.github.io"
-#define PLUG_EMAIL_STR "spam@me.com"
-#define PLUG_COPYRIGHT_STR "Copyright 2026 MyCompany"
+#define PLUG_UNIQUE_ID 'TRGU'
+#define PLUG_MFR_ID 'DANT'
+#define PLUG_URL_STR "https://github.com/JEROHACKERPLUGINS/TRIGGER_UNIVERSE"
+#define PLUG_EMAIL_STR "dante@localhost"
+#define PLUG_COPYRIGHT_STR "Copyright 2026 Dante"
 #define PLUG_CLASS_NAME DrumReplacer
 
-#define BUNDLE_NAME "DrumReplacer"
-#define BUNDLE_MFR "MyCompany"
+#define BUNDLE_NAME "TriggerUniverse"
+#define BUNDLE_MFR "Dante"
 #define BUNDLE_DOMAIN "com"
 
-#define SHARED_RESOURCES_SUBPATH "DrumReplacer"
+#define SHARED_RESOURCES_SUBPATH "TriggerUniverse"
 
 #define PLUG_CHANNEL_IO "2-2"
 
@@ -24,8 +24,8 @@
 #define PLUG_DOES_MPE 0
 #define PLUG_DOES_STATE_CHUNKS 1
 #define PLUG_HAS_UI 1
-#define PLUG_WIDTH 1000
-#define PLUG_HEIGHT 680
+#define PLUG_WIDTH 1440
+#define PLUG_HEIGHT 900
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 #define PLUG_HOST_RESIZE 1

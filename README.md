@@ -8,7 +8,7 @@ Plugin de audio (AU + VST3, iPlug2) que combina un motor de drum triggering, un 
 - **Motor existente reutilizado** en `engine/` (`engine/DrumReplacer` + `engine/_iPlug2`). No se reescribió.
 - **Prototipo UI navegable** en `prototype/`, con audio real: **SN TOP 1 (0:17–2:20)** es el INPUT del trigger y `SNARE.cm.wav` queda como sample de slot.
 - **Diseño de datos de Fase 1** iniciado en `docs/fase1/modelo_datos.md`.
-- **Build del plugin bloqueado por entorno**: faltan Xcode completo, CMake, Node.js y SDK de VST3. Los headers DSP sí se compilan y testean con CommandLineTools.
+- **AUv2 compilado y validado** con CMake + Command Line Tools (sin Xcode): `scripts/build-au.sh` instala `DrumReplacer.component` y `auval` pasa. Guía: [`docs/build-au.md`](docs/build-au.md). Node y SDK de VST3 siguen pendientes para React/VST3.
 
 > Para retomar el trabajo desde cero, leer [`docs/TRASPASO.md`](docs/TRASPASO.md) y usar [`docs/PROMPT_REINICIO.md`](docs/PROMPT_REINICIO.md).
 

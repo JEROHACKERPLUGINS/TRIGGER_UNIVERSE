@@ -29,6 +29,7 @@
 
 #import "IPlugWKWebViewScriptMessageHandler.h"
 #include "IPlugWebView.h"
+#include "IPlugWebViewEditorDelegate.h"
 
 #if !__has_feature(objc_arc)
 #error This file must be compiled with Arc. Use -fobjc-arc flag
@@ -59,8 +60,15 @@ using namespace iplug;
   {
     NSDictionary* dict = (NSDictionary*) message.body;
     NSData* data = [NSJSONSerialization dataWithJSONObject:dict options:NSJSONWritingPrettyPrinted error:nil];
-    NSString* jsonString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    mIWebView->OnMessageFromWebView([jsonString UTF8String]);
+    NSString* jsonString = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+    if (!jsonString) return;
+
+    // iPlug2's virtual dispatch from the WKWebView handler to
+    // WebViewEditorDelegate::OnMessageFromWebView does not reach the override
+    // in this build; call the non-virtual implementation directly.
+    auto* delegate = dynamic_cast<iplug::WebViewEditorDelegate*>(mIWebView);
+    if (delegate) delegate->HandleWebMessage([jsonString UTF8String]);
+    else if (mIWebView) mIWebView->OnMessageFromWebView([jsonString UTF8String]);
   }
 }
 

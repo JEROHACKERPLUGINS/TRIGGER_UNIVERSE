@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
 <link rel="stylesheet" href="style.css?v=224">
+<script src="native-ui.js?v=3"></script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -55,7 +56,7 @@
         <div class="view" id="fileView">
           <div class="file-browser">
             <div class="tree-pane">
-              <div class="tree-head"><span>LOCATION</span><button id="addFolder">CHANGE</button></div>
+              <div class="tree-head"><span>LOCATION</span><span class="tree-actions"><button id="refreshLibrary" title="Rescan locations">↻</button><button id="addFolder" title="Add a new location">ADD NEW LOCATION</button></span></div>
               <div class="folder-tree" id="folderTree"></div>
             </div>
             <div class="file-main">
@@ -266,6 +267,19 @@
   <button class="sm-item" id="menuVisual">VISUAL…</button>
 </div>
 
+<div class="library-panel" id="libraryPanel" role="dialog" aria-label="Library folders">
+  <div class="lp-head">
+    <span class="vp-title">LIBRARY FOLDERS</span>
+    <button class="vp-close" id="libraryClose" title="Close">×</button>
+  </div>
+  <div class="lp-actions">
+    <button class="lp-btn primary" id="libraryAdd">ADD NEW LOCATION</button>
+    <button class="lp-btn" id="libraryRescan">RESCAN ALL</button>
+  </div>
+  <div class="lp-list" id="libraryList"></div>
+  <p class="lp-note">Se escanean archivos .wav. Cada location queda guardada y aparece en FILE SEARCH y en el UNIVERSE.</p>
+</div>
+
 <div class="visual-panel" id="visualPanel" role="dialog" aria-label="Visual settings">
   <div class="vp-head">
     <span class="vp-title">VISUAL</span>
@@ -300,8 +314,13 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="analysis-panel" id="analysisPanel">
+  <div class="ap-head"><span>ANALYZING LIBRARY</span><b id="analysisCount">0 / 0</b></div>
+  <div class="ap-track"><i id="analysisBar"></i></div>
+  <div class="ap-file" id="analysisFile">Preparando…</div>
+</div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=224"></script>
+<script src="app.js?v=227"></script>
 </body>
 </html>

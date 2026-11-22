@@ -40,7 +40,7 @@ La UI final será **React + TypeScript** sobre el bridge WebView de iPlug2. El p
 - Tests DSP existentes: **3/3 pasan**.
 - Tests C++ con `SNARE.cm.wav`: detector y `SlotEngine` verificados. El INPUT del prototipo es **SN TOP 1 (0:17–2:20)**.
 - **Prototipo UI navegable y con audio real funcionando** en `prototype/`.
-- **Build del plugin bloqueado**: faltan Xcode completo, CMake, Node.js y SDK de VST3.
+- **AUv2 compilado y validado** con CMake + Command Line Tools (sin Xcode): `scripts/build-au.sh` instala el componente y `auval` pasa. Node.js y SDK de VST3 quedan pendientes para React/VST3.
 - **Commit inicial creado en `main`**, árbol limpio.
 
 El prototipo se prueba así:
@@ -106,21 +106,23 @@ Limitaciones del prototipo:
 
 ## Próximo paso recomendado
 
-### Prioridad 1 — Desbloquear el build
+### Hecho — AUv2 compilado y validado
 
-1. Instalar **Xcode completo**.
-2. `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`
-3. Instalar **CMake** y **Node.js**.
-4. Bajar SDK VST3 con `engine/_iPlug2/Scripts/download-iplug-sdks.sh` (sin AAX).
-5. Recuperar/crear `scripts/build-mac.sh`.
-6. Hacer el **build baseline** del VST3 actual y verificarlo en Ableton.
+- CMake + Command Line Tools alcanzan: no hace falta Xcode para el AU local.
+- `scripts/build-au.sh Debug` compila, instala en `~/Library/Audio/Plug-Ins/Components` y valida con `auval`.
+- Guía completa: `docs/build-au.md`.
 
-### Prioridad 2 — Si el build sigue bloqueado
+### Prioridad 1 — Portar el layout al WebView
 
-Continuar en el prototipo y en los headers DSP:
+1. Sincronizar `prototype/index.html`, `style.css` y `app.js` con `engine/DrumReplacer/resources/web/`.
+2. Separar la UI pura de Web Audio y crear el bridge nativo (`SPVFUI` / `BPCFUI` / mensajes JSON).
+3. Mapear cada control nuevo a un parámetro C++.
+4. Probar el AU en GarageBand, Ableton o Reaper.
 
+### Prioridad 2 — Portar el DSP que falta
+
+- Auto-threshold del gate, TONE/CUT con fase cero, envelope multipunto, Auto Phase y 90° real.
 - Implementar **GCC-PHAT** real en C++ (`docs/auto_phase.md`) y tests con el snare.
-- Implementar phase shift 90° con all-pass/Hilbert.
 - Extender `SlotEngine` con Decay, start/end, fades y offset.
 - Avanzar el modelo de datos de Fase 1 (`docs/fase1/modelo_datos.md`).
 

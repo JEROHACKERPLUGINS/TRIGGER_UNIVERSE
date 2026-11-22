@@ -1,45 +1,326 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DrumReplacer</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TRIGGER UNIVERSE — UI Prototype</title>
 <link rel="stylesheet" href="style.css">
-<script src="script.js"></script>
-<script src="ui.js" defer></script>
+<script src="native-ui.js"></script>
 </head>
 <body>
-<div id="app">
-  <header>
-    <span class="logo">DRUM<b>REPLACER</b></span>
-    <span id="hit-led" class="led" title="Hit detected"></span>
-    <span id="pro-badge" class="badge" hidden>PRO</span>
-  </header>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
+<div class="app">
 
-  <div class="panels">
-    <section class="panel" id="detector-panel">
-      <h3>DETECTOR</h3>
-      <div class="row" id="detector-knobs"></div>
+  <main class="workspace">
+
+    <section class="universe" id="universePanel">
+      <div class="center-body">
+        <div class="chrome">
+          <div class="brand">
+            <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+              <defs>
+                <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#7C5CFF"/><stop offset="1" stop-color="#2DE2C5"/>
+                </linearGradient>
+              </defs>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="url(#lg)" stroke-width="2"/>
+              <path d="M20 5v30M5 20h30" stroke="url(#lg)" stroke-width="1" opacity=".45"/>
+              <circle cx="20" cy="20" r="4.2" fill="url(#lg)"/>
+              <circle cx="20" cy="20" r="9" fill="none" stroke="url(#lg)" stroke-width=".6" opacity=".35" stroke-dasharray="2 4"/>
+            </svg>
+            <div class="brand-text"><b>TRIGGER</b><span>UNIVERSE</span></div>
+          </div>
+          <div class="top-actions">
+            <div class="top-master">
+              <div class="top-knob" id="masterOutKnob" title="Master output"><div class="knob-ind"></div></div>
+              <span>OUTPUT<b id="masterOutVal">+0.0 dB</b></span>
+              <div class="out-vu" id="outVu" title="Output level"><i id="outVuBar"></i></div>
+              <div class="top-mix">
+                <div class="top-knob" id="mixKnob" title="MIX: 0% = original input · 100% = triggered samples"><div class="knob-ind"></div></div>
+                <span>MIX<b id="mixVal">100%</b></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="view active" id="universeView">
+          <div class="canvas-wrap">
+            <canvas id="universe"></canvas>
+            <div class="map-tools">
+              <button class="icon-btn" id="zoomOut">−</button>
+              <button class="icon-btn" id="zoomIn">+</button>
+              <button class="icon-btn" id="resetView">⤢</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="view" id="fileView">
+          <div class="file-browser">
+            <div class="tree-pane">
+              <div class="tree-head"><span>LOCATION</span><span class="tree-actions"><button id="refreshLibrary" title="Rescan locations">↻</button><button id="addFolder" title="Add a new location">ADD NEW LOCATION</button></span></div>
+              <div class="folder-tree" id="folderTree"></div>
+            </div>
+            <div class="file-main">
+              <div class="file-path">
+                <span id="filePath">ALL SAMPLES</span>
+                <b id="fileCount">0 files</b>
+              </div>
+              <div class="file-list" id="fileList"></div>
+              <div class="file-preview">
+                <span class="fp-dot" id="filePreviewDot"></span>
+                <span class="fp-name" id="filePreviewName">Select a file</span>
+                <span class="fp-hint">Click to audition · ALT + drag to a slot ↓</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="view trigger-view" id="triggerView">
+          <div class="trigger-page">
+            <div class="trigger-page-head">
+              <div class="trigger-page-title"><b>TRIGGER</b><span>8 layers · one input hit</span></div>
+              <div class="trigger-page-status">
+                <span class="hit-led" id="hitLed"></span>
+                <span>INPUT <b id="inputLevel">−18 dB</b></span>
+                <span class="sep">·</span>
+                <span>HITS <b id="triggerCount">0</b></span>
+                <span class="sep">·</span>
+                <span class="master-label">MASTER</span>
+                <span class="master-meter"><i id="masterMeter"></i></span>
+                <button class="btn ghost trigger-back" id="triggerBack">← BACK</button>
+              </div>
+            </div>
+            <div class="trigger-page-grid">
+<aside class="detector-panel liquid-glass" id="detectorPanel">
+      <div class="dp-head">
+        <span class="dp-title">INPUT DETECTOR</span>
+        <span class="dp-sub">one input hit → 8 layers</span>
+      </div>
+      <div class="detector">
+        <section class="det-col gate-col">
+          <div class="dc-head"><span class="gate-head-label">GATE<i class="gate-led" id="gateLed" title="Gate open/closed"></i></span><span class="gate-thresh-wrap"><span class="gate-auto-tag" id="gateAutoTag">AUTO</span><span class="gate-thresh-val" id="gateThreshVal" title="Gate threshold · drag the arrow on the input meter">−24.0 dB</span></span></div>
+          <button class="chip toggle gate-toggle" id="gateBtn" title="Gate on the original input; lower MIX to hear it">ON</button>
+          <div class="gate-body">
+            <div class="dc-knobs gate-knobs" id="detKnobsGate"></div>
+            <div class="gate-gr" title="Gain reduction · gate attenuation of the original input (0–24 dB)">
+              <span class="gr-label">GR</span>
+              <div class="dm-track gr-track"><i id="grMeterBar"></i></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="det-col input-col">
+          <div class="dc-head input-head"><span>INPUT</span><b class="det-peak" id="inputPeakDb" title="Peak input level (pre-gate)">—</b></div>
+          <div class="det-meter">
+            <div class="dm-scale"><span>-0</span><span>-3</span><span>-6</span><span>-12</span><span>-24</span><span>-48</span></div>
+            <div class="dm-track-wrap">
+              <div class="dm-track"><i id="inputMeterBar"></i></div>
+              <button class="gate-thresh" id="gateThresh" title="GATE THRESHOLD · drag up/down"><i></i></button>
+            </div>
+          </div>
+          <div class="dc-knobs" id="detKnobsInput"></div>
+          <button class="chip input-play" id="inputPlay" data-kbd="Space" title="Play input">▶ INPUT</button>
+        </section>
+
+        <section class="det-col filter-col">
+          <div class="dc-head">FILTER</div>
+          <div class="dc-knobs" id="detKnobsFilter"></div>
+        </section>
+
+        <div class="det-wave" title="Waveform · wheel = zoom (20 ms–20 s), Shift+wheel = scroll when stopped · blue = post-gate · red ghost = pre-gate input · dashed = DETAIL threshold · orange = detected hits">
+          <canvas id="inputWave"></canvas>
+          <span class="det-wave-label" id="inputWaveLabel">INPUT</span>
+        </div>
+
+        <section class="det-col detect-col">
+          <div class="dc-head detect-head"><span>DETECT</span><span class="det-vel" title="Velocity of the last hit">VEL <b id="hitVel">—</b></span></div>
+          <div class="dc-knobs" id="detKnobsDetect"></div>
+        </section>
+      </div>
+    </aside>
+<aside class="inspector liquid-glass show" id="inspectorPanel">
+      <div class="inspector-head">
+        <span class="slot-badge" id="selSlotBadge">TRIGGER 01</span>
+        <span class="sel-name" id="selSampleTitle">—</span>
+        <span class="sel-sample" id="selSampleMeta">select a slot to edit its sample</span>
+        <span class="drag-grip" id="editorGrip" title="Drag this sample to a slot">⠿</span>
+        <button class="insp-close" id="inspectorClose" data-kbd="Esc" title="Close editor">×</button>
+      </div>
+
+      <div class="inspector-tabs">
+        <button class="tab active" data-tab="sample">SAMPLE</button>
+      </div>
+
+      <div class="inspector-body">
+        <div class="panel active" data-panel="sample">
+          <div class="unified-editor">
+            <div class="unified-head">
+              <span class="sample-meta" id="sampleMeta" title="Drag the sample to a Trigger Slot">—</span>
+              <button class="chip reverse" id="reverseBtn" title="Reverse sample">Reverse</button>
+            </div>
+            <div class="unified-wave-wrap">
+              <svg id="wave" viewBox="0 0 600 170"></svg>
+            </div>
+            <div class="unified-readouts">
+              <div class="u-readout-row">
+                <span class="u-start" title="Sample start · drag the flag on the waveform">START <b id="startVal">0.0 ms</b><button class="u-snap" id="snapStartBtn" title="Adjust START to the transient (onset of the sample)">⇥ TRANSIENT</button></span>
+                <span class="u-env" title="Attack · time to the peak">ATTACK <b id="aVal">0 ms</b></span>
+                <span class="u-env" title="Decay · time from the peak to the decay level">DECAY <b id="dVal">120 ms</b></span>
+                <span class="u-env" title="Release · time from the decay point to the end point">RELEASE <b id="rVal">—</b></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+            </div>
+            <div class="tone-strip" id="toneStrip">
+              <div class="tone-strip-head">TONE</div>
+              <div class="tone-grid">
+                <label>TONE <input type="range" id="tone" min="-100" max="100" step="1" value="0"><b id="toneVal">0</b></label>
+                <label>CUT <input type="range" id="cut" min="0" max="100" step="1" value="100"><b id="cutVal">100%</b></label>
+                <label title="Velocity response: 0% = fixed level, 100% = full input dynamics">VELOCITY <input type="range" id="velSens" min="0" max="100" step="1" value="100"><b id="velSensVal">100%</b></label>
+                <label>GAIN <input type="range" id="gain" min="-24" max="24" step="0.1" value="0"><b id="gainVal">+0.0 dB</b></label>
+              </div>
+            </div>
+            <div class="trigger-bottom">
+              <button class="bounce-btn" id="bounceBtn" title="Bounce modified samples: every loaded Trigger Slot (or only the selected ones) exactly as it sounds in the mix — START, envelope, reverse, tune, TONE/CUT, GAIN, polarity, fader level, pan and OFFSET — as stereo 24-bit WAVs in a folder you choose">
+                <span class="bounce-main">BOUNCE</span>
+                <span class="bounce-sub">MODIFIED SAMPLES</span>
+              </button>
+              <div class="fader-bank" id="faderBank"></div>
+              <aside class="auto-phase-panel" id="autoPhaseBar">
+                <section class="ap-group ap-global" aria-label="Phase for all slots">
+                <button class="ap-power on" id="apPower" aria-pressed="true" title="AUTO PHASE on/off for all 8 slots · off = only your manual Ø / offsets"><i class="ap-led"></i>AUTO PHASE</button>
+                <label class="ap-ref" title="Phase reference for every slot: the INPUT or one of the 8 sounds (that one is not moved)">REF <select id="apRef"><option value="INPUT">INPUT</option></select></label>
+                <div class="seg ap-mode" id="apMode" title="What AUTO PHASE corrects on every slot">
+                  <button data-mode="offset" title="Time offsets only">OFFSET</button>
+                  <button data-mode="polarity" title="Polarity inversion only">Ø</button>
+                  <button data-mode="both" title="Offsets + polarity">BOTH</button>
+                </div>
+                <button class="sp-auto" id="slotAuto" title="Re-analyze every loaded slot against the reference">RE-ANALYZE ALL</button>
+                <div class="ap-report" id="apReport"></div>
+                </section>
+                <section class="ap-group ap-slot" aria-label="Phase of the selected slot">
+                  <div class="ap-head">
+                    <span class="ap-badge" id="apSlotBadge">SLOT 01</span>
+                    <span class="ap-name" id="apSampleName">empty slot</span>
+                  </div>
+                  <label class="ap-offset" title="Offset of this slot in ms (−5 … +50). Type it · Enter confirms · Alt+click clears your manual part">OFFSET <input id="apOffset" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" value="0.0"><span class="ap-unit">ms</span></label>
+                  <div class="ap-shift"><span class="lbl">PHASE</span>
+                    <div class="seg" id="slotShift">
+                      <button data-shift="0" title="0° · no shift">0°</button>
+                      <button data-shift="90" title="90° phase shift (all-pass) · UI only in the prototype · polarity is the Ø button on the channel">90°</button>
+                    </div>
+                  </div>
+                  <div class="ap-result sp-result" id="slotResult">Drop a sample in this slot.</div>
+                </section>
+              </aside>
+            </div>
+          </div>
+        </div>
+
+        <div class="universe-top">
+          <div class="search-box liquid-glass">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+            <input id="search" placeholder="Search" autocomplete="off" spellcheck="false">
+            <kbd class="search-kbd" aria-hidden="true">/</kbd>
+            <button class="search-view-toggle" id="viewToggle" data-kbd="F" title="File search" aria-label="File search">
+              <svg class="ico-folder" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7z"/></svg>
+              <svg class="ico-universe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="11" ry="4.5" transform="rotate(-24 12 12)"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="similar-bar" id="similarBar">
+          <span class="lbl">SIMILARITY</span>
+          <button class="sim-arrow" id="simPrev" data-kbd="←" title="Previous similar">◂</button>
+          <button class="sim-arrow" id="simNext" data-kbd="→" title="Next similar">▸</button>
+          <span class="sim-target" id="simTarget"></span>
+          <div class="sim-dots" id="simDots"></div>
+          <span class="count" id="count">Select a sample</span>
+          <button class="sim-heart" id="simFav" title="Favorite">♥</button>
+        </div>
+      </div>
     </section>
+  </main>
 
-    <section class="panel" id="gate-panel">
-      <h3>GATE <span class="toggle-slot" id="gate-toggle"></span></h3>
-      <div class="row" id="gate-knobs"></div>
-    </section>
+  <div class="name-bar" id="nameBar"><span id="nameBarText"></span></div>
+  <div class="key-hints" id="keyHints" aria-live="polite"></div>
 
-    <section class="panel" id="gain-panel">
-      <h3>GAIN</h3>
-      <div class="row" id="gain-knobs"></div>
-    </section>
+  <section class="slot-dock" id="slotDock">
+    <div class="slots" id="slots"></div>
+  </section>
 
-    <section class="panel" id="midi-panel">
-      <h3>MIDI</h3>
-      <div class="midi-row"><span class="toggle-slot" id="midi-in-toggle"></span><div class="row" id="midi-in-knobs"></div></div>
-      <div class="midi-row"><span class="toggle-slot" id="midi-out-toggle"></span><div class="row" id="midi-out-knobs"></div></div>
-    </section>
-  </div>
 
-  <div id="slots"></div>
+
 </div>
+
+<button class="side-bracket left" id="triggerTab" data-kbd="Tab" title="Open TRIGGER page (Tab toggles TRIGGER / UNIVERSE)"><span>TRIGGER</span></button>
+<button class="side-bracket right" id="settingsBtn" data-kbd="," title="Settings"><span>SETTINGS</span></button>
+
+<div class="settings-menu" id="settingsMenu">
+  <div class="sm-head">SETTINGS</div>
+  <button class="sm-item primary" id="autoPhaseAll">AUTO PHASE ALL</button>
+  <button class="sm-item" id="flipAll">FLIP ALL POLARITY</button>
+  <button class="sm-item" id="menuFolders">LIBRARY FOLDERS…</button>
+  <button class="sm-item" id="menuAudio">AUDIO / MIDI…</button>
+  <button class="sm-item" id="menuVisual">VISUAL…</button>
+</div>
+
+<div class="library-panel" id="libraryPanel" role="dialog" aria-label="Library folders">
+  <div class="lp-head">
+    <span class="vp-title">LIBRARY FOLDERS</span>
+    <button class="vp-close" id="libraryClose" title="Close">×</button>
+  </div>
+  <div class="lp-actions">
+    <button class="lp-btn primary" id="libraryAdd">ADD NEW LOCATION</button>
+    <button class="lp-btn" id="libraryRescan">RESCAN ALL</button>
+  </div>
+  <div class="lp-list" id="libraryList"></div>
+  <p class="lp-note">Se escanean archivos .wav. Cada location queda guardada y aparece en FILE SEARCH y en el UNIVERSE.</p>
+</div>
+
+<div class="visual-panel" id="visualPanel" role="dialog" aria-label="Visual settings">
+  <div class="vp-head">
+    <span class="vp-title">VISUAL</span>
+    <button class="vp-close" id="visualClose" data-kbd="Esc" title="Close">×</button>
+  </div>
+  <div class="vp-section">
+    <div class="vp-label">COLOR VISION</div>
+    <div class="vp-seg" id="paletteSeg">
+      <button data-palette="standard">Standard</button>
+      <button data-palette="cvd">Colorblind-safe</button>
+    </div>
+    <div class="vp-swatches" id="paletteSwatches"></div>
+    <button class="vp-row vp-toggle" data-pref="shapes" role="switch">
+      <span><b>Category shapes</b><small>A different shape per category, not just a color</small></span><i></i>
+    </button>
+  </div>
+  <div class="vp-section">
+    <div class="vp-label">INTERFACE SIZE</div>
+    <div class="vp-seg" id="scaleSeg">
+      <button data-scale="90">90%</button><button data-scale="100">100%</button>
+    </div>
+  </div>
+  <div class="vp-section">
+    <div class="vp-label">COMFORT</div>
+    <button class="vp-row vp-toggle" data-pref="reduceMotion" role="switch">
+      <span><b>Reduce motion</b><small>No camera glides, trails, particles or dock zoom</small></span><i></i>
+    </button>
+    <button class="vp-row vp-toggle" data-pref="reduceTransparency" role="switch">
+      <span><b>Reduce transparency</b><small>Solid panels instead of glass · lighter on the CPU</small></span><i></i>
+    </button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="analysis-panel" id="analysisPanel">
+  <div class="ap-head"><span>ANALYZING LIBRARY</span><b id="analysisCount">0 / 0</b></div>
+  <div class="ap-track"><i id="analysisBar"></i></div>
+  <div class="ap-file" id="analysisFile">Preparando…</div>
+</div>
+<canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
+<div class="ui-tip" id="uiTip" role="tooltip"></div>
+<script src="app.js"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(DrumReplacer VERSION 1.0.0)
+project(TriggerUniverse VERSION 1.0.0)
 
 if(NOT DEFINED IPLUG2_DIR)
   set(IPLUG2_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../_iPlug2" CACHE PATH "iPlug2 root directory")
@@ -17,11 +17,12 @@ iplug_add_plugin(${PROJECT_NAME}
     DSP/Dynamics.h
     DSP/WavFile.h
     resources/resource.h
+    ${IPLUG2_DIR}/WDL/fft.c
   WEB_RESOURCES
     resources/web/index.html
     resources/web/style.css
-    resources/web/script.js
-    resources/web/ui.js
+    resources/web/app.js
+    resources/web/native-ui.js
   UI WEBVIEW
-  FORMATS VST3
+  FORMATS APP AU
 )

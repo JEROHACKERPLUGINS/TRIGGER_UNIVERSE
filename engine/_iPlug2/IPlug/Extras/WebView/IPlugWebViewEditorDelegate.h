@@ -122,8 +122,9 @@ public:
     SendArbitraryMsgFromDelegate(-1, static_cast<int>(jsonMessage.dump().size()), jsonMessage.dump().c_str());
   }
 
-  void OnMessageFromWebView(const char* jsonStr) override
+  void HandleWebMessage(const char* jsonStr)
   {
+    if (mCustomMessageHandler) { mCustomMessageHandler(jsonStr); return; }
     auto json = nlohmann::json::parse(jsonStr, nullptr, false);
     
     if (json["msg"] == "SPVFUI")
@@ -178,6 +179,8 @@ public:
     }
   }
 
+  void OnMessageFromWebView(const char* jsonStr) override { HandleWebMessage(jsonStr); }
+
   void Resize(int width, int height);
   
   void OnParentWindowResize(int width, int height) override;
@@ -216,6 +219,13 @@ public:
     mMaxJSStringLength = length;
   }
 
+  /** Override the default message parsing (used by plugins that need to bypass
+   *  the virtual dispatch to the editor delegate). */
+  void SetCustomMessageHandler(std::function<void(const char*)> handler)
+  {
+    mCustomMessageHandler = std::move(handler);
+  }
+
   /** Load index.html (from plugin src dir in debug builds, and from bundle in release builds) on desktop
    * Note: if your debug build is code-signed with the hardened runtime It won't be able to load the file outside it's sandbox, and this
    * will fail.
@@ -239,6 +249,7 @@ public:
 
 protected:
   int mMaxJSStringLength = kDefaultMaxJSStringLength;
+  std::function<void(const char*)> mCustomMessageHandler;
   std::function<void()> mEditorInitFunc = nullptr;
   void* mView = nullptr;
   

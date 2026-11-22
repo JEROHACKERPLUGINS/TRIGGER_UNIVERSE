@@ -11,6 +11,7 @@
 
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const fmtMs = v => v < 10 ? v.toFixed(1) + ' ms' : Math.round(v) + ' ms';
@@ -421,9 +422,14 @@ const PALETTES = {
 };
 function loadVisualPrefs() {
   const d = { palette: 'standard', shapes: false, scale: 100, reduceMotion: false, reduceTransparency: false };
-  let prefs;
-  try { prefs = Object.assign(d, JSON.parse(localStorage.getItem('tu-visual') || '{}')); }
-  catch (e) { prefs = d; }
+  let prefs, stored = null;
+  try {
+    stored = localStorage.getItem('tu-visual');
+    prefs = Object.assign(d, JSON.parse(stored || '{}'));
+  } catch (e) { prefs = d; }
+  // Inside the AU there is no browser zoom and the host window is often
+  // smaller than the design: start at 90% so the slot dock stays visible.
+  if (!stored && window.__TU_NATIVE__) prefs.scale = 90;
   // >100% zoom makes the fixed trigger page taller than the viewport and the
   // fader bank overlaps the slot dock. The trigger page is a 100vh layout, so
   // only 90/100 are safe at every viewport.
@@ -585,6 +591,7 @@ const state = {
   pointer: null,
   scrubTrail: { pts: [], alpha: 1 },
   viewMode: 'universe',
+  libraryRoots: [],
   prevView: 'universe',
   fileFolder: 'ALL',
   expanded: new Set(['ALL', 'SAMPLES FOLDER', 'SAMPLES FOLDER/Kicks', 'SAMPLES FOLDER/Snares', 'SAMPLES FOLDER/Hats', 'SAMPLES FOLDER/Percussion']),
@@ -598,7 +605,7 @@ const state = {
   // slots. ref = 'INPUT' or a slot index 0..7 (that slot is left untouched and
   // the others align to it). mode = 'offset' | 'polarity' | 'both'.
   ap: { on: true, ref: 'INPUT', mode: 'polarity' },
-  detector: { attack: .5, hold: 30, release: 150, sens: 51, retrig: 30, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: true, gateThreshold: -24, gateAuto: 'learn' },
+  detector: { attack: .5, hold: 30, release: 150, sens: 51, retrig: 30, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 0, gate: false, gateThreshold: -24, gateAuto: 'learn' },
 };
 
 function pickByCategory(cat, offset = 0) {
@@ -872,6 +879,7 @@ function drawUniverse() {
   let vis = 0;
   ctx.globalCompositeOperation = 'lighter';
   for (const s of state.samples) {
+    if (s.analyzed === false) continue;
     const on = passes(s);
     if (on) vis++;
     const p = toPx(s);
@@ -1484,7 +1492,10 @@ function setTriggerOpen(open) {
 }
 
 function setSettingsOpen(open) {
-  if (open) $('#visualPanel').classList.remove('show');
+  if (open) {
+    $('#visualPanel').classList.remove('show');
+    $('#libraryPanel').classList.remove('show');
+  }
   $('#settingsMenu').classList.toggle('show', open);
   $('#settingsBtn').classList.toggle('active', open);
 }
@@ -1493,6 +1504,7 @@ function dismissWindows() {
   stopScrub();
   hideSimilarity();
   setSettingsOpen(false);
+  setLibraryOpen(false);
   if ($('#slotPopover')) closeSlotPopover();
 }
 
@@ -1968,6 +1980,8 @@ function assignSample(i, smp) {
   analyzeAllPhase();
   if (state.selectedSlot === i && $('.inspector').classList.contains('show')) updateInspector();
   toast(`${smp.name} → TRIGGER SLOT ${String(i + 1).padStart(2, '0')} · auto phase ready`);
+  if (window.__TU_NATIVE__ && smp.nativePath && window.__TU_nativeLoadSample)
+    window.__TU_nativeLoadSample(i, smp.nativePath);
 }
 
 // ---------- AUTO PHASE ----------
@@ -2310,7 +2324,7 @@ function renderTreeNode(node, depth) {
   let html = `<div class="tree-node${active}" data-path="${node.path}" style="padding-left:${pad}px">
     <span class="tree-toggle">${hasChildren ? (expanded ? '▾' : '▸') : ''}</span>
     <span class="tree-icon"></span>
-    <span class="tree-label">${node.name}</span>
+    <span class="tree-label">${esc(node.name)}</span>
     <span class="tree-count">${node.count}</span>
   </div>`;
   if (hasChildren && expanded) {
@@ -2330,9 +2344,29 @@ function renderFolderTree() {
     <span class="tree-label">FAVORITES</span>
     <span class="tree-count">${favCount}</span>
   </div>`;
-  $('#folderTree').innerHTML = fav + renderTreeNode(tree, 0);
+  const locations = (state.libraryRoots || []).map((r, i) => `
+    <div class="tree-node loc-node${state.fileFolder === r.name ? ' active' : ''}" data-loc="${i}" title="${esc(r.path)}" style="padding-left:8px">
+      <span class="tree-toggle"></span>
+      <span class="tree-icon"></span>
+      <span class="tree-label">${esc(r.name)}</span>
+      <button class="loc-remove" data-loc="${i}" title="Remove location">×</button>
+    </div>`).join('');
+  $('#folderTree').innerHTML = locations + fav + renderTreeNode(tree, 0);
 }
 $('#folderTree').addEventListener('click', e => {
+  const rm = e.target.closest('.loc-remove');
+  if (rm) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') SAMFUI(8, +rm.dataset.loc, 0);
+    return;
+  }
+  const loc = e.target.closest('.loc-node');
+  if (loc) {
+    const r = state.libraryRoots[+loc.dataset.loc];
+    if (r) { state.fileFolder = r.name; renderFolderTree(); renderFileList(); }
+    return;
+  }
   const node = e.target.closest('.tree-node');
   if (!node) return;
   const path = node.dataset.path;
@@ -2344,8 +2378,260 @@ $('#folderTree').addEventListener('click', e => {
 });
 
 $('#addFolder').onclick = () => {
+  if (window.__TU_NATIVE__ && window.__TU_chooseFolder) {
+    window.__TU_chooseFolder();
+    return;
+  }
   toast('Choose the LOCATION SAMPLES FOLDER (demo) · tree mirrors its subfolders');
 };
+
+$('#refreshLibrary').onclick = () => {
+  if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') SAMFUI(9, 0, 0);
+  else toast('Rescan only available inside the plugin');
+};
+
+function nativeCategory(name) {
+  const n = name.toLowerCase();
+  if (/kick|bombo|bd/.test(n)) return 'Kick';
+  if (/snare|redobl|sd/.test(n)) return 'Snare';
+  if (/clap/.test(n)) return 'Clap';
+  if (/hh|hat|charles/.test(n)) return 'HHC';
+  if (/cymbal|crash|ride/.test(n)) return 'Cymbal';
+  if (/tom/.test(n)) return 'Tom';
+  return 'Perc';
+}
+
+function applyNativeLibrary(msg) {
+  if (!msg || !Array.isArray(msg.files)) return;
+  const roots = Array.isArray(msg.roots) ? msg.roots : [];
+  const used = new Set();
+  const labels = roots.map((r, i) => {
+    let base = r.name || `LOCATION ${i + 1}`;
+    let label = base, n = 2;
+    while (used.has(label)) label = `${base} ${n++}`;
+    used.add(label);
+    return label;
+  });
+
+  const real = msg.files.map((f, idx) => {
+    const rootLabel = labels[f.root] || 'SAMPLES';
+    const rel = f.rel || f.name;
+    const parts = rel.split('/');
+    parts.pop();
+    const sub = parts.join('/');
+    const category = nativeCategory(f.name);
+    const dur = clamp(f.dur > 0 ? f.dur : (f.size || 0) / 192000 * 1000, 20, 8000);
+    const centroid = f.centroid > 0 ? f.centroid : 0;
+    const analyzed = !!f.analyzed && (f.v || 0) >= 2;
+    return {
+      id: 20000 + idx,
+      nativeIndex: idx,
+      name: f.name.replace(/\.[^.]+$/, ''),
+      category,
+      dur,
+      bright: centroid || 1200,
+      centroid,
+      rolloff: f.rolloff || 0,
+      flatness: f.flatness || 0,
+      attack: f.attack || 0,
+      decay: f.decay || 0,
+      crest: f.crest || 0,
+      zcr: f.zcr || 0,
+      rms: f.rms || 0,
+      peak: f.peak || 0,
+      featureVersion: f.v || 0,
+      analyzed,
+      drum: .5,
+      x: analyzed ? clamp(normLog(dur, DUR.min, DUR.max), .002, .998) : .5,
+      y: analyzed ? clamp(normLog(Math.max(30, centroid || 30), BRI.min, BRI.max), .002, .998) : .5,
+      z: clamp((f.rms || 0) * 3, .15, .95),
+      folder: sub || rootLabel,
+      path: sub ? `${rootLabel}/${sub}` : rootLabel,
+      root: rootLabel,
+      addedDays: 0,
+      favorite: false,
+      isReal: true,
+      nativePath: f.path,
+    };
+  });
+
+  samples.length = 0;
+  samples.push(...real);
+  state.samples = samples;
+  state.libraryRoots = roots.map((r, i) => ({ path: r.path, name: labels[i] }));
+  state.favorites = new Set();
+  state.selectedSample = real[0] || null;
+  state.fileFolder = 'ALL';
+  state.expanded = new Set(['ALL', ...labels]);
+  if (real[0]) selectSample(real[0]);
+  renderFolderTree();
+  renderFileList();
+  recomputeUniverseLayout();
+  updateInspector();
+  if ($('#libraryPanel') && $('#libraryPanel').classList.contains('show')) renderLibraryPanel();
+  if (real.length) toast(`${real.length} WAVs · ${roots.length} location${roots.length === 1 ? '' : 's'}`);
+  else if (roots.length) toast('No hay WAVs en las locations · RESCAN');
+  else toast('Sin locations · FILE SEARCH → CHANGE');
+}
+
+window.addEventListener('tu-native-message', e => {
+  const d = e.detail;
+  if (!d) return;
+  if (d.id === 'library') applyNativeLibrary(d);
+  else if (d.id === 'slot' && d.ok === false) toast(`No se pudo cargar ${d.name || 'el sample'}`);
+  else if (d.id === 'analysisStart') { showAnalysis(d.total, d.done); recomputeUniverseLayout(); }
+  else if (d.id === 'analyzed') {
+    applyAnalyzedFeature(d);
+    updateAnalysis(d);
+    if (++analysisLayoutCounter >= 24) { analysisLayoutCounter = 0; recomputeUniverseLayout(); }
+  }
+  else if (d.id === 'analysisDone') {
+    analysisLayoutCounter = 0;
+    recomputeUniverseLayout();
+    finishAnalysis(d);
+  }
+});
+
+// ---------- library audio analysis (length + frequency response) ----------
+let analysisTotal = 0;
+let analysisHideTimer = 0;
+let analysisLayoutCounter = 0;
+
+function showAnalysis(total, done) {
+  analysisTotal = total || 0;
+  const panel = $('#analysisPanel');
+  if (!panel) return;
+  panel.classList.add('show');
+  clearTimeout(analysisHideTimer);
+  $('#analysisCount').textContent = `${done || 0} / ${analysisTotal}`;
+  $('#analysisBar').style.width = analysisTotal ? `${(done || 0) / analysisTotal * 100}%` : '0%';
+  $('#analysisFile').textContent = 'Analizando largo y respuesta frecuencial…';
+}
+
+function updateAnalysis(d) {
+  const total = d.total || analysisTotal || 0;
+  const done = d.done || 0;
+  analysisTotal = total;
+  $('#analysisCount').textContent = `${done} / ${total}`;
+  $('#analysisBar').style.width = total ? `${Math.min(100, done / total * 100)}%` : '0%';
+  if (d.name) $('#analysisFile').textContent = d.name;
+}
+
+function finishAnalysis(d) {
+  updateAnalysis({ done: d.total || analysisTotal, total: d.total || analysisTotal });
+  $('#analysisFile').textContent = 'Análisis completo';
+  clearTimeout(analysisHideTimer);
+  analysisHideTimer = setTimeout(() => $('#analysisPanel').classList.remove('show'), 1400);
+  toast(`Análisis completo · ${d.total || 0} samples`);
+}
+
+function applyAnalyzedFeature(d) {
+  const s = state.samples.find(x => x.nativeIndex === d.index);
+  if (!s) return;
+  s.analyzed = !!d.analyzed;
+  s.featureVersion = d.v || 0;
+  if (d.dur > 0) s.dur = d.dur;
+  if (d.centroid > 0) { s.centroid = d.centroid; s.bright = d.centroid; }
+  if (d.rolloff > 0) s.rolloff = d.rolloff;
+  if (d.flatness >= 0) s.flatness = d.flatness;
+  if (d.attack >= 0) s.attack = d.attack;
+  if (d.decay >= 0) s.decay = d.decay;
+  if (d.crest >= 0) s.crest = d.crest;
+  if (d.zcr >= 0) s.zcr = d.zcr;
+  if (d.rms >= 0) s.rms = d.rms;
+  if (d.peak >= 0) s.peak = d.peak;
+  s.z = clamp((s.rms || 0) * 3, .15, .95);
+}
+
+// ---------- XO-like layout: features -> PCA 2D ----------
+function featureVector(s) {
+  return [
+    Math.log(Math.max(20, s.dur || 20)),
+    Math.log(Math.max(20, s.centroid || 20)),
+    Math.log(Math.max(20, s.rolloff || 20)),
+    Math.log(Math.max(1e-6, s.flatness || 1e-6)),
+    Math.log(1 + Math.max(0, s.attack || 0)),
+    Math.log(1 + Math.max(0, s.decay || 0)),
+    Math.log(1 + Math.max(1, s.crest || 1)),
+    Math.log(1 + Math.max(0, s.zcr || 0)),
+  ];
+}
+
+function pcaAxis(C, dims) {
+  let v = Array.from({ length: dims }, (_, i) => 1 + (i % 3) * 0.15);
+  const n0 = Math.hypot(...v) || 1;
+  v = v.map(x => x / n0);
+  for (let it = 0; it < 90; ++it) {
+    const w = Array(dims).fill(0);
+    for (let i = 0; i < dims; ++i)
+      for (let j = 0; j < dims; ++j)
+        w[i] += C[i][j] * v[j];
+    const norm = Math.hypot(...w) || 1;
+    v = w.map(x => x / norm);
+  }
+  return v;
+}
+
+function pcaPercentile(sorted, p) {
+  if (!sorted.length) return 0;
+  const idx = clamp(p, 0, 1) * (sorted.length - 1);
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
+function recomputeUniverseLayout() {
+  const pts = state.samples.filter(s => s.analyzed && s.featureVersion >= 2);
+  if (!pts.length) { drawUniverse(); return; }
+
+  if (pts.length < 8) {
+    for (const s of pts) {
+      s.x = clamp(normLog(Math.max(20, s.dur), DUR.min, DUR.max), .02, .98);
+      s.y = clamp(normLog(Math.max(30, s.centroid || 30), BRI.min, BRI.max), .02, .98);
+    }
+    drawUniverse();
+    return;
+  }
+
+  const dims = 8;
+  const raw = pts.map(featureVector);
+  const mean = Array(dims).fill(0);
+  const std = Array(dims).fill(0);
+  for (const row of raw) for (let i = 0; i < dims; ++i) mean[i] += row[i];
+  for (let i = 0; i < dims; ++i) mean[i] /= raw.length;
+  for (const row of raw) for (let i = 0; i < dims; ++i) std[i] += (row[i] - mean[i]) ** 2;
+  for (let i = 0; i < dims; ++i) std[i] = Math.sqrt(std[i] / Math.max(1, raw.length)) || 1;
+
+  const z = raw.map(row => row.map((v, i) => (v - mean[i]) / std[i]));
+  const C = Array.from({ length: dims }, () => Array(dims).fill(0));
+  for (const row of z)
+    for (let i = 0; i < dims; ++i)
+      for (let j = 0; j < dims; ++j)
+        C[i][j] += row[i] * row[j];
+  for (let i = 0; i < dims; ++i)
+    for (let j = 0; j < dims; ++j)
+      C[i][j] /= Math.max(1, z.length);
+
+  const v1 = pcaAxis(C, dims);
+  const Cv1 = C.map(row => row.reduce((a, x, j) => a + x * v1[j], 0));
+  const l1 = Cv1.reduce((a, x, i) => a + x * v1[i], 0);
+  const C2 = C.map((row, i) => row.map((x, j) => x - l1 * v1[i] * v1[j]));
+  const v2 = pcaAxis(C2, dims);
+
+  const pc1 = z.map(row => row.reduce((a, x, i) => a + x * v1[i], 0));
+  const pc2 = z.map(row => row.reduce((a, x, i) => a + x * v2[i], 0));
+  const sx = [...pc1].sort((a, b) => a - b);
+  const sy = [...pc2].sort((a, b) => a - b);
+  let x0 = pcaPercentile(sx, .02), x1 = pcaPercentile(sx, .98);
+  let y0 = pcaPercentile(sy, .02), y1 = pcaPercentile(sy, .98);
+  if (Math.abs(x1 - x0) < 1e-9) { x0 = Math.min(...pc1); x1 = Math.max(...pc1); }
+  if (Math.abs(y1 - y0) < 1e-9) { y0 = Math.min(...pc2); y1 = Math.max(...pc2); }
+
+  pts.forEach((s, i) => {
+    s.x = clamp((pc1[i] - x0) / ((x1 - x0) || 1), .02, .98);
+    s.y = clamp((pc2[i] - y0) / ((y1 - y0) || 1), .02, .98);
+  });
+  drawUniverse();
+}
 
 function fileList() {
   const favMode = state.fileFolder === 'FAV';
@@ -2389,7 +2675,7 @@ function renderFileList() {
     const color = CAT[s.category].color;
     const fav = state.favorites.has(s.id);
     return `<div class="file-row${sel}" data-id="${s.id}">
-      <span class="fn"><i class="fdot cat-mark" style="background:${color};color:${color};--shape:${SHAPE_CLIP[CAT_SHAPE[s.category]]}"></i><span>${s.name}</span></span>
+      <span class="fn"><i class="fdot cat-mark" style="background:${color};color:${color};--shape:${SHAPE_CLIP[CAT_SHAPE[s.category]]}"></i><span>${esc(s.name)}</span></span>
       <span class="num">${fmtMs(s.dur)}</span>
       <button class="fav-btn${fav ? ' on' : ''}" data-id="${s.id}" title="${fav ? 'Remove favorite' : 'Add favorite'}">♥</button>
     </div>`;
@@ -2434,6 +2720,12 @@ $('#fileList').addEventListener('click', e => {
   e.preventDefault();
   e.stopPropagation();
   toggleFavorite(+btn.dataset.id);
+});
+$('#fileList').addEventListener('dblclick', e => {
+  const row = e.target.closest('.file-row[data-id]');
+  if (!row) return;
+  const smp = state.samples.find(s => s.id === +row.dataset.id);
+  if (smp) assignSample(state.selectedSlot, smp);
 });
 
 $('#simPrev').onclick = () => navigateSimilar(-1);
@@ -3596,6 +3888,7 @@ function makeKnob(cfg) {
     ind.style.transform = `translateX(-50%) rotate(${-135 + 270 * toNorm(v)}deg)`;
     val.textContent = cfg.fmt(v);
     state.detector[cfg.key] = v;
+    if (window.__TU_NATIVE__ && window.__TU_sendDetector) window.__TU_sendDetector(cfg.key, v);
     if (cfg.key === 'input' && inputGain) inputGain.gain.value = dbToAmp(v);
     if (audioReady && ['sens', 'retrig', 'detail', 'supp', 'low', 'high', 'input', 'attack', 'hold', 'release'].includes(cfg.key)) {
       scheduleDetect();
@@ -3664,12 +3957,19 @@ function updateGateButton() {
   btn.classList.toggle('on', state.detector.gate);
   btn.textContent = state.detector.gate ? 'ON' : 'OFF';
 }
-$('#gateBtn').onclick = () => {
-  state.detector.gate = !state.detector.gate;
+$('#gateBtn').onclick = () => setGate(!state.detector.gate);
+function setGate(on, silent) {
+  state.detector.gate = !!on;
   updateGateButton();
   if (rtNode && inputPlaying) postDetectorParams();
   else { detectInputHits(); if (inputPlaying) rescheduleGate(); }
-  if (state.detector.gate && state.detector.mix >= 99) toast('GATE applies to the original input — lower MIX to hear it');
+  if (!silent && state.detector.gate && state.detector.mix >= 99) toast('GATE applies to the original input — lower MIX to hear it');
+  if (window.__TU_NATIVE__ && window.__TU_sendMaster) window.__TU_sendMaster('gateOn', state.detector.gate ? 1 : 0);
+}
+window.__TU_setGate = on => {
+  window.__TU_applyingNative = true;
+  setGate(on, true);
+  window.__TU_applyingNative = false;
 };
 updateGateButton();
 function applyMix() {
@@ -3688,8 +3988,14 @@ function applyMix() {
     ind.style.transform = `translateX(-50%) rotate(${-135 + 270 * n}deg)`;
     val.textContent = Math.round(state.detector.mix) + '%';
     applyMix();
+    if (window.__TU_NATIVE__ && window.__TU_sendMaster) window.__TU_sendMaster('mix', state.detector.mix);
   };
   set(state.detector.mix);
+  window.__TU_setMix = v => {
+    window.__TU_applyingNative = true;
+    set(v);
+    window.__TU_applyingNative = false;
+  };
   let sy = 0, sn = 0;
   knob.addEventListener('pointerdown', e => {
     if (e.altKey) return;
@@ -4147,6 +4453,24 @@ function resizeInput() {
 
 function drawInput(now) {
   if (realInputBuffer) { drawRealInput(now); return; }
+  // Native mode: the C++ engine owns the input. Do not animate a synthetic
+  // waveform; draw a flat line until the engine sends real data.
+  if (window.__TU_NATIVE__) {
+    const ctx = inputCanvas.getContext('2d');
+    ctx.clearRect(0, 0, inW, inH);
+    const y = inH / 2;
+    ctx.strokeStyle = 'rgba(126,138,160,.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(inW, y);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(126,138,160,.75)';
+    ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('INPUT DEL HOST', inW / 2, y - 8);
+    return;
+  }
   const dt = lastT ? Math.min(.05, (now - lastT) / 1000) : 0;
   lastT = now;
   scan = (scan + dt / 2.6) % 1;
@@ -4278,6 +4602,7 @@ function drawInput(now) {
 let inputRAF = null;
 function startInputLoop() {
   if (inputRAF) return;
+  if (window.__TU_NATIVE__) { drawInput(performance.now()); return; }
   const loop = now => { drawInput(now); inputRAF = requestAnimationFrame(loop); };
   inputRAF = requestAnimationFrame(loop);
 }
@@ -4308,8 +4633,14 @@ let masterOut = 0;
     ind.style.transform = `translateX(-50%) rotate(${-135 + 270 * n}deg)`;
     val.textContent = fmtDb(masterOut);
     if (masterGain) masterGain.gain.value = dbToAmp(masterOut);
+    if (window.__TU_NATIVE__ && window.__TU_sendMaster) window.__TU_sendMaster('outputGain', masterOut);
   };
   set(0);
+  window.__TU_setMasterOut = v => {
+    window.__TU_applyingNative = true;
+    set(v);
+    window.__TU_applyingNative = false;
+  };
   let sy = 0, sv = 0;
   knob.addEventListener('pointerdown', e => {
     if (e.altKey) return;
@@ -4374,7 +4705,11 @@ function applyVisualPrefs() {
   requestAnimationFrame(() => { resizeCanvas(); drawUniverse(); if (state.viewMode === 'trigger') resizeInput(); });
 }
 function setVisualOpen(open) {
-  if (open) { setSettingsOpen(false); renderVisualPanel(); }
+  if (open) {
+    setSettingsOpen(false);
+    $('#libraryPanel').classList.remove('show');
+    renderVisualPanel();
+  }
   $('#visualPanel').classList.toggle('show', open);
 }
 // Clicking anywhere outside the VISUAL dialog closes it before the underlying
@@ -4413,9 +4748,59 @@ $('#paletteSeg').addEventListener('click', e => {
   applyVisualPrefs();
 });
 $('#menuFolders').onclick = () => {
-  setSettingsOpen(false);
-  toast('Library folders: add/remove roots (demo)');
+  setLibraryOpen(true);
 };
+
+function renderLibraryPanel() {
+  const list = $('#libraryList');
+  if (!list) return;
+  const roots = state.libraryRoots || [];
+  if (!roots.length) {
+    list.innerHTML = `<div class="lp-empty">No hay locations todavía.<br>Usá <b>ADD NEW LOCATION</b> para sumar una carpeta del Finder.</div>`;
+    return;
+  }
+  const counts = {};
+  for (const s of state.samples) counts[s.root || ''] = (counts[s.root || ''] || 0) + 1;
+  list.innerHTML = roots.map((r, i) => `
+    <div class="lp-row">
+      <div class="lp-main"><b>${esc(r.name)}</b><small>${esc(r.path)}</small></div>
+      <span class="lp-count">${counts[r.name] || 0} WAV</span>
+      <button data-lib-remove="${i}" title="Remove location">REMOVE</button>
+    </div>`).join('');
+}
+
+function setLibraryOpen(open) {
+  if (open) {
+    setSettingsOpen(false);
+    setVisualOpen(false);
+    renderLibraryPanel();
+  }
+  const panel = $('#libraryPanel');
+  if (!panel) return;
+  panel.classList.toggle('show', open);
+  $('#settingsBtn').classList.toggle('active', open);
+}
+
+$('#libraryClose').onclick = () => setLibraryOpen(false);
+$('#libraryAdd').onclick = () => {
+  if (window.__TU_NATIVE__ && window.__TU_chooseFolder) window.__TU_chooseFolder();
+  else toast('ADD NEW LOCATION only available inside the plugin');
+};
+$('#libraryRescan').onclick = () => {
+  if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') SAMFUI(9, 0, 0);
+  else toast('RESCAN only available inside the plugin');
+};
+$('#libraryList').addEventListener('click', e => {
+  const b = e.target.closest('[data-lib-remove]');
+  if (!b) return;
+  if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') SAMFUI(8, +b.dataset.libRemove, 0);
+});
+document.addEventListener('pointerdown', e => {
+  const panel = $('#libraryPanel');
+  if (!panel || !panel.classList.contains('show')) return;
+  if (panel.contains(e.target) || e.target.closest('#settingsBtn') || e.target.closest('#menuFolders')) return;
+  setLibraryOpen(false);
+}, true);
 $('#menuAudio').onclick = () => {
   setSettingsOpen(false);
   toast('Audio / MIDI settings (demo)');
@@ -4441,6 +4826,9 @@ function toast(msg) {
 const dbToAmp = db => Math.pow(10, db / 20);
 
 function ensureAudio() {
+  // Inside the AU the audio lives in C++; the WebView must not create a
+  // second graph that would play outside the host.
+  if (window.__TU_NATIVE__) return null;
   if (audioCtx) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     return audioCtx;
@@ -4487,6 +4875,10 @@ function ensureAudio() {
 }
 
 function syncSlotAudio(i) {
+  if (window.__TU_NATIVE__) {
+    if (window.__TU_sendSlot) window.__TU_sendSlot(i, state.slots[i]);
+    return;
+  }
   if (!audioCtx || !slotNodes[i]) return;
   const s = state.slots[i];
   const anySolo = state.slots.some(x => x.solo);
@@ -5068,6 +5460,8 @@ const INPUT_FILE = 'samples/SN_TOP_1COMMIT_17-140.wav';
 const SAMPLE_FILE = 'samples/SNARE.cm.wav';
 
 async function loadRealAudio() {
+  // Native mode: the C++ engine owns the input and the slots.
+  if (window.__TU_NATIVE__) return;
   try {
     // The trigger input is the real 0:17–2:20 excerpt (mono, normalized to
     // −0.5 dBFS). SNARE.cm stays as the demo one-shot.
@@ -5451,6 +5845,7 @@ function stopLiveTriggers() {
   liveLastVelocity = 0;
 }
 function playInput() {
+  if (window.__TU_NATIVE__) { toast('En el AU el INPUT viene del host'); return; }
   if (inputPlaying) { stopInput(); return; }
   if (!realInputBuffer) { toast('Real input still loading…'); return; }
   const ctx = ensureAudio();
@@ -5559,6 +5954,39 @@ window.__focus = focusSample;
 window.__updateInspector = updateInspector;
 
 // ---------- init ----------
+function initNativeBridge() {
+  if (!window.__TU_NATIVE__) return;
+  // Native param index -> detector knob key.
+  const KNOB_BY_IDX = { 0: 'sens', 1: 'retrig', 2: 'detail', 4: 'low', 5: 'high', 6: 'supp', 7: 'input', 11: 'attack', 13: 'release' };
+  const apply = (idx, norm) => {
+    const key = KNOB_BY_IDX[idx];
+    if (key && knobReg[key]) {
+      window.__TU_applyingNative = true;
+      knobReg[key].setNorm(norm);
+      window.__TU_applyingNative = false;
+      return;
+    }
+    if (idx === 8 && window.__TU_setMasterOut) window.__TU_setMasterOut(-24 + norm * 48);
+    else if (idx === 9 && window.__TU_setMix) window.__TU_setMix(norm * 100);
+    else if (idx === 10 && window.__TU_setGate) window.__TU_setGate(norm >= .5);
+  };
+  window.addEventListener('tu-native-param', e => apply(e.detail.idx, e.detail.norm));
+  // Push the current UI values once so the engine and the UI start in sync.
+  if (window.__TU_sendDetector) {
+    ['sens', 'retrig', 'detail', 'low', 'high', 'supp', 'input', 'attack', 'release']
+      .forEach(k => window.__TU_sendDetector(k, state.detector[k]));
+  }
+  if (window.__TU_sendMaster) {
+    window.__TU_sendMaster('outputGain', masterOut);
+    window.__TU_sendMaster('mix', state.detector.mix);
+    window.__TU_sendMaster('gateOn', state.detector.gate ? 1 : 0);
+  }
+  state.slots.forEach((s, i) => { if (window.__TU_sendSlot) window.__TU_sendSlot(i, s); });
+  window.__TU_nativeBridgeReady = true;
+  // Pull the persisted library once the WebView channel is ready.
+  if (typeof SAMFUI === 'function') SAMFUI(10, 0, 0);
+}
+
 function init() {
   renderSlots();
   analyzeAllPhase();
@@ -5576,6 +6004,17 @@ function init() {
     if (state.viewMode === 'trigger') startInputLoop();
   });
   loadRealAudio();
+  if (window.__TU_NATIVE__) {
+    // Wait for iPlug2's "params" message (the WebView channel is ready) before
+    // pushing values; messages sent during page load are dropped.
+    let started = false;
+    const start = () => { if (!started) { started = true; initNativeBridge(); } };
+    window.addEventListener('tu-native-message', e => {
+      const id = e.detail && e.detail.id;
+      if (id === 'params' || id === 'init') start();
+    });
+    setTimeout(start, 1500);
+  }
 }
 // ---------- ui tooltip: replaces native title attributes with a styled tip ----------
 (function uiTips() {

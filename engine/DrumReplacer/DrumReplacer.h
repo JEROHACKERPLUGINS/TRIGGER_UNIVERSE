@@ -6,6 +6,10 @@
 #include "DSP/TransientDetector.h"
 #include "DSP/Dynamics.h"
 #include <atomic>
+#include <vector>
+#include <string>
+#include <thread>
+#include <mutex>
 
 using namespace iplug;
 
@@ -82,13 +86,19 @@ constexpr int SlotParam(int slot, int p) { return kSlotBase + slot * kNumSlotPar
 enum EMsgTags
 {
   kMsgTagLoadSample = 4, // ctrlTag = slot index
-  kMsgTagClearSlot = 5   // ctrlTag = slot index
+  kMsgTagClearSlot = 5,  // ctrlTag = slot index
+  kMsgTagChooseFolder = 6,
+  kMsgTagLoadPath = 7,   // ctrlTag = slot index, data = path
+  kMsgTagRemoveRoot = 8, // ctrlTag = root index
+  kMsgTagRescanLibrary = 9,
+  kMsgTagGetLibrary = 10
 };
 
 class DrumReplacer final : public Plugin
 {
 public:
   DrumReplacer(const InstanceInfo& info);
+  ~DrumReplacer() override;
   
 #if IPLUG_DSP
   void ProcessBlock(sample** inputs, sample** outputs, int nFrames) override;
@@ -96,16 +106,80 @@ public:
   void OnReset() override;
 #endif
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
+  void OnWebMessage(const char* jsonStr);
   void OnParamChange(int paramIdx) override;
   void OnIdle() override;
   void OnUIOpen() override;
-  void OnUIClose() override { mUIOpen = false; }
+  void OnUIClose() override;
   bool SerializeState(IByteChunk& chunk) const override;
   int UnserializeState(const IByteChunk& chunk, int startPos) override;
 
 private:
   void InitParams();
   bool LoadSlot(int slot, const char* path); // non-audio thread
+  void LoadLibrarySettings();
+  void SaveLibrarySettings() const;
+  void ScanLibraryAndSend();
+  void SendLibraryToUI();
+  void StartLibraryAnalysis();
+  void StopLibraryAnalysis();
+
+  struct LibraryFile
+  {
+    int root = 0;
+    std::string path;
+    std::string name;
+    std::string rel;
+    long long size = 0;
+    double durMs = 0;
+    int sampleRate = 0;
+    int channels = 0;
+    double centroidHz = 0;
+    double rolloffHz = 0;
+    double flatness = 0;
+    double attackMs = 0;
+    double decayMs = 0;
+    double crest = 0;
+    double zcr = 0;
+    double rms = 0;
+    double peak = 0;
+    int featureVersion = 0;
+    bool analyzed = false;
+  };
+
+  struct AnalysisResult
+  {
+    int generation = 0;
+    int index = -1;
+    bool done = false;
+    bool analyzed = false;
+    double durMs = 0;
+    double centroid = 0;
+    double rolloff = 0;
+    double flatness = 0;
+    double attack = 0;
+    double decay = 0;
+    double crest = 0;
+    double zcr = 0;
+    double rms = 0;
+    double peak = 0;
+    int featureVersion = 0;
+    int processed = 0;
+    int total = 0;
+    std::string name;
+  };
+
+  std::vector<std::string> mLibraryRoots;
+  std::vector<LibraryFile> mLibraryFiles;
+  bool mLibraryScanned = false;
+
+  std::thread mAnalysisThread;
+  std::mutex mAnalysisMutex;
+  std::atomic<int> mAnalysisGeneration{0};
+  std::atomic<bool> mAnalysisRunning{false};
+  std::atomic<int> mAnalysisTotal{0};
+  std::atomic<int> mAnalysisDone{0};
+  std::vector<AnalysisResult> mAnalysisResults;
 
   void SendMidiOut(int offset, float velocity);
   void SendSlotToUI(int slot);
