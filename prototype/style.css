@@ -2037,3 +2037,12 @@ html.cat-shapes .sim-dots i.cat-mark.active{width:11px;height:11px}
 .es-note:empty{display:none}
 /* hide map-only chrome while there is nothing to map */
 .universe.library-empty .map-tools,.universe.library-empty .similar-bar{display:none}
+
+/* right-click menu on a Trigger Slot */
+.slot-ctx{position:fixed;z-index:9999;min-width:170px;padding:4px;background:#121418;border:1px solid rgba(255,255,255,.12);border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.55);font:600 10px/1 var(--mono, ui-monospace, Menlo, monospace);letter-spacing:.08em}
+.slot-ctx-title{padding:7px 9px 6px;color:rgba(255,255,255,.4);font-size:9px}
+.slot-ctx button{display:flex;justify-content:space-between;align-items:center;width:100%;padding:8px 9px;background:none;border:0;border-radius:4px;color:#e8e8e8;font:inherit;letter-spacing:inherit;text-align:left;cursor:pointer}
+.slot-ctx button span{color:rgba(255,255,255,.35)}
+.slot-ctx button:hover:not(:disabled){background:rgba(255,255,255,.08)}
+.slot-ctx button.danger:hover:not(:disabled){background:rgba(255,70,70,.18);color:#ff7a7a}
+.slot-ctx button:disabled{opacity:.3;cursor:default}

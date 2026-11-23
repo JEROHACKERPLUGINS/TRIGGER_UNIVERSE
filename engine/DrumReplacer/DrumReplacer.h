@@ -111,7 +111,8 @@ enum EMsgTags
   kMsgTagAudioTest = 18,  // play a test tone on the output
   kMsgTagMidiIn = 19,     // data = MIDI input port name ("off" = none)
   kMsgTagSlotShape = 20,  // ctrlTag = slot, data = JSON shape (envelope, tone, phase, mode)
-  kMsgTagGateParams = 21  // data = JSON {th, atk, hold, rel}: INPUT GATE used by the GATE mode
+  kMsgTagGateParams = 21, // data = JSON {th, atk, hold, rel}: INPUT GATE (before the detector)
+  kMsgTagAuditionSlot = 22 // ctrlTag = slot: play the slot as it sounds (shape, fader, pan) once
 };
 
 class DrumReplacer final : public Plugin
@@ -231,7 +232,7 @@ private:
   // Hits waiting to fire. countdown = samples from the start of the next block.
   // Everything is scheduled kLatency samples late so it lines up with the delayed dry signal.
   static constexpr int kMaxHits = 64;
-  struct Hit { int countdown; float velocity; };
+  struct Hit { int countdown; float velocity; int lead; };
   Hit mHits[kMaxHits];
   int mNumHits = 0;
 
@@ -256,6 +257,7 @@ private:
   std::vector<float> mTmp[2];      // one slot's render (for its VU), sized in OnReset
   std::atomic<float> mOutPeak{0.f}; // OUTPUT meter, read in OnIdle
   std::atomic<float> mSlotPeak[kNumSlots] = {}; // fader VU meters (after level / pan / gate)
+  std::atomic<bool> mAudition[kNumSlots] = {};   // UI click / keys 1-8: trigger the slot in the next block
   bool mContinueOnRender = false;  // RenderSlotNow from an edit: voices keep playing
   std::vector<float> mMeterPeaks;  // OnIdle scratch
   std::vector<InputMeter::HitMark> mMeterHits;

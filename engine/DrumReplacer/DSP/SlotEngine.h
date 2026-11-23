@@ -12,6 +12,7 @@ struct SampleData
   int numChannels = 0;
   int numFrames = 0;
   double sampleRate = 44100.;
+  int leadFrames = 0; // silence at the start (SlotShape pre-roll): a hit may start up to here early
 };
 
 // Per-block values a slot hands to its voices.
@@ -30,7 +31,9 @@ public:
   bool IsActive() const { return mActive; }
   long Age() const { return mAge; }
 
-  void Start(const SampleData* pSample, int offset, float velocity)
+  // startFrames: skip this many frames of the sample's leading silence (exact
+  // onset alignment: the detector found the hit's real start that much earlier).
+  void Start(const SampleData* pSample, int offset, float velocity, double startFrames = 0.)
   {
     mChokeAt = -1;
     mPrev = nullptr;
@@ -38,7 +41,7 @@ public:
     mSample = pSample;
     mOffset = offset;
     mVelocity = velocity;
-    mPos = 0.;
+    mPos = pSample ? std::clamp(startFrames, 0., (double) pSample->leadFrames) : 0.;
     mAge = 0;
     mRelGain = 1.f;
     mActive = true;
@@ -198,7 +201,9 @@ public:
 
   // ONE SHOT with choke (like Trigger 2): the new hit cuts the one that is still
   // ringing on this slot (5 ms fade from the new hit's position), so hits never pile up.
-  void Trigger(int offset, float velocity)
+  // leadSamples (host samples): how much earlier than the trigger point the hit
+  // really started; the voice starts that much into its pre-roll silence.
+  void Trigger(int offset, float velocity, int leadSamples = 0, double hostSR = 0.)
   {
     if (!HasSample()) return;
     for (auto& v : mVoices)
@@ -211,7 +216,8 @@ public:
       pVoice = &mVoices[0];
       for (auto& v : mVoices) if (v.Age() > pVoice->Age()) pVoice = &v;
     }
-    pVoice->Start(mCurrent, offset, velocity);
+    const double ratio = hostSR > 0. ? mCurrent->sampleRate / hostSR : 1.;
+    pVoice->Start(mCurrent, offset, velocity, std::max(0, leadSamples) * ratio);
   }
 
   void Render(float* outL, float* outR, int nFrames, const VoiceParams& p)

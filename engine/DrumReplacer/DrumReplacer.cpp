@@ -630,9 +630,9 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
                       GetParam(kHighCut)->Value(), GetParam(kSuppression)->Value());
   mInputMeter.Push(inL, inR, nFrames, inGain); // live INPUT for the TRIGGER view (what the detector sees)
   const int detLatency = mDetector.LatencySamples();
-  mDetector.Process(inL, inR, nFrames, inGain, [&](int offset, float velocity) {
-    if (mNumHits < kMaxHits) mHits[mNumHits++] = {offset, velocity};
-    mInputMeter.MarkHit(nFrames - offset + detLatency, velocity); // at the onset
+  mDetector.Process(inL, inR, nFrames, inGain, [&](int offset, float velocity, int lead) {
+    if (mNumHits < kMaxHits) mHits[mNumHits++] = {offset, velocity, lead};
+    mInputMeter.MarkHit(nFrames - offset + detLatency + lead, velocity); // at the real onset
   });
 
   // 2. Take the hits due in this block; keep the rest for later blocks.
@@ -643,7 +643,7 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     if (mHits[h].countdown < nFrames)
       due[numDue++] = mHits[h];
     else
-      mHits[numKept++] = {mHits[h].countdown - nFrames, mHits[h].velocity};
+      mHits[numKept++] = {mHits[h].countdown - nFrames, mHits[h].velocity, mHits[h].lead};
   }
   mNumHits = numKept;
   std::sort(due, due + numDue, [](const Hit& a, const Hit& b) { return a.countdown < b.countdown; });
@@ -684,8 +684,10 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     slot.SwapIfPending();
     // the UI sends the slot VELOCITY amount (0..100 %) in kSlotVeloCurve
     const double velAmount = GetParam(SlotParam(s, kSlotVeloCurve))->Value();
+    if (mAudition[s].exchange(false, std::memory_order_acq_rel))
+      slot.Trigger(0, 1.f); // audition: full level, through the fader / pan / MIX like a hit
     for (int h = 0; h < numDue; h++)
-      slot.Trigger(due[h].countdown, TriggerGain(due[h].velocity, sens, velAmount));
+      slot.Trigger(due[h].countdown, TriggerGain(due[h].velocity, sens, velAmount), due[h].lead, sr);
 
     const bool audible = !GetParam(SlotParam(s, kSlotMute))->Bool()
                       && (!anySolo || GetParam(SlotParam(s, kSlotSolo))->Bool());
@@ -1088,6 +1090,11 @@ bool DrumReplacer::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* 
     LoadSlot(ctrlTag, path.c_str());
     SendSlotToUI(ctrlTag);
 #endif
+    return true;
+  }
+  if (msgTag == kMsgTagAuditionSlot)
+  {
+    if (ctrlTag >= 0 && ctrlTag < kNumSlots) mAudition[ctrlTag].store(true, std::memory_order_release);
     return true;
   }
   if (msgTag == kMsgTagClearSlot)
@@ -1623,7 +1630,7 @@ void DrumReplacer::ProcessMidiMsg(const IMidiMsg& msg)
       && msg.NoteNumber() == GetParam(kMidiInNote)->Int()
       && mNumHits < kMaxHits)
   {
-    mHits[mNumHits++] = {msg.mOffset + GetLatency(), msg.Velocity() / 127.f}; // delayed like the dry signal
+    mHits[mNumHits++] = {msg.mOffset + GetLatency(), msg.Velocity() / 127.f, 0}; // delayed like the dry signal
   }
 
   SendMidiMsg(msg); // MIDI thru

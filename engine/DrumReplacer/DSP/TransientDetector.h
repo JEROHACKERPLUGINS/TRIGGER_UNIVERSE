@@ -23,6 +23,14 @@
 // reports that window as latency and delays the dry signal by it, so the
 // replacement lines up with the original onset.
 //
+// EXACT ONSET: the threshold is crossed later on a soft hit than on a loud one, so
+// the crossing alone would move the replacement with the dynamics. At report time
+// the detector walks back from the crossing on the raw (unfiltered) level and finds
+// the real start: the earliest sample at >= kOnsetFrac of the hit's peak, before
+// which the level stayed below that for kQuietMs. It reports that distance (`lead`,
+// samples, up to kMaxLeadMs) and the plugin starts the sample that much earlier.
+// Same waveform at any gain -> same onset -> same position.
+//
 // Velocity = the hit's peak level (0..2, full scale = 1, after input gain): the
 // plugin shapes it with SENSITIVITY (dynamic range) and the slot's velocity amount,
 // see TriggerGain() in Dynamics.h. SENSITIVITY does not move the threshold.
@@ -32,6 +40,10 @@ public:
   static constexpr double kPeakWindowMs = 5.;
   static constexpr double kDetailMax = 1.5;
   static constexpr double kTransientRatio = 2.5;
+  static constexpr double kOnsetFrac = 0.1;
+  static constexpr double kMaxLeadMs = 4.;
+  static constexpr double kQuietMs = 1.;
+  static constexpr int kRingSize = 8192; // > window + max lead at 384 kHz (power of two)
 
   void Reset(double sampleRate)
   {
@@ -47,7 +59,11 @@ public:
     mArmed = true;
     mDipped = true;
     mHold = mCounter = 0;
-    mPeak = mVelPeak = 0.;
+    mPeak = mVelPeak = mRawPeak = 0.;
+    mMaxLead = (int) std::lround(kMaxLeadMs * 0.001 * sampleRate);
+    mQuiet = std::max(1, (int) std::lround(kQuietMs * 0.001 * sampleRate));
+    std::fill(mRing, mRing + kRingSize, 0.f);
+    mN = mCrossN = 0;
   }
 
   int LatencySamples() const { return mWindow; }
@@ -66,13 +82,17 @@ public:
     if (highCutHz != mHighCut) { mHighCut = highCutHz; mUseLP = highCutHz < 20000.; if (mUseLP) mLP.SetLowPass(highCutHz, mSR); }
   }
 
-  // onHit(int offsetInBlock, float velocity0to2)
+  // onHit(int offsetInBlock, float velocity0to2, int leadSamples)
+  // leadSamples: the real onset was this many samples before the threshold crossing
+  // (the crossing itself is LatencySamples() before offsetInBlock).
   template <typename T, typename F>
   void Process(const T* inL, const T* inR, int nFrames, double gain, F&& onHit)
   {
     for (int i = 0; i < nFrames; i++)
     {
       double f = (inL[i] + inR[i]) * 0.5 * gain;
+      const float raw = (float) std::fabs(f);
+      mRing[mN & (kRingSize - 1)] = raw;
       if (mUseHP) f = mHP.Process(f);
       if (mUseLP) f = mLP.Process(f);
       const double level = std::fabs(f);
@@ -86,16 +106,18 @@ public:
       if (!mCapturing && mArmed && mFast > thresh && (!mDipped || mFast > mSlow * kTransientRatio))
       {
         mCapturing = true;
-        mPeak = 0.; mVelPeak = 0.;
+        mPeak = 0.; mVelPeak = 0.; mRawPeak = 0.;
         mCounter = 0;
+        mCrossN = mN;
       }
       if (mCapturing)
       {
         mPeak = std::max(mPeak, mFast);
         mVelPeak = std::max(mVelPeak, velLevel);
+        mRawPeak = std::max(mRawPeak, (double) raw);
         if (++mCounter >= mWindow)
         {
-          onHit(i, (float) mVelPeak);
+          onHit(i, (float) mVelPeak, FindLead());
           mCapturing = false;
           mArmed = false;
           mDipped = false;
@@ -110,7 +132,27 @@ public:
         if (mHold <= 0) mArmed = true;
       }
       if (mArmed && mFast < mRearm) mDipped = true;
+      mN++;
     }
+  }
+
+  // Walk back from the crossing (on the raw level) to the real start of the hit.
+  int FindLead() const
+  {
+    const float th = (float) (mRawPeak * kOnsetFrac);
+    if (th <= 0.f) return 0;
+    long onset = mCrossN;
+    int quiet = 0;
+    for (long n = mCrossN; n >= mCrossN - mMaxLead - mQuiet && n >= 0 && mN - n < kRingSize; n--)
+    {
+      if (mRing[n & (kRingSize - 1)] >= th)
+      {
+        if (mCrossN - n > mMaxLead) break; // something loud before the window: keep what we have
+        onset = n; quiet = 0;
+      }
+      else if (++quiet >= mQuiet) break;
+    }
+    return (int) (mCrossN - onset);
   }
 
 private:
@@ -150,7 +192,10 @@ private:
   bool mUseHP = false, mUseLP = false;
   Biquad mHP, mLP;
 
-  double mFast = 0., mSlow = 0., mSupprThresh = 0., mPeak = 0., mVelPeak = 0.;
+  double mFast = 0., mSlow = 0., mSupprThresh = 0., mPeak = 0., mVelPeak = 0., mRawPeak = 0.;
+  int mMaxLead = 0, mQuiet = 1;
+  float mRing[kRingSize] = {};
+  long mN = 0, mCrossN = 0;
   bool mCapturing = false, mArmed = true, mDipped = true;
   int mHold = 0, mCounter = 0;
 };

@@ -54,7 +54,7 @@ int main()
   for (int b = 0; b < n; b += block)
   {
     const int len = std::min(block, n - b);
-    det.Process(&L[b], &R[b], len, 1., [&](int off, float v) { pos.push_back(b + off); vel.push_back(v); });
+    det.Process(&L[b], &R[b], len, 1., [&](int off, float v, int) { pos.push_back(b + off); vel.push_back(v); });
   }
 
   const int win = det.LatencySamples();

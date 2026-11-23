@@ -241,6 +241,7 @@ inline SampleData* RenderShapedSample(const SampleData& src, const SlotShape& sh
     }
   }
   out->numFrames = (int) out->ch[0].size();
+  out->leadFrames = (int) std::min(pre, out->ch[0].size());
   return out;
 }
 

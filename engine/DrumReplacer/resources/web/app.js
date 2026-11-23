@@ -1850,16 +1850,9 @@ $('#slots').addEventListener('click', e => {
     if (state.viewMode !== 'trigger') openTriggerPage();
     return;
   }
-  // A filled Trigger Slot auditions its sample on click.
-  ensureAudio();
-  playSlot(i, .01);
-  const el = document.querySelector(`#slots .slot[data-slot="${i}"]`);
-  if (el) {
-    el.classList.remove('slot-audition');
-    void el.offsetWidth;
-    el.classList.add('slot-audition');
-    setTimeout(() => el.classList.remove('slot-audition'), 380);
-  }
+  // A filled Trigger Slot auditions its sample on click (in the app / AU: the
+  // engine plays the slot as it sounds, with its envelope, tone, phase and fader).
+  auditionSlot(i);
   if (state.viewMode !== 'trigger') setNameBar(smp, false);
 });
 
@@ -1995,8 +1988,10 @@ function assignSample(i, smp) {
   analyzeAllPhase();
   if (state.selectedSlot === i && $('.inspector').classList.contains('show')) updateInspector();
   toast(`${smp.name} → TRIGGER SLOT ${String(i + 1).padStart(2, '0')} · auto phase ready`);
-  if (window.__TU_NATIVE__ && smp.nativePath && window.__TU_nativeLoadSample)
+  if (window.__TU_NATIVE__ && smp.nativePath && window.__TU_nativeLoadSample) {
     window.__TU_nativeLoadSample(i, smp.nativePath);
+    if (nativeSlotPath) nativeSlotPath[i] = smp.nativePath;
+  }
 }
 
 // ---------- AUTO PHASE ----------
@@ -3120,9 +3115,11 @@ window.addEventListener('keydown', e => {
     e.preventDefault();
     if (inTrigger) playInput();
     else if (state.selectedSample) playHoverPreview(state.selectedSample);
-  } else if (/^[1-8]$/.test(k)) {
-    // 1–8 plays that Trigger Slot (Alt+1–8 sends a sample to it, below).
-    auditionSlot(+k - 1);
+  } else if (/^(?:Digit|Numpad)[1-8]$/.test(e.code || '') || /^[1-8]$/.test(k)) {
+    // 1–8 (top row or numeric keypad) plays that Trigger Slot (Alt+1–8 sends a sample to it, below).
+    const d = /([1-8])$/.exec(e.code || '') || /([1-8])$/.exec(k);
+    e.preventDefault();
+    auditionSlot(+d[1] - 1);
   } else if (k === 't' || k === 'T') {
     setTriggerOpen(!inTrigger);
   } else if (k === 'f' || k === 'F') {
@@ -3147,9 +3144,8 @@ function auditionSlot(i) {
   const smp = slotSample(state.slots[i]);
   if (!smp) return;
   if (window.__TU_NATIVE__) {
-    // ponytail: the native engine has no per-slot audition voice yet; preview
-    // the slot's file (raw, without the slot's edits) so the click is heard.
-    if (smp.nativePath && window.__TU_nativePreview) window.__TU_nativePreview(smp.nativePath);
+    // the engine triggers the slot itself: same sound as a hit (shape, fader, pan)
+    if (typeof SAMFUI === 'function') { syncNativeShapes(); SAMFUI(22, i, 0); }
     return;
   }
   ensureAudio();
@@ -3170,6 +3166,127 @@ window.addEventListener('keydown', e => {
   const el = document.querySelector(`#slots .slot[data-slot="${i}"]`);
   if (el) { el.classList.add('slot-impact'); setTimeout(() => el.classList.remove('slot-impact'), 640); }
 });
+
+// ---------- UNDO / REDO (Cmd+Z / Cmd+Shift+Z) for the Trigger Slots ----------
+// Checkpoints: every 250 ms, when no mouse button is held, the slots are compared
+// with the last checkpoint; a change (assign, delete, envelope, knobs, faders,
+// phase...) becomes one undo step. A whole drag is one step.
+const slotUndo = { stack: [], redo: [], last: null, down: false };
+function slotSnapshot() {
+  return JSON.stringify({ slots: state.slots, ref: state.ap ? state.ap.ref : null });
+}
+window.addEventListener('pointerdown', () => { slotUndo.down = true; }, true);
+window.addEventListener('pointerup', () => { slotUndo.down = false; }, true);
+window.addEventListener('pointercancel', () => { slotUndo.down = false; }, true);
+setInterval(() => {
+  if (slotUndo.down || numericEditor) return;
+  const cur = slotSnapshot();
+  if (slotUndo.last === null) { slotUndo.last = cur; return; }
+  if (cur === slotUndo.last) return;
+  slotUndo.stack.push(slotUndo.last);
+  if (slotUndo.stack.length > 200) slotUndo.stack.shift();
+  slotUndo.redo = [];
+  slotUndo.last = cur;
+}, 250);
+function restoreSlotSnapshot(snap) {
+  const d = JSON.parse(snap);
+  // in place: other code keeps references to the slot objects
+  state.slots.forEach((s, i) => {
+    Object.keys(s).forEach(k => delete s[k]);
+    Object.assign(s, d.slots[i]);
+  });
+  if (state.ap && d.ref !== undefined && d.ref !== null) state.ap.ref = d.ref;
+  slotUndo.last = snap;
+  renderSlots();
+  updateInspector();
+  if (state.viewMode === 'trigger') { renderSampleEditor(); setSlotNameBar(state.selectedSlot); }
+  syncAllSlotAudio();
+  if (window.__TU_NATIVE__) syncNativeShapes(); // engine: loads / clears / reshapes what changed
+}
+function slotUndoStep(redo) {
+  // take a pending change first, so the step undoes exactly what was just done
+  const cur = slotSnapshot();
+  if (slotUndo.last !== null && cur !== slotUndo.last) { slotUndo.stack.push(slotUndo.last); slotUndo.redo = []; slotUndo.last = cur; }
+  const from = redo ? slotUndo.redo : slotUndo.stack;
+  const to = redo ? slotUndo.stack : slotUndo.redo;
+  if (!from.length) { toast(redo ? 'Nothing to redo' : 'Nothing to undo'); return; }
+  to.push(slotUndo.last);
+  restoreSlotSnapshot(from.pop());
+  toast(redo ? 'REDO' : 'UNDO');
+}
+window.addEventListener('keydown', e => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+  const z = e.code === 'KeyZ' || e.key === 'z' || e.key === 'Z';
+  const y = e.code === 'KeyY' || e.key === 'y' || e.key === 'Y';
+  if (!z && !y) return;
+  if (isTypingTarget(e.target) || numericEditor) return; // text fields keep their own undo
+  e.preventDefault();
+  slotUndoStep(y || e.shiftKey);
+});
+
+// ---------- Delete a Trigger Slot ----------
+// Delete / Backspace clears the selected slot(s) (not while editing envelope points);
+// right click on a slot opens a menu with PLAY and DELETE. Both can be undone.
+function deleteSlots(list) {
+  const filled = list.filter(i => slotSample(state.slots[i]));
+  if (!filled.length) return;
+  filled.forEach(i => clearSlot(i));
+  if (filled.length > 1) toast(`${filled.length} TRIGGER SLOTS cleared · Cmd+Z to undo`);
+}
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+  if (e.metaKey || e.ctrlKey || e.altKey || numericEditor || isTypingTarget(e.target)) return;
+  if (multiSel.scope === 'env' && multiSel.env && multiSel.env.size) return; // envelope points: handled there
+  if (multiSel.scope === 'knobs' && multiSel.knobs && multiSel.knobs.size) return;
+  const list = multiSel.slots && multiSel.slots.size ? [...multiSel.slots]
+             : multiSel.faders && multiSel.faders.size ? [...multiSel.faders]
+             : (state.selectedSlot !== null && state.selectedSlot !== undefined ? [state.selectedSlot] : []);
+  if (!list.length || !list.some(i => slotSample(state.slots[i]))) return;
+  e.preventDefault();
+  deleteSlots(list);
+});
+let slotCtxMenu = null;
+function closeSlotCtx() { if (slotCtxMenu) { slotCtxMenu.remove(); slotCtxMenu = null; } }
+function openSlotCtx(i, x, y) {
+  closeSlotCtx();
+  const filled = !!slotSample(state.slots[i]);
+  const m = document.createElement('div');
+  m.className = 'slot-ctx';
+  m.innerHTML = `<div class="slot-ctx-title">TRIGGER SLOT ${String(i + 1).padStart(2, '0')}</div>
+    <button data-ctx="play"${filled ? '' : ' disabled'}>PLAY<span>${i + 1}</span></button>
+    <button data-ctx="delete" class="danger"${filled ? '' : ' disabled'}>DELETE<span>⌫</span></button>
+    <button data-ctx="undo"${slotUndo.stack.length ? '' : ' disabled'}>UNDO<span>⌘Z</span></button>`;
+  document.body.appendChild(m);
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.min(x, innerWidth - r.width - 6) + 'px';
+  m.style.top = Math.min(y, innerHeight - r.height - 6) + 'px';
+  m.addEventListener('pointerdown', ev => ev.stopPropagation());
+  m.addEventListener('click', ev => {
+    const b = ev.target.closest('button[data-ctx]');
+    if (!b || b.disabled) return;
+    const act = b.dataset.ctx;
+    closeSlotCtx();
+    if (act === 'play') auditionSlot(i);
+    else if (act === 'delete') deleteSlots(multiSel.slots && multiSel.slots.has(i) ? [...multiSel.slots] : [i]);
+    else if (act === 'undo') slotUndoStep(false);
+  });
+  slotCtxMenu = m;
+}
+for (const sel of ['#slots', '#faderBank']) {
+  const host = document.querySelector(sel);
+  if (!host) continue;
+  host.addEventListener('contextmenu', e => {
+    const el = e.target.closest('[data-slot]');
+    if (!el) return;
+    e.preventDefault();
+    const i = +el.dataset.slot;
+    if (!(multiSel.slots && multiSel.slots.has(i))) selectSlot(i);
+    openSlotCtx(i, e.clientX, e.clientY);
+  });
+}
+window.addEventListener('pointerdown', closeSlotCtx);
+window.addEventListener('keydown', e => { if (e.key === 'Escape') closeSlotCtx(); });
+window.addEventListener('blur', closeSlotCtx);
 
 // TAB toggles TRIGGER <-> UNIVERSE (HOME). Text fields and inline numeric
 // editors keep their normal Tab.
@@ -4540,7 +4657,7 @@ function gateValueAt(t) {
 // slots are scheduled on the onset of the (lookahead-delayed) dry input.
 function initDetectorWorklet(ctx) {
   if (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined') return;
-  ctx.audioWorklet.addModule('detector-worklet.js?v=208').then(() => {
+  ctx.audioWorklet.addModule('detector-worklet.js').then(() => {
     if (ctx !== audioCtx) return;
     const node = new AudioWorkletNode(ctx, 'tu-detector', {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
@@ -4831,9 +4948,20 @@ function nativeSlotShape(s) {
            cut: s.cut ?? 100, tone: s.tone || 0, gain: s.gain || 0, fadeIn: s.fadeIn || 0, fadeOut: s.fadeOut || 0,
            env, pol: effPolarity(s) ? 1 : 0, offset: effOffset(s), mode: 0 }; // ONE SHOT (new hit chokes the ringing one)
 }
+var nativeSlotPath = []; // var: assignSample may run before this line
 function syncNativeShapes() {
   if (!window.__TU_NATIVE__ || typeof SAMFUI !== 'function' || !window.__TU_nativeBridgeReady) return;
   state.slots.forEach((s, i) => {
+    // the slot's file: load it / clear it when it changed (assign, delete, undo)
+    const cur = slotSample(s);
+    const path = (cur && cur.nativePath) || '';
+    if (nativeSlotPath[i] === undefined) nativeSlotPath[i] = path; // first pass: the engine already has it
+    else if (path !== nativeSlotPath[i]) {
+      nativeSlotPath[i] = path;
+      if (path) window.__TU_nativeLoadSample && window.__TU_nativeLoadSample(i, path);
+      else SAMFUI(5, i, 0);
+      nativeShapeSent[i] = '';
+    }
     // fader / pan / velocity / mute / solo: the layer mix, applied by the engine in real time
     const mix = JSON.stringify([s.level, s.pan, s.velSens ?? 100, !!s.mute, !!s.solo]);
     if (mix !== nativeMixSent[i] && window.__TU_sendSlot) { nativeMixSent[i] = mix; window.__TU_sendSlot(i, s); }
