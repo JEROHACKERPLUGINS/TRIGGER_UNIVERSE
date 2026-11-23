@@ -9,6 +9,7 @@
 */
 
 #include "IPlugAPP.h"
+#include <algorithm>
 #include "IPlugAPP_host.h"
 
 #if defined OS_MAC || defined OS_LINUX
@@ -167,6 +168,8 @@ void IPlugAPP::AppProcess(double** inputs, double** outputs, int nFrames)
   //Do not handle Sysex messages here - SendSysexMsgFromUI overridden
 
   ENTER_PARAMS_MUTEX
-  ProcessBuffers(0.0, GetBlockSize());
+  // TRIGGER UNIVERSE: process the frames the host handed over (<= block size),
+  // not always a full block (that wrote past short device buffers).
+  ProcessBuffers(0.0, std::min(nFrames, GetBlockSize()));
   LEAVE_PARAMS_MUTEX
 }

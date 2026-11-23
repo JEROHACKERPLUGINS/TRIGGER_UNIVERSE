@@ -257,6 +257,9 @@ public:
   bool ApplyMidiInput(const char* name);
 private:
   int mStreamInChans = 0;          // input channels actually opened (0 = no input)
+  bool mInputChosen = false;       // the user picked the input in AUDIO SETUP (else: no input)
+  bool mFirstInit = true;          // crash guard is checked once per launch
+  std::string GuardPath() const;   // exists while an input stream is open (left behind by a crash)
   std::string mAudioNote;
   double mZeroInput[APP_SIGNAL_VECTOR_SIZE] = {}; // feeds the plug when there is no (or a mono) input
   std::unique_ptr<IPlugAPP> mIPlug = nullptr;

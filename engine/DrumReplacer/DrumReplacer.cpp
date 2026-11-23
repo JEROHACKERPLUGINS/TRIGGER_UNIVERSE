@@ -964,43 +964,77 @@ void DrumReplacer::LoadLibrarySettings()
       if (r.is_string())
         mLibraryRoots.push_back(r.get<std::string>());
 
+  // Tolerant reader: a value that is null / of another type (a NaN is saved as
+  // null by the JSON writer) or one broken entry must never stop the app from
+  // opening; that entry gets defaults (and is re-analysed on the next RESCAN).
+  auto num = [](const nlohmann::json& o, const char* k, double def) {
+    const auto it = o.find(k);
+    if (it == o.end() || !it->is_number()) return def;
+    const double v = it->get<double>();
+    return std::isfinite(v) ? v : def;
+  };
+  auto str = [](const nlohmann::json& o, const char* k) {
+    const auto it = o.find(k);
+    return (it != o.end() && it->is_string()) ? it->get<std::string>() : std::string();
+  };
   if (j.contains("files") && j["files"].is_array())
   {
     for (const auto& f : j["files"])
     {
-      LibraryFile lf;
-      lf.root = f.value("root", 0);
-      lf.path = f.value("path", "");
-      lf.name = f.value("name", "");
-      lf.rel = f.value("rel", "");
-      lf.size = f.value("size", 0LL);
-      lf.durMs = f.value("dur", 0.0);
-      lf.sampleRate = f.value("sr", 0);
-      lf.channels = f.value("ch", 0);
-      lf.centroidHz = f.value("centroid", 0.0);
-      lf.rolloffHz = f.value("rolloff", 0.0);
-      lf.flatness = f.value("flatness", 0.0);
-      lf.attackMs = f.value("attack", 0.0);
-      lf.decayMs = f.value("decay", 0.0);
-      lf.crest = f.value("crest", 0.0);
-      lf.zcr = f.value("zcr", 0.0);
-      lf.rms = f.value("rms", 0.0);
-      lf.peak = f.value("peak", 0.0);
-      lf.lufs = f.value("lufs", -70.0);
-      lf.druminess = f.value("drum", 0.0);
-      lf.lateTransient = f.value("late", 0.0);
-      if (f.contains("e") && f["e"].is_array() && f["e"].size() == 4)
-        for (int k = 0; k < 4; k++) lf.emb[k] = f["e"][(size_t) k].get<float>();
-      lf.featureVersion = f.value("v", 0);
-      lf.analyzed = f.value("analyzed", false);
-      lf.cls = f.value("cls", -1);
-      lf.clsConf = f.value("conf", 0.0);
-      lf.mapX = f.value("mx", -1.0f);
-      lf.mapY = f.value("my", -1.0f);
-      if (f.contains("fp") && f["fp"].is_array() && f["fp"].size() == (size_t) tu::kFeatSize)
-        lf.fp = f["fp"].get<std::vector<float>>();
-      if (!lf.path.empty())
-        mLibraryFiles.push_back(std::move(lf));
+      if (!f.is_object()) continue;
+      try
+      {
+        LibraryFile lf;
+        lf.root = (int) num(f, "root", 0);
+        lf.path = str(f, "path");
+        lf.name = str(f, "name");
+        lf.rel = str(f, "rel");
+        lf.size = (long long) num(f, "size", 0);
+        lf.durMs = num(f, "dur", 0);
+        lf.sampleRate = (int) num(f, "sr", 0);
+        lf.channels = (int) num(f, "ch", 0);
+        lf.centroidHz = num(f, "centroid", 0);
+        lf.rolloffHz = num(f, "rolloff", 0);
+        lf.flatness = num(f, "flatness", 0);
+        lf.attackMs = num(f, "attack", 0);
+        lf.decayMs = num(f, "decay", 0);
+        lf.crest = num(f, "crest", 0);
+        lf.zcr = num(f, "zcr", 0);
+        lf.rms = num(f, "rms", 0);
+        lf.peak = num(f, "peak", 0);
+        lf.lufs = num(f, "lufs", -70);
+        lf.druminess = num(f, "drum", 0);
+        lf.lateTransient = num(f, "late", 0);
+        if (f.contains("e") && f["e"].is_array() && f["e"].size() == 4)
+          for (int k = 0; k < 4; k++)
+          {
+            const auto& v = f["e"][(size_t) k];
+            lf.emb[k] = (v.is_number() && std::isfinite(v.get<double>())) ? v.get<float>() : 0.f;
+          }
+        lf.featureVersion = (int) num(f, "v", 0);
+        lf.analyzed = f.contains("analyzed") && f["analyzed"].is_boolean() && f["analyzed"].get<bool>();
+        lf.cls = (int) num(f, "cls", -1);
+        if (lf.cls < -1 || lf.cls >= tu::kNumClasses) lf.cls = -1;
+        lf.clsConf = num(f, "conf", 0);
+        lf.mapX = (float) num(f, "mx", -1);
+        lf.mapY = (float) num(f, "my", -1);
+        if (f.contains("fp") && f["fp"].is_array() && f["fp"].size() == (size_t) tu::kFeatSize)
+        {
+          bool good = true;
+          std::vector<float> fp;
+          fp.reserve((size_t) tu::kFeatSize);
+          for (const auto& v : f["fp"])
+          {
+            if (!v.is_number() || !std::isfinite(v.get<double>())) { good = false; break; }
+            fp.push_back(v.get<float>());
+          }
+          if (good) lf.fp = std::move(fp);
+          else lf.featureVersion = 0; // broken fingerprint: analyse again on RESCAN
+        }
+        if (!lf.path.empty())
+          mLibraryFiles.push_back(std::move(lf));
+      }
+      catch (...) { /* skip a broken entry */ }
     }
   }
   // positions from another map layout are not reused: the map is rebuilt
@@ -1023,29 +1057,41 @@ void DrumReplacer::SaveLibrarySettings() const
   j["files"] = nlohmann::json::array();
   for (const auto& f : mLibraryFiles)
   {
+    // never write NaN / inf: JSON stores them as null (see the tolerant reader)
+    auto fin = [](double v, double def) { return std::isfinite(v) ? v : def; };
     nlohmann::json e = {{"root", f.root}, {"path", f.path}, {"name", f.name},
-                        {"rel", f.rel}, {"size", f.size}, {"dur", f.durMs},
+                        {"rel", f.rel}, {"size", f.size}, {"dur", fin(f.durMs, 0)},
                         {"sr", f.sampleRate}, {"ch", f.channels},
-                        {"centroid", f.centroidHz}, {"rolloff", f.rolloffHz},
-                        {"flatness", f.flatness}, {"attack", f.attackMs},
-                        {"decay", f.decayMs}, {"crest", f.crest},
-                        {"zcr", f.zcr}, {"rms", f.rms}, {"peak", f.peak},
-                        {"lufs", f.lufs}, {"drum", f.druminess}, {"late", f.lateTransient},
-                        {"e", {f.emb[0], f.emb[1], f.emb[2], f.emb[3]}},
+                        {"centroid", fin(f.centroidHz, 0)}, {"rolloff", fin(f.rolloffHz, 0)},
+                        {"flatness", fin(f.flatness, 0)}, {"attack", fin(f.attackMs, 0)},
+                        {"decay", fin(f.decayMs, 0)}, {"crest", fin(f.crest, 0)},
+                        {"zcr", fin(f.zcr, 0)}, {"rms", fin(f.rms, 0)}, {"peak", fin(f.peak, 0)},
+                        {"lufs", fin(f.lufs, -70)}, {"drum", fin(f.druminess, 0)}, {"late", fin(f.lateTransient, 0)},
+                        {"e", {fin(f.emb[0], 0), fin(f.emb[1], 0), fin(f.emb[2], 0), fin(f.emb[3], 0)}},
                         {"v", f.featureVersion}, {"analyzed", f.analyzed},
-                        {"cls", f.cls}, {"conf", f.clsConf}, {"mx", f.mapX}, {"my", f.mapY}};
+                        {"cls", f.cls}, {"conf", fin(f.clsConf, 0)}, {"mx", fin(f.mapX, -1)}, {"my", fin(f.mapY, -1)}};
     if ((int) f.fp.size() == tu::kFeatSize)
     {
       nlohmann::json fp = nlohmann::json::array();
-      for (float v : f.fp) fp.push_back(std::round(v * 1000.f) / 1000.f); // 3 decimals: smaller file
-      e["fp"] = fp;
+      bool good = true;
+      for (float v : f.fp) { if (!std::isfinite(v)) { good = false; break; } fp.push_back(std::round(v * 1000.f) / 1000.f); } // 3 decimals: smaller file
+      if (good) e["fp"] = fp;
     }
     j["files"].push_back(std::move(e));
   }
 
-  std::ofstream out(path);
-  if (out)
-    out << j.dump();
+  // Written to a temp file and renamed: a crash while saving can't leave a
+  // half-written library. Invalid UTF-8 in a file name is replaced, not thrown.
+  std::string text;
+  try { text = j.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace); } catch (...) { return; }
+  const std::string tmp = path + ".tmp";
+  {
+    std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    out << text;
+    if (!out) return;
+  }
+  std::filesystem::rename(tmp, path, ec);
 }
 
 void DrumReplacer::ScanLibraryAndSend()
@@ -1212,13 +1258,15 @@ void DrumReplacer::StartLibraryAnalysis()
   const bool forceRebuild = mForceMapRebuild;
   mForceMapRebuild = false;
   mAnalysisThread = std::thread([this, gen, items = std::move(items), numJobs, forceRebuild]() mutable {
+   try {
     int processed = 0;
     for (auto& it : items)
     {
       if (!it.needs) continue;
       if (mAnalysisGeneration.load() != gen) return;
 
-      const WavFeatures feat = AnalyzeWav(it.path, &mPreviewCache, it.size);
+      WavFeatures feat;
+      try { feat = AnalyzeWav(it.path, &mPreviewCache, it.size); } catch (...) { /* unreadable file: stays off the map */ }
       AnalysisResult result;
       result.generation = gen;
       result.index = it.index;
@@ -1315,6 +1363,17 @@ void DrumReplacer::StartLibraryAnalysis()
     done.total = numJobs;
     std::lock_guard<std::mutex> lock(mAnalysisMutex);
     mAnalysisResults.push_back(std::move(done));
+   }
+   catch (...)
+   {
+     // An exception here (out of memory on a huge map, a library bug) used to
+     // terminate the whole app. Now the analysis just ends; the UI is told it is done.
+     AnalysisResult done;
+     done.generation = gen;
+     done.done = true;
+     std::lock_guard<std::mutex> lock(mAnalysisMutex);
+     mAnalysisResults.push_back(std::move(done));
+   }
   });
 }
 

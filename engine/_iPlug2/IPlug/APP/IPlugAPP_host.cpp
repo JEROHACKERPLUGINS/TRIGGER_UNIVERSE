@@ -12,6 +12,7 @@
 
 #ifdef OS_WIN
 #include <sys/stat.h>
+#include <cstdio>
 #include "win32_utf8.h"
 #endif
 
@@ -111,6 +112,9 @@ bool IPlugAPPHost::InitState()
 
       GetPrivateProfileString("audio", "indev", "Built-in Input", buf, STRBUFSZ, mINIPath.Get()); mState.mAudioInDev.Set(buf);
       GetPrivateProfileString("audio", "outdev", "Built-in Output", buf, STRBUFSZ, mINIPath.Get()); mState.mAudioOutDev.Set(buf);
+      // TRIGGER UNIVERSE: an input opens only once the user picked it in AUDIO SETUP
+      // (the system default input can be a virtual device that crashes duplex with another output)
+      mInputChosen = GetPrivateProfileInt("audio", "inchosen", 0, mINIPath.Get()) != 0;
 
       //audio
       mState.mAudioInChanL = GetPrivateProfileInt("audio", "in1", 1, mINIPath.Get()); // 1 is first audio input
@@ -172,6 +176,7 @@ void IPlugAPPHost::UpdateINI()
 
   WritePrivateProfileString("audio", "indev", mState.mAudioInDev.Get(), ini);
   WritePrivateProfileString("audio", "outdev", mState.mAudioOutDev.Get(), ini);
+  WritePrivateProfileString("audio", "inchosen", mInputChosen ? "1" : "0", ini);
 
   sprintf(buf, "%u", mState.mAudioInChanL);
   WritePrivateProfileString("audio", "in1", buf, ini);
@@ -421,6 +426,7 @@ bool IPlugAPPHost::TryToChangeAudio()
   auto inputID = GetAudioDeviceID(mState.mAudioDriverType == kDeviceASIO ? mState.mAudioOutDev.Get() : mState.mAudioInDev.Get());
 #elif defined OS_MAC
   // TRIGGER UNIVERSE: "off" = output only (the INPUT player still feeds the plug)
+  if (!mInputChosen) mState.mAudioInDev.Set(OFF_TEXT);
   const bool noInput = std::string_view(mState.mAudioInDev.Get()) == OFF_TEXT;
   auto inputID = noInput ? std::optional<uint32_t>(0u) : GetAudioDeviceID(mState.mAudioInDev.Get());
 #else
@@ -569,8 +575,17 @@ bool IPlugAPPHost::SelectMIDIDevice(ERoute direction, const char* pPortName)
   return false;
 }
 
+std::string IPlugAPPHost::GuardPath() const
+{
+  std::string dir(mINIPath.Get());
+  const auto slash = dir.find_last_of('/');
+  if (slash != std::string::npos) dir.erase(slash + 1);
+  return dir + "audio-input.guard";
+}
+
 void IPlugAPPHost::CloseAudio()
 {
+  std::remove(GuardPath().c_str()); // closed cleanly: not a crash
   if (mDAC && mDAC->isStreamOpen())
   {
     if (mDAC->isStreamRunning())
@@ -596,6 +611,23 @@ bool IPlugAPPHost::InitAudio(uint32_t inID, uint32_t outID, uint32_t sr, uint32_
   //  - the input opens with as many channels as the device has (1 -> both sides)
   //  - if the stream does not open, retry at the output device's own rate, then
   //    without input; mAudioNote says what happened.
+  // Crash guard: the guard file exists while an input stream is open. Found at the
+  // first start of a launch = the app died with that input open -> start without input.
+  std::string crashNote;
+  if (mFirstInit)
+  {
+    mFirstInit = false;
+    struct stat gst;
+    if (stat(GuardPath().c_str(), &gst) == 0 && std::string_view(mState.mAudioInDev.Get()) != OFF_TEXT)
+    {
+      crashNote = std::string("La app se cerró sola la última vez con la entrada ") + mState.mAudioInDev.Get()
+                + " abierta: arrancó sin entrada. Elegí la entrada de nuevo en AUDIO / MIDI SETUP para probarla.";
+      mState.mAudioInDev.Set(OFF_TEXT);
+      mInputChosen = false;
+      inID = 0;
+    }
+  }
+
   CloseAudio();
   mAudioNote.clear();
 
@@ -681,6 +713,12 @@ bool IPlugAPPHost::InitAudio(uint32_t inID, uint32_t outID, uint32_t sr, uint32_
   }
   if (!noInput && devInChans == 1 && mAudioNote.empty())
     mAudioNote = "Entrada mono: el canal 1 va a los dos lados";
+  if (!crashNote.empty())
+    mAudioNote = crashNote;
+  if (mStreamInChans > 0)
+  {
+    if (FILE* f = fopen(GuardPath().c_str(), "w")) { fputs(mState.mAudioInDev.Get(), f); fclose(f); }
+  }
 
   mActiveState = mState;
   UpdateINI();
@@ -712,6 +750,7 @@ std::vector<IPlugAPPHost::DeviceSummary> IPlugAPPHost::ListAudioDevices()
 
 bool IPlugAPPHost::ApplyAudioSettings(const char* inDev, const char* outDev, uint32_t sr, uint32_t bufferSize)
 {
+  if (inDev && std::string_view(inDev) != mState.mAudioInDev.Get()) mInputChosen = std::string_view(inDev) != OFF_TEXT;
   if (inDev) mState.mAudioInDev.Set(inDev);
   if (outDev) mState.mAudioOutDev.Set(outDev);
   if (sr) mState.mAudioSR = sr;
@@ -800,38 +839,32 @@ int IPlugAPPHost::AudioCallback(void* pOutputBuffer, void* pInputBuffer, uint32_
     if (doFade && pInputBufferD && _this->mStreamInChans > 0)
       ApplyFades(pInputBufferD, _this->mStreamInChans, nFrames, _this->mAudioEnding);
     
-    for (int i = 0; i < nFrames; i++)
+    // TRIGGER UNIVERSE: process the device buffer in chunks of at most
+    // APP_SIGNAL_VECTOR_SIZE frames. The stock loop always handed the plug a full
+    // APP_SIGNAL_VECTOR_SIZE block starting inside the device buffer, so a device
+    // buffer smaller than that (or not a multiple of it, e.g. 32 samples) made
+    // the plug write past the end of RtAudio's buffer (heap corruption, crash).
+    const int streamIns = _this->mStreamInChans;
+    for (int pos = 0; pos < (int) nFrames; )
     {
-      _this->mBufIndex %= APP_SIGNAL_VECTOR_SIZE;
-
-      if (_this->mBufIndex == 0)
+      const int n = std::min<int>(APP_SIGNAL_VECTOR_SIZE, (int) nFrames - pos);
+      for (int c = 0; c < nins; c++)
       {
-        for (int c = 0; c < nins; c++)
-        {
-          // TRIGGER UNIVERSE: mono input -> both sides; no input -> silence
-          const int streamIns = _this->mStreamInChans;
-          double* pIn = (streamIns > 0 && pInputBufferD) ? (pInputBufferD + (std::min(c, streamIns - 1) * nFrames)) + i
-                                                         : _this->mZeroInput;
-          _this->mInputBufPtrs.Set(c, pIn);
-        }
-        
-        for (int c = 0; c < nouts; c++)
-        {
-          _this->mOutputBufPtrs.Set(c, (pOutputBufferD + (c * nFrames)) + i);
-        }
-        
-        _this->mIPlug->AppProcess(_this->mInputBufPtrs.GetList(), _this->mOutputBufPtrs.GetList(), APP_SIGNAL_VECTOR_SIZE);
-
-        _this->mSamplesElapsed += APP_SIGNAL_VECTOR_SIZE;
+        // mono input -> both sides; no input -> silence
+        double* pIn = (streamIns > 0 && pInputBufferD) ? pInputBufferD + std::min(c, streamIns - 1) * (int) nFrames + pos
+                                                       : _this->mZeroInput;
+        _this->mInputBufPtrs.Set(c, pIn);
       }
-      
       for (int c = 0; c < nouts; c++)
-      {
-        pOutputBufferD[c * nFrames + i] *= APP_MULT;
-      }
+        _this->mOutputBufPtrs.Set(c, pOutputBufferD + c * (int) nFrames + pos);
 
-      _this->mBufIndex++;
+      _this->mIPlug->AppProcess(_this->mInputBufPtrs.GetList(), _this->mOutputBufPtrs.GetList(), n);
+      _this->mSamplesElapsed += n;
+      pos += n;
     }
+    for (int c = 0; c < nouts; c++)
+      for (int i = 0; i < (int) nFrames; i++)
+        pOutputBufferD[c * (int) nFrames + i] *= APP_MULT;
     
     if (doFade)
       ApplyFades(pOutputBufferD, nouts, nFrames, _this->mAudioEnding);
