@@ -18,7 +18,7 @@ int main()
     {"../samples/LR - Snare Indie 1.wav",  0.7, 1.0f},
     {"../samples/LR - Kick Rock 1.wav",    1.2, 0.5f},
     {"../samples/LR - Snare Indie 1.wav",  1.7, 0.6f},
-    {"../samples/LR - Kick Rock 1.wav",    2.2, 0.25f},
+    {"../samples/LR - Kick Rock 1.wav",    2.2, 0.4f},
   };
   const int n = (int) (4.5 * sr);
   std::vector<float> L(n), R(n);
@@ -45,7 +45,9 @@ int main()
 
   TransientDetector det;
   det.Reset(sr);
-  det.SetParams(70., 50., 50., 30., 15000., 50.); // plugin defaults
+  // Prototype semantics: DETAIL 14 % (default, 0.21 full scale); RETRIGGER 200 ms
+  // keeps the ringing snare from firing again (retrigger is blind time only).
+  det.SetParams(51., 200., 14., 20., 20000., 0.);
 
   std::vector<int> pos; std::vector<float> vel;
   const int block = 256;

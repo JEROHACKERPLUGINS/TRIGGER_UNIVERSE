@@ -14,6 +14,19 @@ inline float ShapeVelocity(float velocity, double veloCurvePct, double dynamicsP
   return (float) (1. - dyn + dyn * shaped);
 }
 
+// Gain of one triggered hit, same as the prototype (playSlot in app.js):
+//   SENSITIVITY sets the dynamic range (like Trigger 2): 0 % squeezes soft and hard
+//   hits together (exponent 0.35), 100 % spreads them apart (exponent 2.0).
+//   The slot's VELOCITY amount blends that response with a fixed level.
+// velocity = the detector's peak level (0..2, full scale = 1).
+inline float TriggerGain(float velocity, double sensitivityPct, double velocityAmountPct)
+{
+  const double dynExp = 0.35 + std::clamp(sensitivityPct, 0., 100.) / 100. * 1.65;
+  const double dynamics = std::pow(std::clamp((double) velocity, 0., 2.), dynExp);
+  const double amount = std::clamp(velocityAmountPct / 100., 0., 1.);
+  return (float) std::clamp(1. - amount + amount * dynamics, 0., 2.2);
+}
+
 // Transient gate on the original (dry) signal, keyed by detected hits: each hit opens it
 // over Attack, then it closes over Release down to the Sustain floor. Cuts bleed between
 // hits when you blend in the original. Pro only.

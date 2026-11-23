@@ -6,6 +6,8 @@
 #include "DSP/TransientDetector.h"
 #include "DSP/Dynamics.h"
 #include "DSP/PreviewPlayer.h"
+#include "DSP/PreviewCache.h"
+#include "DSP/InputPlayer.h"
 #include "DSP/SampleMap.h"
 #include "DSP/SampleClassifier.h"
 #include <atomic>
@@ -97,7 +99,9 @@ enum EMsgTags
   kMsgTagGetLibrary = 10,
   kMsgTagPreviewPath = 11, // data = path: play the start of that file (library hover/click, slot audition)
   kMsgTagPreviewStop = 12,
-  kMsgTagRebuildMap = 13  // rebuild the whole map (aligned to the current one)
+  kMsgTagRebuildMap = 13, // rebuild the whole map (aligned to the current one)
+  kMsgTagInputPlay = 14,  // data = path (empty = the bundled demo input): play it INTO the input
+  kMsgTagInputStop = 15
 };
 
 class DrumReplacer final : public Plugin
@@ -222,6 +226,10 @@ private:
   HitGate mGate;
   Slot mSlots[kNumSlots];
   PreviewPlayer mPreview;          // library / slot audition, independent of MIX
+  PreviewCache mPreviewCache;      // decoded preview heads (filled by the analyser and by previews)
+  InputPlayer mInputPlayer;        // demo / file INPUT, summed with the live input
+  bool mInputPlayingSent = false;  // last state told to the UI
+  std::vector<sample> mIn[2];      // live input + INPUT player, sized in OnReset
   std::vector<float> mPrev[2];     // sized in OnReset
   std::vector<float> mWet[2];      // sized in OnReset
   std::vector<sample> mDelay[2];   // dry delay = detector latency, sized in OnReset

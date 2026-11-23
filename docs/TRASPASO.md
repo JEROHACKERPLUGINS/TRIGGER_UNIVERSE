@@ -102,6 +102,15 @@ Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el
 - Ojo: el mapa busca vecinos por fuerza bruta (O(n²)); con 100k samples el armado en segundo plano va a tardar mucho. Pendiente: kd-tree.
 - `app.js?v=242`.
 
+## 2.7 Sesión 22/11/2026 (23:30) — la app suena: detector del prototipo, INPUT de demo, caché, sin auto-escaneo
+
+- **Sin auto-escaneo al abrir**: la app / el AU muestran la biblioteca cacheada tal cual. Se escanean las carpetas (y se analizan solo los archivos nuevos o cambiados) con RESCAN o al agregar una location. Única excepción: la primera vez (locations sin caché). Si hay samples analizados con un motor viejo, la UI avisa (`libraryStale`) y se re-analizan con RESCAN. Sin límite de archivos (el tope de 5000 ya no existe).
+- **Caché de audio** (`DSP/PreviewCache.h`): el primer segundo de cada sample decodificado en memoria (LRU, 384 MB ≈ 1000 samples estéreo 48 kHz). La llena el analizador mientras lee cada archivo y cada preview; el preview sale de memoria al instante.
+- **Detector = el del prototipo** (`DSP/TransientDetector.h`, verificado contra `detector-worklet.js` con SN TOP 1: 136/136 golpes, mismos tiempos y velocidades). DETAIL = umbral (0–100 % → 0–1,5 de full scale; antes estaba invertido), SUPPRESS, RETRIGGER = tiempo ciego. SENSITIVITY ya no es umbral: es el rango dinámico de los golpes (`TriggerGain` en `Dynamics.h`, misma fórmula que `playSlot`); el VELOCITY del slot dosifica cuánto sigue al golpe. Defaults = prototipo (SENS 51, DETAIL 14, RETRIG 30, SUPP 0, LOW 20, HIGH 20k).
+- **INPUT de demo en la app** (`DSP/InputPlayer.h`): ▶ INPUT hace que el motor reproduzca SN TOP 1 dentro de su entrada (sumado a la entrada real); pasa por INPUT, detector, delay y MIX. Si no hay ningún slot cargado, el slot 01 recibe SNARE.cm (primer golpe, 510 ms) como en el prototipo. Los dos WAV van dentro del bundle (`Resources/web/`). La UI muestra el contador de triggers y el LED / velocidad de cada golpe (`hit`). Mensajes nuevos: `14` INPUT play, `15` INPUT stop; motor → UI `input` {playing}, `libraryStale`.
+- Ojo: con MIX en 0 % se escucha solo el INPUT (igual que en la web); para oír los samples disparados hay que subir MIX.
+- `app.js?v=243`. Test nuevo: `tests/input_player_test.cpp`.
+
 ## 3. Cómo retomar ahora mismo
 
 ### 3.1 Abrir el prototipo

@@ -50,6 +50,23 @@ static std::string PromptForFolder()
 #endif
 }
 
+// A file shipped inside the app / plugin bundle (Resources/web/), "" if missing.
+static std::string BundledFile(const char* name)
+{
+  WDL_String res;
+  BundleResourcePath(res, BUNDLE_ID);
+  std::string path = std::string(res.Get()) + "/web/" + name;
+  std::error_code ec;
+  return std::filesystem::exists(path, ec) ? path : std::string();
+}
+
+static bool IsBundledDemoSample(const char* path)
+{
+  const std::string p(path ? path : "");
+  const std::string tail = "/web/SNARE.cm.wav";
+  return p.size() >= tail.size() && p.compare(p.size() - tail.size(), tail.size(), tail) == 0;
+}
+
 static std::string LibrarySettingsPath()
 {
   const char* home = getenv("HOME");
@@ -149,7 +166,7 @@ struct WavFeatures
 // Recognition engine (DSP/SampleAnalysis.h): drum type + fingerprint for the map.
 // Only the start of the file is decoded (the analysis uses the first 5 s);
 // the duration comes from the WAV header.
-static WavFeatures AnalyzeWav(const std::string& path)
+static WavFeatures AnalyzeWav(const std::string& path, PreviewCache* pCache = nullptr, long long fileSize = 0)
 {
   WavFeatures out;
   std::vector<std::vector<float>> channels;
@@ -157,6 +174,7 @@ static WavFeatures AnalyzeWav(const std::string& path)
   const WavInfo info = ReadWavInfo(path);
   if (!LoadWavFile(path, channels, sr, 8u << 20) || channels.empty() || sr <= 0)
     return out; // ok = false, centroid 0: the UI keeps it off the map
+  if (pCache) pCache->Put(path, fileSize, channels, sr); // the preview plays from memory from now on
 
   const tu::SampleFeatures f = tu::AnalyzeSample(channels, sr, info.durMs);
   if (!f.ok)
@@ -226,13 +244,15 @@ DrumReplacer::~DrumReplacer()
 void DrumReplacer::InitParams()
 {
   // Detector
-  GetParam(kSensitivity)->InitPercentage("Sensitivity", 45.); // ~-30 dBFS: real kit tracks fire on bleed below that
-  GetParam(kRetrigger)->InitMilliseconds("Retrigger", 50., 0., 1000.);
-  GetParam(kDetail)->InitPercentage("Detail", 50.);
+  // Same meaning and defaults as the prototype (see TransientDetector.h):
+  // SENSITIVITY = dynamic range of the triggered hits, DETAIL = threshold.
+  GetParam(kSensitivity)->InitPercentage("Sensitivity", 51.);
+  GetParam(kRetrigger)->InitMilliseconds("Retrigger", 30., 0., 1000.);
+  GetParam(kDetail)->InitPercentage("Detail", 14.);
   GetParam(kDetectorMode)->InitInt("Mode", 0, 0, 3); // ponytail: unused until we know what the original modes do
-  GetParam(kLowCut)->InitFrequency("Low Cut", 30., 20., 20000.);
-  GetParam(kHighCut)->InitFrequency("High Cut", 15000., 20., 20000.);
-  GetParam(kSuppression)->InitPercentage("Suppression", 50.);
+  GetParam(kLowCut)->InitFrequency("Low Cut", 20., 20., 20000.);
+  GetParam(kHighCut)->InitFrequency("High Cut", 20000., 20., 20000.);
+  GetParam(kSuppression)->InitPercentage("Suppression", 0.);
 
   // Gain
   GetParam(kInputGain)->InitGain("Input Gain", 0., -24., 24.);
@@ -330,6 +350,18 @@ bool DrumReplacer::LoadSlot(int slot, const char* path)
   std::vector<std::vector<float>> chans;
   double sr = 0.;
   const bool ok = path && *path && LoadWavFile(path, chans, sr) && !chans.empty();
+  if (ok && IsBundledDemoSample(path))
+  {
+    // The demo SNARE.cm file holds several hits: the slot gets the first one
+    // (510 ms with a 10 ms fade), like the prototype.
+    const size_t keep = std::min(chans[0].size(), (size_t) (0.51 * sr));
+    const size_t fade = std::min(keep, (size_t) (0.01 * sr));
+    for (auto& c : chans)
+    {
+      c.resize(std::min(c.size(), keep));
+      for (size_t k = 0; k < fade && k < c.size(); k++) c[c.size() - 1 - k] *= (float) k / (float) fade;
+    }
+  }
   if (ok)
   {
     pData->numChannels = std::min((int) chans.size(), 2);
@@ -348,8 +380,17 @@ void DrumReplacer::OnIdle()
   for (auto& slot : mSlots)
     slot.CollectGarbage();
   mPreview.CollectGarbage();
+  mInputPlayer.CollectGarbage();
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
+  {
+    const bool playing = mInputPlayer.IsPlaying();
+    if (mUIOpen && playing != mInputPlayingSent)
+    {
+      mInputPlayingSent = playing;
+      SendJSONFromDelegate({{"id", "input"}, {"playing", playing}, {"dur", mInputPlayer.DurationSec()}});
+    }
+  }
   std::vector<AnalysisResult> pending;
   {
     std::lock_guard<std::mutex> lock(mAnalysisMutex);
@@ -449,13 +490,29 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
   const double sr = GetSampleRate();
   const sample inGain = GetParam(kInputGain)->DBToAmp();
+  const double sens = GetParam(kSensitivity)->Value();
+
+  // 0. INPUT = live input + the INPUT player (demo / file), like a track in the DAW
+  if ((int) mIn[0].size() < nFrames) { mIn[0].resize(nFrames); mIn[1].resize(nFrames); }
+  sample* inL = mIn[0].data();
+  sample* inR = mIn[1].data();
+  std::copy(inputs[0], inputs[0] + nFrames, inL);
+  std::copy(inputs[1], inputs[1] + nFrames, inR);
+  {
+    float* tL = mPrev[0].data(); // scratch, refilled by the preview below
+    float* tR = mPrev[1].data();
+    std::fill(tL, tL + nFrames, 0.f);
+    std::fill(tR, tR + nFrames, 0.f);
+    mInputPlayer.Render(tL, tR, nFrames, sr);
+    for (int i = 0; i < nFrames; i++) { inL[i] += tL[i]; inR[i] += tR[i]; }
+  }
 
   // 1. Detect. Hits come out at the end of the detector's peak window, which is exactly
   //    when the delayed dry signal reaches the onset, so they fire right away.
   mDetector.SetParams(GetParam(kSensitivity)->Value(), GetParam(kRetrigger)->Value(),
                       GetParam(kDetail)->Value(), GetParam(kLowCut)->Value(),
                       GetParam(kHighCut)->Value(), GetParam(kSuppression)->Value());
-  mDetector.Process(inputs[0], inputs[1], nFrames, inGain, [&](int offset, float velocity) {
+  mDetector.Process(inL, inR, nFrames, inGain, [&](int offset, float velocity) {
     if (mNumHits < kMaxHits) mHits[mNumHits++] = {offset, velocity};
   });
 
@@ -506,10 +563,10 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   {
     Slot& slot = mSlots[s];
     slot.SwapIfPending();
-    const double veloCurve = GetParam(SlotParam(s, kSlotVeloCurve))->Value();
-    const double dynCurve = GetParam(SlotParam(s, kSlotDynCurve))->Value();
+    // the UI sends the slot VELOCITY amount (0..100 %) in kSlotVeloCurve
+    const double velAmount = GetParam(SlotParam(s, kSlotVeloCurve))->Value();
     for (int h = 0; h < numDue; h++)
-      slot.Trigger(due[h].countdown, ShapeVelocity(due[h].velocity, veloCurve, dynCurve));
+      slot.Trigger(due[h].countdown, TriggerGain(due[h].velocity, sens, velAmount));
 
     const bool audible = !GetParam(SlotParam(s, kSlotMute))->Bool()
                       && (!anySolo || GetParam(SlotParam(s, kSlotSolo))->Bool());
@@ -540,8 +597,8 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   for (int i = 0; i < nFrames; i++)
   {
     const sample dryL = mDelay[0][mDelayPos], dryR = mDelay[1][mDelayPos];
-    mDelay[0][mDelayPos] = inputs[0][i];
-    mDelay[1][mDelayPos] = inputs[1][i];
+    mDelay[0][mDelayPos] = inL[i];
+    mDelay[1][mDelayPos] = inR[i];
     if (++mDelayPos == delayLen) mDelayPos = 0;
 
     while (nextHit < numDue && due[nextHit].countdown == i)
@@ -596,6 +653,8 @@ void DrumReplacer::OnReset()
     w.assign(GetBlockSize(), 0.f);
   for (auto& w : mPrev)
     w.assign(GetBlockSize(), 0.f);
+  for (auto& w : mIn)
+    w.assign(GetBlockSize(), 0.);
 
   mDetector.Reset(sr);
   mGate.Reset();
@@ -730,10 +789,18 @@ bool DrumReplacer::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* 
       // Only the first ~2 MB: a preview plays <= 0.8 s, long multitrack
       // files must not stall the UI thread.
       const std::string path((const char*) pData, (size_t) dataSize);
+      std::error_code ec;
+      const long long fileSize = (long long) std::filesystem::file_size(path, ec);
+      if (SampleData* pCached = ec ? nullptr : mPreviewCache.GetCopy(path, fileSize))
+      {
+        mPreview.SetSample(pCached); // from memory: instant
+        return true;
+      }
       std::vector<std::vector<float>> chans;
       double sr = 0.;
       if (LoadWavFile(path, chans, sr, 2u << 20) && !chans.empty() && sr > 0.)
       {
+        if (!ec) mPreviewCache.Put(path, fileSize, chans, sr);
         auto* pData2 = new SampleData;
         pData2->numChannels = std::min((int) chans.size(), 2);
         for (int c = 0; c < pData2->numChannels; c++)
@@ -743,6 +810,35 @@ bool DrumReplacer::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* 
         mPreview.SetSample(pData2);
       }
     }
+    return true;
+  }
+
+  if (msgTag == kMsgTagInputPlay)
+  {
+    std::string path = (pData && dataSize > 0) ? std::string((const char*) pData, (size_t) dataSize) : std::string();
+    if (path.empty()) path = BundledFile("SN_TOP_1COMMIT_17-140.wav");
+    std::vector<std::vector<float>> chans;
+    double sr = 0.;
+    if (!path.empty() && LoadWavFile(path, chans, sr) && !chans.empty() && sr > 0.)
+    {
+      auto* pIn = new SampleData;
+      pIn->numChannels = std::min((int) chans.size(), 2);
+      for (int c = 0; c < pIn->numChannels; c++)
+        pIn->ch[c] = std::move(chans[c]);
+      pIn->numFrames = (int) pIn->ch[0].size();
+      pIn->sampleRate = sr;
+      mInputPlayer.Start(pIn);
+    }
+#ifdef WEBVIEW_EDITOR_DELEGATE
+    else
+      SendJSONFromDelegate({{"id", "input"}, {"playing", false}, {"error", "No se pudo leer el INPUT"}});
+#endif
+    return true;
+  }
+
+  if (msgTag == kMsgTagInputStop)
+  {
+    mInputPlayer.Stop();
     return true;
   }
 
@@ -1031,7 +1127,7 @@ void DrumReplacer::StartLibraryAnalysis()
 {
   StopLibraryAnalysis();
 
-  struct Item { int index; std::string path; std::string name; bool needs; bool ok; double durMs; int cls; std::vector<float> fp; float mx, my; };
+  struct Item { int index; std::string path; std::string name; bool needs; bool ok; double durMs; int cls; std::vector<float> fp; float mx, my; long long size; };
   std::vector<Item> items;
   items.reserve(mLibraryFiles.size());
   int numJobs = 0;
@@ -1042,7 +1138,7 @@ void DrumReplacer::StartLibraryAnalysis()
     const bool needs = NeedsAnalysis(f);
     const bool ok = !needs && f.centroidHz > 0 && (int) f.fp.size() == tu::kFeatSize;
     // re-analysed files lose their old position: the map is rebuilt or they are inserted
-    items.push_back({(int) i, f.path, f.name, needs, ok, f.durMs, f.cls, f.fp, needs ? -1.f : f.mapX, needs ? -1.f : f.mapY});
+    items.push_back({(int) i, f.path, f.name, needs, ok, f.durMs, f.cls, f.fp, needs ? -1.f : f.mapX, needs ? -1.f : f.mapY, f.size});
     numJobs += needs ? 1 : 0;
     mapMissing |= ok && f.mapX < 0.f;
   }
@@ -1078,7 +1174,7 @@ void DrumReplacer::StartLibraryAnalysis()
       if (!it.needs) continue;
       if (mAnalysisGeneration.load() != gen) return;
 
-      const WavFeatures feat = AnalyzeWav(it.path);
+      const WavFeatures feat = AnalyzeWav(it.path, &mPreviewCache, it.size);
       AnalysisResult result;
       result.generation = gen;
       result.index = it.index;
@@ -1204,19 +1300,21 @@ void DrumReplacer::OnUIOpen()
   mUIOpen = true;
   mHitCountSent = mHitCount.load();
 #ifdef WEBVIEW_EDITOR_DELEGATE
-  SendJSONFromDelegate({{"id", "init"}, {"pro", kIsPro}, {"numSlots", kNumSlots}});
-  if (!mLibraryScanned && !mLibraryRoots.empty())
-  {
+  SendJSONFromDelegate({{"id", "init"}, {"pro", kIsPro}, {"numSlots", kNumSlots},
+                        {"demoInput", BundledFile("SN_TOP_1COMMIT_17-140.wav")},
+                        {"demoSample", BundledFile("SNARE.cm.wav")}});
+  // Opening the app / plugin never scans or analyses by itself: the cached
+  // library is shown as it was. The folders are scanned (and new / changed files
+  // analysed) only on RESCAN or when a location is added. The very first time
+  // (locations but no cache yet) the folders are listed once.
+  if (!mLibraryScanned && !mLibraryRoots.empty() && mLibraryFiles.empty())
     ScanLibraryAndSend();
-  }
   else
   {
     SendLibraryToUI();
-    const bool needsAnalysis = std::any_of(mLibraryFiles.begin(), mLibraryFiles.end(), [](const LibraryFile& f) {
-      return NeedsAnalysis(f) || (f.centroidHz > 0 && f.mapX < 0.f);
-    });
-    if (needsAnalysis)
-      StartLibraryAnalysis();
+    const int stale = (int) std::count_if(mLibraryFiles.begin(), mLibraryFiles.end(), [](const LibraryFile& f) { return NeedsAnalysis(f); });
+    if (stale > 0)
+      SendJSONFromDelegate({{"id", "libraryStale"}, {"count", stale}});
   }
   if (mAnalysisRunning)
     SendJSONFromDelegate({{"id", "analysisStart"}, {"total", mAnalysisTotal.load()}, {"done", mAnalysisDone.load()}});

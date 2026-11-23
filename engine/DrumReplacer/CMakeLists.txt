@@ -17,6 +17,8 @@ iplug_add_plugin(${PROJECT_NAME}
     DSP/Dynamics.h
     DSP/WavFile.h
     DSP/PreviewPlayer.h
+    DSP/PreviewCache.h
+    DSP/InputPlayer.h
     DSP/SampleAnalysis.h
     DSP/SampleMap.h
     DSP/SampleClassifier.h
@@ -27,6 +29,9 @@ iplug_add_plugin(${PROJECT_NAME}
     resources/web/style.css
     resources/web/app.js
     resources/web/native-ui.js
+    # demo INPUT (SN TOP 1) and demo one-shot, same files as the prototype
+    ../../prototype/samples/SN_TOP_1COMMIT_17-140.wav
+    ../../prototype/samples/SNARE.cm.wav
   UI WEBVIEW
   FORMATS APP AU
 )

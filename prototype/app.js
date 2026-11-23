@@ -2551,6 +2551,17 @@ window.addEventListener('tu-native-message', e => {
       toast(`Tipos aprendidos de tu biblioteca · ${d.modelClasses} clases · ${d.modelFiles} archivos con nombre`);
     }
   }
+  else if (d.id === 'init') {
+    nativeDemo = { input: d.demoInput || '', sample: d.demoSample || '' };
+  }
+  else if (d.id === 'input') {
+    setNativeInputPlaying(!!d.playing);
+    if (d.error) toast(d.error);
+  }
+  else if (d.id === 'hit') onNativeHit(d.vel || 0);
+  else if (d.id === 'libraryStale') {
+    toast(`${d.count} samples sin analizar con el motor actual · RESCAN para analizarlos`);
+  }
   else if (d.id === 'analysisDone') {
     analysisLayoutCounter = 0;
     recomputeUniverseLayout();
@@ -6007,8 +6018,50 @@ function stopLiveTriggers() {
   liveHitTimer = null;
   liveLastVelocity = 0;
 }
+// ---------- native INPUT (the C++ engine plays the demo file INTO its input) ----------
+let nativeDemo = { input: '', sample: '' };
+let nativeHitCount = 0;
+function nativeDemoSample() {
+  if (!nativeDemo.sample) return null;
+  let smp = state.samples.find(x => x.nativePath === nativeDemo.sample);
+  if (!smp) {
+    smp = { ...realSample, id: 9001, nativePath: nativeDemo.sample, folder: 'DEMO', path: 'DEMO', root: 'DEMO', z: .6 };
+    samples.push(smp);
+    state.samples = samples;
+  }
+  return smp;
+}
+function setNativeInputPlaying(on) {
+  inputPlaying = on;
+  const btn = $('#inputPlay'); if (btn) btn.textContent = on ? '■ STOP' : '▶ INPUT';
+  if (!on) {
+    const led = $('#hitLed'); if (led) led.classList.remove('on');
+    const hv = $('#hitVel'); if (hv) hv.textContent = '—';
+  }
+}
+function playNativeInput() {
+  if (inputPlaying) { SAMFUI(15, 0, 0); setNativeInputPlaying(false); return; }
+  // Nothing to trigger yet: the demo one-shot (SNARE.cm, first hit) goes to slot 01.
+  if (!state.slots.some(sl => sl.sampleId != null)) {
+    const demo = nativeDemoSample();
+    if (demo) assignSample(0, demo);
+  }
+  nativeHitCount = 0;
+  const el = $('#triggerCount'); if (el) el.textContent = '0';
+  SAMFUI(14, 0, 0); // empty data = the bundled demo INPUT (SN TOP 1)
+  setNativeInputPlaying(true);
+  if ((state.detector.mix || 0) < 1) toast('INPUT ▶ · subí MIX para escuchar los samples del trigger');
+}
+function onNativeHit(vel) {
+  nativeHitCount++;
+  const el = $('#triggerCount'); if (el) el.textContent = String(nativeHitCount);
+  const hv = $('#hitVel'); if (hv) hv.textContent = Math.round(clamp(vel, 0, 2) * 100) + '%';
+  const led = $('#hitLed');
+  if (led) { led.classList.add('on'); clearTimeout(onNativeHit.t); onNativeHit.t = setTimeout(() => led.classList.remove('on'), 80); }
+}
+
 function playInput() {
-  if (window.__TU_NATIVE__) { toast('En el AU el INPUT viene del host'); return; }
+  if (window.__TU_NATIVE__) { playNativeInput(); return; }
   if (inputPlaying) { stopInput(); return; }
   if (!realInputBuffer) { toast('Real input still loading…'); return; }
   const ctx = ensureAudio();
