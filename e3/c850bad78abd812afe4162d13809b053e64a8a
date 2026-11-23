@@ -1,0 +1,33 @@
+prototype/app.js
+  s_aa8f4edfcf593f::t_3c449d123bef2f 2488-2489,2514-2515,2517,2523-2524,2535-2576,2584,2599,2618,2641,2655,2658,5122
+  s_aa8f4edfcf593f::t_e06e6e6a24bb88 424,3130-3131,6538-6555,6576-6577
+  s_aa8f4edfcf593f::t_4643e76a22e446 6519-6534
+engine/DrumReplacer/resources/web/style.css
+  s_aa8f4edfcf593f::t_678a7e1a07f900 1997-2039
+engine/DrumReplacer/resources/web/index.html
+  s_aa8f4edfcf593f::t_678a7e1a07f900 34,49-58,359
+prototype/style.css
+  s_aa8f4edfcf593f::t_e06e6e6a24bb88 1997-2007
+  s_aa8f4edfcf593f::t_3c449d123bef2f 2008-2039
+engine/DrumReplacer/resources/web/app.js
+  s_aa8f4edfcf593f::t_678a7e1a07f900 424,2488-2489,2514-2515,2517,2523-2524,2535-2576,2584,2599,2618,2641,2655,2658,3130-3131,5122,6519-6534,6538-6555,6576-6577
+prototype/index.html
+  s_aa8f4edfcf593f::t_e06e6e6a24bb88 34
+  s_aa8f4edfcf593f::t_3c449d123bef2f 7,49-58,359,363
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e3c850bad78abd812afe4162d13809b053e64a8a",
+  "prompts": {},
+  "sessions": {
+    "s_aa8f4edfcf593f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b3604d4-9568-4964-8786-a55a7f32dba2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "micaela-balza <micaela.balza@waterplan.com>"
+    }
+  }
+}
