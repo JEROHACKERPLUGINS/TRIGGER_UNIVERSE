@@ -1994,3 +1994,46 @@ html.cat-shapes .sim-dots i.cat-mark.active{width:11px;height:11px}
 .ap-trigmode .ap-all{margin-left:2px;border:1px solid var(--line);background:transparent;color:var(--muted);
   border-radius:4px;font:8px var(--sans);letter-spacing:.06em;padding:2px 5px;cursor:pointer}
 .ap-trigmode .ap-all:hover{color:var(--text);border-color:var(--line-strong)}
+
+/* ---------- tooltips toggle ("?") ---------- */
+.help-toggle{width:30px;height:30px;border-radius:50%;flex:none;cursor:pointer;
+  font:600 14px/1 var(--sans);color:rgba(215,245,239,.7);
+  border:1px solid rgba(215,245,239,.18);
+  background:linear-gradient(180deg,rgba(180,232,222,.13),rgba(95,200,182,.04) 55%,rgba(95,200,182,.085)),rgba(14,30,32,.42);
+  box-shadow:0 8px 22px rgba(0,0,0,.26),inset 1px 1px 0 -.5px rgba(215,245,239,.5),inset -1px -1px 0 -.5px rgba(95,200,182,.3);
+  backdrop-filter:blur(10px) saturate(135%);transition:color .15s,background .15s,border-color .15s,box-shadow .15s}
+.help-toggle:hover{color:var(--text);border-color:rgba(215,245,239,.32)}
+.help-toggle.on{color:#08110F;background:var(--mint);border-color:var(--mint);
+  box-shadow:0 0 14px rgba(45,226,197,.45),inset 1px 1px 0 -.5px rgba(255,255,255,.6)}
+
+/* ---------- first-open / empty library state ---------- */
+.empty-state{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);z-index:5;width:min(440px,86%);
+  display:none;flex-direction:column;align-items:center;text-align:center;pointer-events:auto}
+.empty-state.show{display:flex;animation:esIn .5s cubic-bezier(.2,.8,.2,1) both}
+@keyframes esIn{from{opacity:0;transform:translate(-50%,calc(-50% + 10px))}to{opacity:1;transform:translate(-50%,-50%)}}
+.es-orbit{position:relative;width:120px;height:120px;margin-bottom:22px}
+.es-orbit::before{content:"";position:absolute;inset:6px 0;border-radius:50%;
+  border:1px dashed rgba(215,245,239,.22);transform:rotate(-18deg) scaleY(.42)}
+.es-planet{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#C8F4EC,#5FC8B6 40%,#1D5A5A 80%,#0A1E24);
+  box-shadow:0 0 30px rgba(45,226,197,.35)}
+.es-moon{position:absolute;left:50%;top:50%;width:7px;height:7px;margin:-3.5px 0 0 -3.5px;border-radius:50%;
+  background:#fff;box-shadow:0 0 10px rgba(255,255,255,.8);animation:esOrbit 7s linear infinite}
+@keyframes esOrbit{
+  from{transform:rotate(-18deg) scaleY(.42) rotate(0deg) translateX(60px) rotate(0deg) scaleY(2.38) rotate(18deg)}
+  to{transform:rotate(-18deg) scaleY(.42) rotate(360deg) translateX(60px) rotate(-360deg) scaleY(2.38) rotate(18deg)}}
+.empty-state.scanning .es-planet{animation:esPulse 1.4s ease-in-out infinite}
+@keyframes esPulse{50%{box-shadow:0 0 48px rgba(45,226,197,.6);transform:scale(1.06)}}
+.es-title{margin:0 0 8px;font-size:20px;font-weight:650;letter-spacing:.01em;color:var(--text)}
+.es-sub{margin:0 0 22px;font-size:14px;line-height:1.5;color:var(--muted)}
+.es-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.es-btn{font:600 12px var(--sans);letter-spacing:.12em;padding:11px 18px;border-radius:999px;cursor:pointer;
+  color:var(--text);border:1px solid rgba(215,245,239,.22);background:rgba(255,255,255,.04);transition:.15s}
+.es-btn:hover{border-color:rgba(215,245,239,.4);background:rgba(255,255,255,.08)}
+.es-btn.primary{color:#08110F;background:var(--mint);border-color:var(--mint);box-shadow:0 0 24px rgba(45,226,197,.35)}
+.es-btn.primary:hover{filter:brightness(1.08)}
+.es-btn[hidden]{display:none}
+.es-note{margin:18px 0 0;font-size:12px;color:var(--muted-2)}
+.es-note:empty{display:none}
+/* hide map-only chrome while there is nothing to map */
+.universe.library-empty .map-tools,.universe.library-empty .similar-bar{display:none}

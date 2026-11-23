@@ -31,6 +31,7 @@
             <div class="brand-text"><b>TRIGGER</b><span>UNIVERSE</span></div>
           </div>
           <div class="top-actions">
+            <button class="help-toggle" id="helpToggle" aria-pressed="false" aria-label="Tooltips" data-kbd="?" data-tip-always>?</button>
             <div class="top-master">
               <div class="top-knob" id="masterOutKnob" title="Master output"><div class="knob-ind"></div></div>
               <span>OUTPUT<b id="masterOutVal">+0.0 dB</b></span>
@@ -45,6 +46,16 @@
         <div class="view active" id="universeView">
           <div class="canvas-wrap">
             <canvas id="universe"></canvas>
+            <div class="empty-state" id="emptyState" aria-live="polite">
+              <div class="es-orbit" aria-hidden="true"><i class="es-planet"></i><i class="es-moon"></i></div>
+              <h2 class="es-title" id="esTitle">Your universe is empty</h2>
+              <p class="es-sub" id="esSub">Add a folder of drum samples to map it.</p>
+              <div class="es-actions">
+                <button class="es-btn primary" id="esAdd">+ ADD SAMPLE FOLDER</button>
+                <button class="es-btn" id="esRescan" hidden>RESCAN</button>
+              </div>
+              <p class="es-note" id="esNote">Scanning and analysis run in the background — you can keep working.</p>
+            </div>
             <div class="map-tools">
               <button class="icon-btn" id="zoomOut">−</button>
               <button class="icon-btn" id="zoomIn">+</button>
@@ -345,7 +356,7 @@
 <div class="analysis-panel" id="analysisPanel">
   <div class="ap-head"><span>ANALYZING LIBRARY</span><b id="analysisCount">0 / 0</b></div>
   <div class="ap-track"><i id="analysisBar"></i></div>
-  <div class="ap-file" id="analysisFile">Preparando…</div>
+  <div class="ap-file" id="analysisFile">Preparing…</div>
 </div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>

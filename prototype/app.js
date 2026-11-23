@@ -421,7 +421,7 @@ const PALETTES = {
          Cymbal: '#AAAA00', Tom: '#44BB99', Perc: '#99DDFF', FX: '#DDDDDD' },
 };
 function loadVisualPrefs() {
-  const d = { palette: 'standard', shapes: false, scale: 100, reduceMotion: false, reduceTransparency: false };
+  const d = { palette: 'standard', shapes: false, scale: 100, reduceMotion: false, reduceTransparency: false, tooltips: false };
   let prefs, stored = null;
   try {
     stored = localStorage.getItem('tu-visual');
@@ -2485,6 +2485,8 @@ function nativeFileToSample(f, idx, labels) {
 function beginNativeLibrary(msg) {
   const roots = Array.isArray(msg && msg.roots) ? msg.roots : [];
   pendingLibrary = { roots, labels: nativeLibraryLabels(roots), real: [], next: 0 };
+  state.libraryScanning = true;
+  updateEmptyState();
 }
 
 function addNativeLibraryChunk(msg) {
@@ -2509,15 +2511,17 @@ function endNativeLibrary() {
   state.selectedSample = real[0] || null;
   state.fileFolder = 'ALL';
   state.expanded = new Set(['ALL', ...labels]);
+  state.libraryScanning = false;
+  state.libraryLoaded = true;
   if (real[0]) selectSample(real[0]);
+  else setNameBar(null, false);
   renderFolderTree();
   renderFileList();
   recomputeUniverseLayout();
   updateInspector();
   if ($('#libraryPanel') && $('#libraryPanel').classList.contains('show')) renderLibraryPanel();
-  if (real.length) toast(`${real.length} WAVs · ${roots.length} location${roots.length === 1 ? '' : 's'}`);
-  else if (roots.length) toast('No hay WAVs en las locations · RESCAN');
-  else toast('Sin locations · FILE SEARCH → CHANGE');
+  updateEmptyState();
+  if (real.length) toast(`${real.length} WAVs · ${roots.length} folder${roots.length === 1 ? '' : 's'}`);
 }
 
 
@@ -2528,6 +2532,48 @@ function applyNativeLibrary(msg) {
   endNativeLibrary();
 }
 
+// ---------- first-open / empty library state ----------
+// Shown on HOME when the (native) library has no samples: no folders yet, folders
+// without WAVs, or while the first scan is still arriving.
+function updateEmptyState() {
+  const el = $('#emptyState');
+  if (!el) return;
+  const roots = state.libraryRoots || [];
+  const scanning = !!state.libraryScanning && !state.samples.length;
+  const empty = scanning || (state.libraryLoaded && !state.samples.length);
+  el.classList.toggle('show', empty);
+  el.classList.toggle('scanning', scanning);
+  $('#universePanel').classList.toggle('library-empty', empty);
+  if (!empty) return;
+  const add = $('#esAdd'), rescan = $('#esRescan');
+  if (scanning) {
+    $('#esTitle').textContent = 'Scanning your samples…';
+    $('#esSub').textContent = 'Finding WAV files. Your universe will appear in a moment.';
+    add.hidden = true; rescan.hidden = true;
+    $('#esNote').textContent = '';
+  } else if (roots.length) {
+    $('#esTitle').textContent = 'No WAV files found';
+    $('#esSub').textContent = `Looked in ${roots.length} folder${roots.length === 1 ? '' : 's'}. Add another folder or rescan.`;
+    add.hidden = false; add.textContent = '+ ADD ANOTHER FOLDER';
+    rescan.hidden = false;
+    $('#esNote').textContent = 'Only .wav files are mapped for now.';
+  } else {
+    $('#esTitle').textContent = 'Your universe is empty';
+    $('#esSub').textContent = 'Add a folder of drum samples to map it.';
+    add.hidden = false; add.textContent = '+ ADD SAMPLE FOLDER';
+    rescan.hidden = true;
+    $('#esNote').textContent = 'Scanning and analysis run in the background — you can keep working.';
+  }
+}
+$('#esAdd').onclick = () => {
+  if (window.__TU_NATIVE__ && window.__TU_chooseFolder) window.__TU_chooseFolder();
+  else toast('Adding folders is only available inside the plugin');
+};
+$('#esRescan').onclick = () => {
+  if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') SAMFUI(9, 0, 0);
+  else toast('RESCAN is only available inside the plugin');
+};
+
 window.addEventListener('tu-native-message', e => {
   const d = e.detail;
   if (!d) return;
@@ -2535,7 +2581,7 @@ window.addEventListener('tu-native-message', e => {
   else if (d.id === 'libraryBegin') beginNativeLibrary(d);
   else if (d.id === 'libraryChunk') addNativeLibraryChunk(d);
   else if (d.id === 'libraryEnd') endNativeLibrary();
-  else if (d.id === 'slot' && d.ok === false) toast(`No se pudo cargar ${d.name || 'el sample'}`);
+  else if (d.id === 'slot' && d.ok === false) toast(`Couldn't load ${d.name || 'the sample'}`);
   else if (d.id === 'analysisStart') { showAnalysis(d.total, d.done); recomputeUniverseLayout(); }
   else if (d.id === 'analyzed') {
     applyAnalyzedFeature(d);
@@ -2550,7 +2596,7 @@ window.addEventListener('tu-native-message', e => {
     assignNativeDepth(); applyNativeMap(d); renderFileList();
     if (d.modelClasses > 0 && !nativeModelToastShown) {
       nativeModelToastShown = true;
-      toast(`Tipos aprendidos de tu biblioteca · ${d.modelClasses} clases · ${d.modelFiles} archivos con nombre`);
+      toast(`Learned types from your library · ${d.modelClasses} classes · ${d.modelFiles} named files`);
     }
   }
   else if (d.id === 'init') {
@@ -2569,7 +2615,7 @@ window.addEventListener('tu-native-message', e => {
   else if (d.id === 'inmeter') onNativeInputMeter(d);
   else if (d.id === 'outmeter') onNativeOutMeter(d.peak || 0, d.slots, d.gate, d.gateOn);
   else if (d.id === 'libraryStale') {
-    toast(`${d.count} samples sin analizar con el motor actual · RESCAN para analizarlos`);
+    toast(`${d.count} samples not analyzed with the current engine · RESCAN to analyze them`);
   }
   else if (d.id === 'analysisDone') {
     analysisLayoutCounter = 0;
@@ -2592,7 +2638,7 @@ function showAnalysis(total, done) {
   clearTimeout(analysisHideTimer);
   $('#analysisCount').textContent = `${done || 0} / ${analysisTotal}`;
   $('#analysisBar').style.width = analysisTotal ? `${(done || 0) / analysisTotal * 100}%` : '0%';
-  $('#analysisFile').textContent = 'Analizando largo y respuesta frecuencial…';
+  $('#analysisFile').textContent = 'Analyzing length and frequency response…';
 }
 
 function updateAnalysis(d) {
@@ -2606,10 +2652,10 @@ function updateAnalysis(d) {
 
 function finishAnalysis(d) {
   updateAnalysis({ done: d.total || analysisTotal, total: d.total || analysisTotal });
-  $('#analysisFile').textContent = 'Análisis completo';
+  $('#analysisFile').textContent = 'Analysis complete';
   clearTimeout(analysisHideTimer);
   analysisHideTimer = setTimeout(() => $('#analysisPanel').classList.remove('show'), 1400);
-  toast(`Análisis completo · ${d.total || 0} samples`);
+  toast(`Analysis complete · ${d.total || 0} samples`);
 }
 
 function applyAnalyzedFeature(d) {
@@ -3081,6 +3127,8 @@ window.addEventListener('keydown', e => {
     setTriggerOpen(!inTrigger);
   } else if (k === 'f' || k === 'F') {
     setView(state.viewMode === 'files' ? 'universe' : 'files');
+  } else if (k === '?') {
+    setTooltipsOn(!visualPrefs.tooltips);
   } else if (k === ',') {
     setSettingsOpen(!$('#settingsMenu').classList.contains('show'));
   } else if (k === '/') {
@@ -5071,7 +5119,7 @@ function renderLibraryPanel() {
   if (!list) return;
   const roots = state.libraryRoots || [];
   if (!roots.length) {
-    list.innerHTML = `<div class="lp-empty">No hay locations todavía.<br>Usá <b>ADD NEW LOCATION</b> para sumar una carpeta del Finder.</div>`;
+    list.innerHTML = `<div class="lp-empty">No folders yet.<br>Use <b>ADD NEW LOCATION</b> to add a folder from the Finder.</div>`;
     return;
   }
   const counts = {};
@@ -6468,9 +6516,43 @@ function init() {
       if (id === 'params' || id === 'init') start();
     });
     setTimeout(start, 1500);
+    // Never show the synthetic demo library inside the plugin: start empty in
+    // "scanning" until the engine sends the real one (or give up after 6 s).
+    samples.length = 0;
+    state.samples = samples;
+    state.selectedSample = null;
+    setNameBar(null, false);
+    state.libraryScanning = true;
+    renderFolderTree(); renderFileList();
+    updateEmptyState();
+    drawUniverse();
+    setTimeout(() => {
+      if (state.libraryLoaded || pendingLibrary) return;
+      state.libraryScanning = false;
+      state.libraryLoaded = true;
+      updateEmptyState();
+    }, 6000);
   }
 }
 // ---------- ui tooltip: replaces native title attributes with a styled tip ----------
+// ---------- tooltips on/off (off by default; the "?" button or the ? key toggles them) ----------
+function setTooltipsOn(on) {
+  visualPrefs.tooltips = !!on;
+  try { localStorage.setItem('tu-visual', JSON.stringify(visualPrefs)); } catch (e) {}
+  const b = $('#helpToggle');
+  if (b) {
+    b.classList.toggle('on', visualPrefs.tooltips);
+    b.setAttribute('aria-pressed', visualPrefs.tooltips);
+    b.dataset.tip = visualPrefs.tooltips ? 'Hide tooltips' : 'Show tooltips';
+  }
+  if (!visualPrefs.tooltips) $('#uiTip').classList.remove('show');
+}
+$('#helpToggle').addEventListener('click', () => {
+  setTooltipsOn(!visualPrefs.tooltips);
+  toast(visualPrefs.tooltips ? 'Tooltips on · hover any control' : 'Tooltips off');
+});
+setTooltipsOn(visualPrefs.tooltips);
+
 (function uiTips() {
   const tip = $('#uiTip');
   let target = null, timer = 0;
@@ -6491,8 +6573,8 @@ function init() {
     tip.style.setProperty('--arrow-x', Math.min(Math.max(cx - x, 12), w - 12) + 'px');
   };
   const show = el => {
-    const text = textOf(el);
-    if (!text) return hide();
+    const text = textOf(el);          // always strip native title so the browser never shows its own
+    if (!text || (!visualPrefs.tooltips && !el.hasAttribute('data-tip-always'))) return hide();
     target = el;
     tip.textContent = text;
     if (el.dataset.kbd) {
