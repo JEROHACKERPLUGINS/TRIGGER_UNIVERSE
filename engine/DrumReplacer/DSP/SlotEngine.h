@@ -32,6 +32,7 @@ public:
 
   void Start(const SampleData* pSample, int offset, float velocity)
   {
+    mChokeAt = -1;
     mPrev = nullptr;
     mXfadeLeft = 0;
     mSample = pSample;
@@ -55,6 +56,16 @@ public:
     mXfadeLen = mXfadeLeft = std::max(1, samples);
   }
   bool Crossfading() const { return mActive && mXfadeLeft > 0; }
+  bool Choking() const { return mChokeAt >= 0; }
+
+  // ONE SHOT with choke: a new hit on the same slot fades this one out over
+  // `samples`, starting at `offset` in the current block (no click, no overlap).
+  void Choke(int offset, int samples)
+  {
+    if (!mActive || mChokeAt >= 0) return;
+    mChokeAt = std::max(0, offset);
+    mChokeLen = mChokeLeft = std::max(1, samples);
+  }
 
   // Adds into outL/outR.
   void Render(float* outL, float* outR, int nFrames, const VoiceParams& p)
@@ -104,6 +115,12 @@ public:
       if (p.sustainFrac < 1. && mPos >= releaseStart) mRelGain -= relStep;
       env *= mRelGain > 0.f ? mRelGain : 0.f;
 
+      if (mChokeAt >= 0 && i >= mChokeAt)
+      {
+        env *= (float) mChokeLeft / (float) mChokeLen;
+        if (--mChokeLeft <= 0) { mActive = false; mPrev = nullptr; mXfadeLeft = 0; mChokeAt = -1; break; }
+      }
+
       outL[i] += l * env * p.gainL;
       outR[i] += r * env * p.gainR;
 
@@ -111,12 +128,14 @@ public:
       mAge++;
     }
     mOffset = 0;
+    if (mChokeAt > 0) mChokeAt = 0; // the fade goes on from the start of the next block
   }
 
 private:
   const SampleData* mSample = nullptr;
   const SampleData* mPrev = nullptr; // crossfading from this one (real-time edit)
   int mXfadeLeft = 0, mXfadeLen = 1;
+  int mChokeAt = -1, mChokeLeft = 0, mChokeLen = 1;
   double mPos = 0.;
   long mAge = 0;
   int mOffset = 0;
@@ -177,15 +196,20 @@ public:
   bool HasSample() const { return mCurrent && mCurrent->numFrames > 1; }
   double SampleRate() const { return mCurrent ? mCurrent->sampleRate : 44100.; }
 
+  // ONE SHOT with choke (like Trigger 2): the new hit cuts the one that is still
+  // ringing on this slot (5 ms fade from the new hit's position), so hits never pile up.
   void Trigger(int offset, float velocity)
   {
     if (!HasSample()) return;
-    // ponytail: steals the oldest voice with no fade
-    SamplerVoice* pVoice = &mVoices[0];
     for (auto& v : mVoices)
-    {
+      if (v.IsActive()) v.Choke(offset, kChokeSamples);
+    SamplerVoice* pVoice = nullptr;
+    for (auto& v : mVoices)
       if (!v.IsActive()) { pVoice = &v; break; }
-      if (v.Age() > pVoice->Age()) pVoice = &v;
+    if (!pVoice) // every voice still fading: take the oldest
+    {
+      pVoice = &mVoices[0];
+      for (auto& v : mVoices) if (v.Age() > pVoice->Age()) pVoice = &v;
     }
     pVoice->Start(mCurrent, offset, velocity);
   }
@@ -200,6 +224,7 @@ public:
 
 private:
   static constexpr int kXfadeSamples = 256; // ~5 ms
+  static constexpr int kChokeSamples = 240; // 5 ms @ 48 kHz
   std::atomic<SampleData*> mPending{nullptr};
   std::atomic<SampleData*> mRetired{nullptr};
   std::atomic<bool> mPendingContinue{false};

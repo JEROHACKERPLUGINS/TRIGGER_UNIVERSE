@@ -236,7 +236,6 @@ private:
   int mNumHits = 0;
 
   TransientDetector mDetector;
-  HitGate mGate;
   Slot mSlots[kNumSlots];
   PreviewPlayer mPreview;          // library / slot audition, independent of MIX
   PreviewCache mPreviewCache;      // decoded preview heads (filled by the analyser and by previews)
@@ -248,12 +247,13 @@ private:
   tu::SlotShape mSlotShape[kNumSlots];
   std::string mSlotShapeJson[kNumSlots];
   std::atomic<int> mSlotMode[kNumSlots] = {};
-  InputGate mInGate;               // GATE mode envelope (INPUT GATE threshold / attack / hold / release)
+  InputGate mInGate;               // INPUT GATE, first in the chain (threshold / attack / hold / release)
   std::atomic<double> mGateTh{-24.}, mGateAtk{0.5}, mGateHold{30.}, mGateRel{150.};
-  std::vector<float> mGateDelay;   // gate gain delayed to line up with the dry signal
-  int mGateDelayPos = 0;
-  std::vector<float> mGateEnv;     // this block, sized in OnReset
-  std::vector<float> mTmp[2];      // one GATE slot's render, sized in OnReset
+  std::vector<sample> mGateLook[2]; // 1 ms input delay: the gate looks ahead
+  int mGateLookPos = 0;
+  double mGateEn = 0.;             // GATE on/off glide (8 ms)
+  std::atomic<float> mGateNow{1.f}; // gate gain, for the UI's gate LED / GR meter
+  std::vector<float> mTmp[2];      // one slot's render (for its VU), sized in OnReset
   std::atomic<float> mOutPeak{0.f}; // OUTPUT meter, read in OnIdle
   std::atomic<float> mSlotPeak[kNumSlots] = {}; // fader VU meters (after level / pan / gate)
   bool mContinueOnRender = false;  // RenderSlotNow from an edit: voices keep playing

@@ -1986,7 +1986,7 @@ function assignSample(i, smp) {
   s.start = 0; s.end = 1; s.fadeIn = 0; s.fadeOut = 0;
   s.reverse = false;
   s.tone = 0; s.cut = 100; s.velSens = 100; s.gain = 0;
-  s.playback = s.playback === 'gate' ? 'gate' : 'one-shot'; s.loop = false; // a new sample keeps the slot's mode
+  s.playback = 'one-shot'; s.loop = false;
   delete s._forwardEnv;
   s.polarity = false; s.shift = 0; s.offset = 0;
   s.ap = null;
@@ -2563,7 +2563,7 @@ window.addEventListener('tu-native-message', e => {
   else if (d.id === 'hit') onNativeHit(d.vel || 0);
   else if (d.id === 'audio') onNativeAudioSetup(d);
   else if (d.id === 'inmeter') onNativeInputMeter(d);
-  else if (d.id === 'outmeter') onNativeOutMeter(d.peak || 0, d.slots);
+  else if (d.id === 'outmeter') onNativeOutMeter(d.peak || 0, d.slots, d.gate, d.gateOn);
   else if (d.id === 'libraryStale') {
     toast(`${d.count} samples sin analizar con el motor actual · RESCAN para analizarlos`);
   }
@@ -3827,8 +3827,6 @@ function updateAutoPhasePanel() {
   inp.classList.toggle('auto', !!apAutoLag(slot));
   const choice = phaseChoice(slot);
   $$('#slotShift button').forEach(b => b.classList.toggle('active', +b.dataset.shift === choice));
-  const mode = slot.playback === 'gate' ? 'gate' : 'one-shot';
-  $$('#slotMode button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   let res;
   if (!smp) res = 'Drop a sample in this slot.';
   else if (slot.ap && slot.ap.isRef) res = 'Reference layer · not moved';
@@ -3919,21 +3917,6 @@ function commitApOffset() {
     inp.blur(); renderSlots(); updateAutoPhasePanel();
   });
 })();
-// ---------- trigger mode: ONE SHOT / GATE (per slot) ----------
-$('#slotMode').addEventListener('click', e => {
-  const b = e.target.closest('button[data-mode]');
-  if (!b) return;
-  currentSlot().playback = b.dataset.mode === 'gate' ? 'gate' : 'one-shot';
-  updateAutoPhasePanel();
-  toast(`SLOT ${String(state.selectedSlot + 1).padStart(2, '0')} · ${b.dataset.mode === 'gate' ? 'GATE' : 'ONE SHOT'}`);
-});
-$('#slotModeAll').addEventListener('click', () => {
-  const mode = currentSlot().playback === 'gate' ? 'gate' : 'one-shot';
-  state.slots.forEach(s => { s.playback = mode; });
-  updateAutoPhasePanel();
-  toast(`Todos los slots · ${mode === 'gate' ? 'GATE' : 'ONE SHOT'}`);
-});
-
 $('#slotShift').addEventListener('click', e => {
   const b = e.target.closest('button[data-shift]');
   if (!b) return;
@@ -4794,7 +4777,7 @@ function nativeSlotShape(s) {
   const env = slotEnvPoints(s, Math.max(1, (1 - s.start) * smp.dur)).map(q => [+q.t.toFixed(3), +q.v.toFixed(4)]);
   return { path: smp.nativePath, dur: smp.dur, start: s.start, end: s.end, reverse: !!s.reverse, tune: s.tune || 0,
            cut: s.cut ?? 100, tone: s.tone || 0, gain: s.gain || 0, fadeIn: s.fadeIn || 0, fadeOut: s.fadeOut || 0,
-           env, pol: effPolarity(s) ? 1 : 0, offset: effOffset(s), mode: s.playback === 'gate' ? 1 : 0 };
+           env, pol: effPolarity(s) ? 1 : 0, offset: effOffset(s), mode: 0 }; // ONE SHOT (new hit chokes the ringing one)
 }
 function syncNativeShapes() {
   if (!window.__TU_NATIVE__ || typeof SAMFUI !== 'function' || !window.__TU_nativeBridgeReady) return;
@@ -4816,7 +4799,12 @@ if (window.__TU_NATIVE__) setInterval(syncNativeShapes, 60);
 // ---------- native OUTPUT meter (peak after MIX / OUTPUT, from the engine) ----------
 let nativeOutHold = 0;
 const nativeSlotHold = new Float32Array(8);
-function onNativeOutMeter(peak, slots) {
+function onNativeOutMeter(peak, slots, gate, gateOn) {
+  // INPUT GATE (first in the engine's chain): LED + gain-reduction meter
+  if (gate != null) {
+    const gled = $('#gateLed'); if (gled) gled.classList.toggle('on', !!gateOn && gate > .5);
+    const gr = $('#grMeterBar'); if (gr) gr.style.height = (gateOn ? clamp((1 - gate) * 100, 0, 100) : 0) + '%';
+  }
   nativeOutHold = Math.max(peak, nativeOutHold * 0.82);
   const vu = Math.round(clamp(nativeOutHold * 100, 0, 100));
   const ov = $('#outVuBar'); if (ov) ov.style.height = vu + '%';

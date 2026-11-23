@@ -459,7 +459,8 @@ void DrumReplacer::OnIdle()
     const float outPk = mOutPeak.exchange(0.f);
     nlohmann::json sl = nlohmann::json::array();
     for (int k = 0; k < kNumSlots; k++) sl.push_back(std::round(std::min(mSlotPeak[k].exchange(0.f), 4.f) * 10000.f) / 10000.f);
-    SendJSONFromDelegate({{"id", "outmeter"}, {"peak", std::round(std::min(outPk, 4.f) * 10000.f) / 10000.f}, {"slots", sl}});
+    SendJSONFromDelegate({{"id", "outmeter"}, {"peak", std::round(std::min(outPk, 4.f) * 10000.f) / 10000.f}, {"slots", sl},
+                          {"gate", std::round(mGateNow.load() * 1000.f) / 1000.f}, {"gateOn", GetParam(kGateEnabled)->Bool()}});
     const uint32_t from = mInputMeter.Drain(mMeterPeaks, mMeterHits);
     if (!mMeterPeaks.empty())
     {
@@ -593,23 +594,41 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     for (int i = 0; i < nFrames; i++) { inL[i] += tL[i]; inR[i] += tR[i]; }
   }
 
-  // 1. Detect. Hits come out at the end of the detector's peak window, which is exactly
-  //    when the delayed dry signal reaches the onset, so they fire right away.
+  // 1. INPUT GATE, first of all (like the prototype's worklet): it cleans the input
+  //    before the detector and the dry signal. Level after INPUT gain, 4 dB
+  //    hysteresis, HOLD, ATTACK / RELEASE; it looks 1 ms ahead (the input is
+  //    delayed 1 ms, part of the plugin latency) so ATTACK 0 keeps the transient.
+  //    GATE off = gain 1 (8 ms glide when it is switched).
+  mInGate.SetParams(mGateTh.load(), mGateAtk.load(), mGateHold.load(), mGateRel.load());
+  const double gateTarget = GetParam(kGateEnabled)->Bool() ? 1. : 0.;
+  const double gateStep = 1. / std::max(1., 0.008 * sr);
+  const int lookN = (int) mGateLook[0].size();
+  double gateLast = 1.;
+  for (int i = 0; i < nFrames; i++)
+  {
+    const double c = mInGate.Process(std::fabs((inL[i] + inR[i]) * 0.5 * inGain));
+    if (mGateEn < gateTarget) mGateEn = std::min(gateTarget, mGateEn + gateStep);
+    else if (mGateEn > gateTarget) mGateEn = std::max(gateTarget, mGateEn - gateStep);
+    const double g = 1. - mGateEn * (1. - c);
+    sample xl = inL[i], xr = inR[i];
+    if (lookN > 0)
+    {
+      std::swap(xl, mGateLook[0][(size_t) mGateLookPos]);
+      std::swap(xr, mGateLook[1][(size_t) mGateLookPos]);
+      if (++mGateLookPos >= lookN) mGateLookPos = 0;
+    }
+    inL[i] = xl * g;
+    inR[i] = xr * g;
+    gateLast = g;
+  }
+  mGateNow.store((float) gateLast, std::memory_order_relaxed); // gate LED / GR meter
+
+  // 2. Detect (on the gated input). Hits come out at the end of the detector's peak
+  //    window, which is exactly when the delayed dry signal reaches the onset.
   mDetector.SetParams(GetParam(kSensitivity)->Value(), GetParam(kRetrigger)->Value(),
                       GetParam(kDetail)->Value(), GetParam(kLowCut)->Value(),
                       GetParam(kHighCut)->Value(), GetParam(kSuppression)->Value());
-  mInputMeter.Push(inL, inR, nFrames, inGain); // live INPUT for the TRIGGER view
-  // INPUT GATE for the GATE mode, delayed to line up with the dry signal / voices
-  mInGate.SetParams(mGateTh.load(), mGateAtk.load(), mGateHold.load(), mGateRel.load());
-  if ((int) mGateEnv.size() < nFrames) mGateEnv.resize((size_t) nFrames);
-  for (int i = 0; i < nFrames; i++)
-  {
-    const float g = (float) mInGate.Process(std::fabs((inL[i] + inR[i]) * 0.5 * inGain));
-    if (mGateDelay.empty()) { mGateEnv[(size_t) i] = g; continue; }
-    mGateEnv[(size_t) i] = mGateDelay[(size_t) mGateDelayPos];
-    mGateDelay[(size_t) mGateDelayPos] = g;
-    if (++mGateDelayPos >= (int) mGateDelay.size()) mGateDelayPos = 0;
-  }
+  mInputMeter.Push(inL, inR, nFrames, inGain); // live INPUT for the TRIGGER view (what the detector sees)
   const int detLatency = mDetector.LatencySamples();
   mDetector.Process(inL, inR, nFrames, inGain, [&](int offset, float velocity) {
     if (mNumHits < kMaxHits) mHits[mNumHits++] = {offset, velocity};
@@ -688,25 +707,17 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     std::fill(tL, tL + nFrames, 0.f);
     std::fill(tR, tR + nFrames, 0.f);
     slot.Render(tL, tR, nFrames, p);
-    // GATE: the sample follows the INPUT GATE (lasts as long as the hit at the input)
-    const bool gate = mSlotMode[s].load(std::memory_order_relaxed) == 1;
     float pk = 0.f;
     for (int i = 0; i < nFrames; i++)
     {
-      const float g = gate ? mGateEnv[(size_t) i] : 1.f;
-      const float l = tL[i] * g, r = tR[i] * g;
+      const float l = tL[i], r = tR[i];
       wetL[i] += l; wetR[i] += r;
       pk = std::max(pk, std::max(std::fabs(l), std::fabs(r)));
     }
     if (pk > mSlotPeak[s].load(std::memory_order_relaxed)) mSlotPeak[s].store(pk, std::memory_order_relaxed); // fader VU
   }
 
-  // 4. Delayed dry (through the hit-keyed gate) + wet mix, output gain
-  const bool gateOn = kIsPro && GetParam(kGateEnabled)->Bool();
-  const double gateAtk = GetParam(kGateAttack)->Value() * 0.001 * sr;
-  const double gateRel = GetParam(kGateRelease)->Value() * 0.001 * sr;
-  const double gateFloor = GetParam(kGateSustain)->Value() * 0.01;
-  int nextHit = 0;
+  // 5. Delayed dry (already through the INPUT GATE) + wet mix, output gain
   const sample outGain = GetParam(kOutputGain)->DBToAmp();
   const sample mix = GetParam(kMix)->Value() / 100.;
   const int delayLen = (int) mDelay[0].size();
@@ -717,13 +728,7 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     mDelay[1][mDelayPos] = inR[i];
     if (++mDelayPos == delayLen) mDelayPos = 0;
 
-    while (nextHit < numDue && due[nextHit].countdown == i)
-    {
-      mGate.Trigger();
-      nextHit++;
-    }
-    const sample gate = gateOn ? mGate.Process(gateAtk, gateRel, gateFloor) : 1.;
-    const sample g = mInGainSmooth.Process(inGain) * gate;
+    const sample g = mInGainSmooth.Process(inGain);
     const sample m = mMixSmooth.Process(mix);
     const sample o = mOutGainSmooth.Process(outGain);
     outputs[0][i] = (dryL * g * (1. - m) + wetL[i] * m) * o;
@@ -777,18 +782,19 @@ void DrumReplacer::OnReset()
 
   mDetector.Reset(sr);
   mInputMeter.Reset(sr);
-  mGate.Reset();
   // dry delay = detector window + kLookMs (room for a negative OFFSET: every
   // shaped sample starts with kLookMs + OFFSET of silence, see SlotShape.h)
   const int look = (int) std::lround(tu::kLookMs * 0.001 * sr);
-  const int latency = mDetector.LatencySamples() + look;
+  const int gateLook = (int) std::lround(0.001 * sr); // INPUT GATE sees 1 ms ahead
+  const int dryDelay = mDetector.LatencySamples() + look;
   for (auto& d : mDelay)
-    d.assign(latency, 0.);
+    d.assign(dryDelay, 0.);
+  const int latency = dryDelay + gateLook; // reported to the host
   mInGate.Reset(sr);
-  // the prototype's gate opens 1 ms before the transient
-  mGateDelay.assign((size_t) std::max(0, latency - (int) std::lround(0.001 * sr)), 0.f);
-  mGateDelayPos = 0;
-  mGateEnv.assign((size_t) GetBlockSize(), 0.f);
+  for (auto& g : mGateLook)
+    g.assign((size_t) gateLook, 0.);
+  mGateLookPos = 0;
+  mGateEn = GetParam(kGateEnabled)->Bool() ? 1. : 0.;
   for (auto& w : mTmp)
     w.assign((size_t) GetBlockSize(), 0.f);
   mDelayPos = 0;

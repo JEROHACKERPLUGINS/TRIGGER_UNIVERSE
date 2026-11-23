@@ -133,7 +133,7 @@ Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el
 - Antes el motor de la app solo recibía nivel/pan/tune/velocity/fase/solo/mute: SAMPLE + ENVELOPE no hacía nada. Ahora la UI manda la **forma** de cada slot (mensaje 20, JSON: path, dur, start, end, reverse, tune, cut, tone, gain, fadeIn, fadeOut, env = `slotEnvPoints`, pol = `effPolarity`, offset = `effOffset`, mode), revisada cada 150 ms (cualquier edición entra). El motor (`DSP/SlotShape.h`) la hornea en el buffer que tocan las voces, con las mismas fórmulas que BOUNCE (`renderSlotOffline`): reverse, CUT/TONE de fase cero (magnitudes de BiquadFilterNode de Web Audio), START/END sobre la duración de la UI, TUNE, envolvente con todos los puntos (1 ms mínimo en el primer tramo, rampa a 0 en 4 ms), fades, GAIN, polaridad y OFFSET. **Verificado contra el prototipo en Chrome**: dos slots muy distintos dan −116 dB y −96 dB de diferencia máxima (correlación 1,000000).
 - **OFFSET negativo**: el seco se retrasa 5 ms más (`tu::kLookMs`, latencia = ventana del detector + 5 ms) y cada sample empieza con 5 ms + OFFSET de silencio.
 - Por golpe quedan en tiempo real: velocity/SENS, fader, pan, mute/solo y el modo. TUNE y Ø ya no se aplican en tiempo real (van horneados). 90° sigue sin DSP (como en el prototipo).
-- **ONE SHOT / GATE** por slot (caja PHASE del slot → MODE, botón ALL para todos; un sample nuevo conserva el modo). GATE = el sample se multiplica por la **puerta de entrada** (`DSP/InputGate.h`, port del gate del worklet: umbral/attack/hold/release de GATE, mensaje 21), retrasada para coincidir con el seco y las voces (abre 1 ms antes, como el prototipo).
+- ~~ONE SHOT / GATE por slot~~ (reemplazado en §2.12: solo ONE SHOT con corte; el GATE va antes del detector).
 - **OUTPUT meter**: el motor manda el pico de salida (`outmeter`) → `#outVuBar` y `#masterMeter`.
 - **MIX arranca en 100 %** (motor y UI).
 - Estado del plugin v3: guarda la forma de cada slot (v2 sigue cargando).
@@ -145,6 +145,13 @@ Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el
 - **VU de cada fader**: el motor mide cada capa después de su fader / pan / gate (`outmeter.slots`) y la UI los dibuja como en la web.
 - **Ediciones en tiempo real**: un cambio de envolvente / TONE / CUT / GAIN / Ø / OFFSET / START-END / reverse ya no espera al próximo golpe ni corta el que suena: las voces pasan al buffer nuevo en la misma posición con un crossfade de 5 ms (`Slot::SetSample(p, true)`, `SamplerVoice::Retarget`). El buffer viejo se libera recién cuando terminó el crossfade. Un archivo nuevo en el slot sigue cortando las voces viejas.
 - `app.js?v=247`. Test: `tests/realtime_edit_test.cpp`.
+
+## 2.12 Sesión 23/11/2026 (00:35) — GATE al principio, ONE SHOT con corte
+
+- **Orden del motor**: INPUT (+ INPUT de demo) → **GATE** → INPUT DETECTOR → TRIGGER SLOT → SAMPLE ENVELOPE → TONE → PHASE → fader/pan → MIX → OUTPUT.
+- **GATE** = lo primero, ordena la entrada antes del detector (como el worklet): `InputGate` con umbral / attack / hold / release de la UI (mensaje 21) y on/off (`kGateEnabled`, glide de 8 ms), mira 1 ms adelante (la entrada se retrasa 1 ms; latencia = 1 ms + ventana del detector + 5 ms). El detector y el seco reciben la entrada gateada. Se sacó el gate viejo disparado por golpes que actuaba solo sobre el seco (y ya no depende de PRO). Verificado contra el worklet con GATE on: 136/136 golpes, mismos tiempos y velocidades. El LED y el medidor GR de la UI siguen al motor (`outmeter.gate/gateOn`).
+- **Modo de disparo**: solo ONE SHOT; un golpe nuevo **pisa** al que suena en ese slot (fade de 5 ms desde la posición del golpe nuevo, sin superponer). Se sacó la fila MODE (ONE SHOT/GATE) de la caja PHASE y el modo GATE por slot del motor.
+- `app.js?v=248`. Test: `tests/choke_test.cpp`.
 
 ## 3. Cómo retomar ahora mismo
 
