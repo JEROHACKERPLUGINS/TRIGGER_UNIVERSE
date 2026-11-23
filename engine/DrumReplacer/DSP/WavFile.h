@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -10,18 +11,23 @@
 // Hand-rolled RIFF/WAVE chunk parser: PCM 16/24/32-bit and IEEE float 32/64-bit,
 // plus WAVE_FORMAT_EXTENSIBLE. Returns per-channel float samples in [-1, 1] and
 // the file's native sample rate. Not realtime-safe: call off the audio thread.
-inline bool LoadWavFile(const std::string& path, std::vector<std::vector<float>>& outChannels, double& outSampleRate)
+// maxBytes > 0 reads only the start of the file (previews / analysis of long
+// files): the data chunk is then cut to what was read. A data chunk whose size
+// runs past the end of the file (common in recorder/DAW exports) is clamped too.
+inline bool LoadWavFile(const std::string& path, std::vector<std::vector<float>>& outChannels, double& outSampleRate,
+                        size_t maxBytes = 0)
 {
   FILE* f = fopen(path.c_str(), "rb");
   if (!f) return false;
   std::fseek(f, 0, SEEK_END);
-  const long sz = std::ftell(f);
-  if (sz <= 12) { fclose(f); return false; }
+  const long fileSz = std::ftell(f);
+  if (fileSz <= 12) { fclose(f); return false; }
+  const size_t sz = maxBytes > 0 ? std::min((size_t) fileSz, maxBytes) : (size_t) fileSz;
   std::fseek(f, 0, SEEK_SET);
-  std::vector<unsigned char> data((size_t) sz);
-  const size_t rd = std::fread(data.data(), 1, (size_t) sz, f);
+  std::vector<unsigned char> data(sz);
+  const size_t rd = std::fread(data.data(), 1, sz, f);
   fclose(f);
-  if (rd != (size_t) sz) return false;
+  if (rd != sz) return false;
 
   if (memcmp(&data[0], "RIFF", 4) != 0 || memcmp(&data[8], "WAVE", 4) != 0) return false;
 
@@ -37,7 +43,12 @@ inline bool LoadWavFile(const std::string& path, std::vector<std::vector<float>>
   {
     uint32_t csz = rdU32(pos + 4);
     size_t body = pos + 8;
-    if (body + csz > data.size()) break;
+    if (body + csz > data.size())
+    {
+      if (memcmp(&data[pos], "data", 4) != 0) break;
+      csz = (uint32_t) (data.size() - body); // truncated / partially read data chunk
+      if (bits > 0 && nch > 0) csz -= csz % (uint32_t) ((bits / 8) * nch);
+    }
 
     if (memcmp(&data[pos], "fmt ", 4) == 0 && csz >= 16)
     {

@@ -174,6 +174,15 @@ window.__TU_nativeLoadSample = function (slot, path) {
   SAMFUI(7, slot, tuB64Utf8(path));
 };
 
+window.__TU_nativePreview = function (path) {
+  if (!path) return;
+  SAMFUI(11, -1, tuB64Utf8(path));
+};
+
+window.__TU_nativePreviewStop = function () {
+  SAMFUI(12, -1, 0);
+};
+
 window.__TU_chooseFolder = function () {
   SAMFUI(6, 0, 0);
 };

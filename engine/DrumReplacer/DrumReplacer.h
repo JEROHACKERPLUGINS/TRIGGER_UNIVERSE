@@ -5,6 +5,9 @@
 #include "DSP/SlotEngine.h"
 #include "DSP/TransientDetector.h"
 #include "DSP/Dynamics.h"
+#include "DSP/PreviewPlayer.h"
+#include "DSP/SampleMap.h"
+#include "DSP/SampleClassifier.h"
 #include <atomic>
 #include <vector>
 #include <string>
@@ -91,7 +94,10 @@ enum EMsgTags
   kMsgTagLoadPath = 7,   // ctrlTag = slot index, data = path
   kMsgTagRemoveRoot = 8, // ctrlTag = root index
   kMsgTagRescanLibrary = 9,
-  kMsgTagGetLibrary = 10
+  kMsgTagGetLibrary = 10,
+  kMsgTagPreviewPath = 11, // data = path: play the start of that file (library hover/click, slot audition)
+  kMsgTagPreviewStop = 12,
+  kMsgTagRebuildMap = 13  // rebuild the whole map (aligned to the current one)
 };
 
 class DrumReplacer final : public Plugin
@@ -122,6 +128,8 @@ private:
   void ScanLibraryAndSend();
   void SendLibraryToUI();
   void StartLibraryAnalysis();
+  struct LibraryFile;
+  static bool NeedsAnalysis(const LibraryFile& f);
   void StopLibraryAnalysis();
 
   struct LibraryFile
@@ -143,8 +151,15 @@ private:
     double zcr = 0;
     double rms = 0;
     double peak = 0;
+    double lufs = -70, druminess = 0, lateTransient = 0;
+    float emb[4] = {0.f, 0.f, 0.f, 0.f}; // 4-D timbre embedding (similar-sounds list)
     int featureVersion = 0;
     bool analyzed = false;
+    // recognition engine (v3): drum type, confidence, map position, fingerprint
+    int cls = -1;
+    double clsConf = 0;
+    float mapX = -1.f, mapY = -1.f;
+    std::vector<float> fp; // tu::kFeatSize values (fingerprint + descriptors), kept to rebuild the map without re-analysing
   };
 
   struct AnalysisResult
@@ -163,10 +178,20 @@ private:
     double zcr = 0;
     double rms = 0;
     double peak = 0;
+    double lufs = -70, druminess = 0, lateTransient = 0;
     int featureVersion = 0;
     int processed = 0;
     int total = 0;
     std::string name;
+    int cls = -1;
+    double clsConf = 0;
+    std::vector<float> fp;
+    // map result (sent once, after every file is analysed)
+    bool isMap = false;
+    std::vector<int> mapIndex;
+    std::vector<int> mapCls;      // final type per mapped file (name / own model / rules)
+    int modelClasses = 0, modelFiles = 0;
+    std::vector<tu::MapPoint> mapPts;
   };
 
   std::vector<std::string> mLibraryRoots;
@@ -177,6 +202,8 @@ private:
   std::mutex mAnalysisMutex;
   std::atomic<int> mAnalysisGeneration{0};
   std::atomic<bool> mAnalysisRunning{false};
+  std::atomic<bool> mAnalysisCancel{false}; // stops a running map (t-SNE) early
+  bool mForceMapRebuild = false;           // set by kMsgTagRebuildMap (UI thread)
   std::atomic<int> mAnalysisTotal{0};
   std::atomic<int> mAnalysisDone{0};
   std::vector<AnalysisResult> mAnalysisResults;
@@ -194,6 +221,8 @@ private:
   TransientDetector mDetector;
   HitGate mGate;
   Slot mSlots[kNumSlots];
+  PreviewPlayer mPreview;          // library / slot audition, independent of MIX
+  std::vector<float> mPrev[2];     // sized in OnReset
   std::vector<float> mWet[2];      // sized in OnReset
   std::vector<sample> mDelay[2];   // dry delay = detector latency, sized in OnReset
   int mDelayPos = 0;

@@ -16,6 +16,10 @@ iplug_add_plugin(${PROJECT_NAME}
     DSP/TransientDetector.h
     DSP/Dynamics.h
     DSP/WavFile.h
+    DSP/PreviewPlayer.h
+    DSP/SampleAnalysis.h
+    DSP/SampleMap.h
+    DSP/SampleClassifier.h
     resources/resource.h
     ${IPLUG2_DIR}/WDL/fft.c
   WEB_RESOURCES

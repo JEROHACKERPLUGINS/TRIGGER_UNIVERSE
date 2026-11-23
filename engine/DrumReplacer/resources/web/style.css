@@ -58,7 +58,7 @@ body{
 .btn{border:1px solid rgba(255,255,255,.14);
   background:linear-gradient(145deg,rgba(255,255,255,.10),rgba(255,255,255,.03));color:var(--text);
   font-family:var(--sans);font-size:12px;letter-spacing:.03em;padding:7px 10px;border-radius:8px;
-  cursor:pointer;transition:.16s;white-space:nowrap;backdrop-filter:blur(12px);
+  cursor:pointer;transition:.16s;white-space:nowrap;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
 .btn:hover{background:rgba(255,255,255,.07);border-color:var(--line-strong)}
 .btn.primary{border:none;color:#0A0D14;font-weight:700;background:linear-gradient(135deg,var(--mint),#7CE7D8);
@@ -76,7 +76,7 @@ body{
   border:1px solid rgba(255,255,255,.14);border-radius:var(--radius);
   box-shadow:0 24px 70px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.18),
     inset 0 -1px 0 rgba(0,0,0,.28);
-  backdrop-filter:blur(30px) saturate(150%);min-height:0;
+  -webkit-backdrop-filter:blur(30px) saturate(150%);backdrop-filter:blur(30px) saturate(150%);min-height:0;
 }
 
 /* ---------- library ---------- */
@@ -130,7 +130,7 @@ body{
 
 /* ---------- universe ---------- */
 .universe{display:block;position:relative;padding:0;overflow:hidden;min-width:0;
-  background:transparent;border:none;box-shadow:none;backdrop-filter:none}
+  background:transparent;border:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;}
 .universe-top{position:absolute;top:62px;left:16px;right:16px;display:flex;align-items:center;gap:6px;
   z-index:6;pointer-events:none;height:40px}
 .universe-top > *{pointer-events:auto}
@@ -155,7 +155,7 @@ body{
   height:40px;display:flex;align-items:center;gap:10px;
   border-radius:999px;padding:4px 4px 4px 16px;min-width:0;--lg-radius:999px}
 .search-box .search-view-toggle{position:relative;z-index:2;background:rgba(95,200,182,.10);border:none;color:rgba(205,238,231,.85);
-  backdrop-filter:blur(2px) brightness(1.15);
+  -webkit-backdrop-filter:blur(2px) brightness(1.15);backdrop-filter:blur(2px) brightness(1.15);
   box-shadow:inset 1px 1px 0 -.3px rgba(215,245,239,.55),inset -1px -1px 0 -.3px rgba(95,200,182,.3),0 2px 8px rgba(0,0,0,.25)}
 .search-box .search-view-toggle:hover{color:var(--mint);background:rgba(95,200,182,.14);
   box-shadow:inset 1px 1px 0 -.3px rgba(95,200,182,.7),inset -1px -1px 0 -.3px rgba(95,200,182,.3),0 0 14px rgba(95,200,182,.25)}
@@ -190,7 +190,7 @@ body{
   transition:opacity .2s, transform .2s}
 .similar-bar::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
   border-radius:inherit;background:rgba(17,21,31,.70);border:1px solid rgba(255,255,255,.14);
-  backdrop-filter:blur(22px);box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
+  -webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
   -webkit-mask-image:linear-gradient(to right,transparent 0,#000 64px,#000 calc(100% - 64px),transparent 100%);
   mask-image:linear-gradient(to right,transparent 0,#000 64px,#000 calc(100% - 64px),transparent 100%)}
 .similar-bar.show{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
@@ -382,7 +382,7 @@ body{
   border:1px solid rgba(255,255,255,.18);color:#E9EEF7;font-family:var(--sans);
   font-size:12px;letter-spacing:.18em;font-weight:650;cursor:pointer;
   background:linear-gradient(145deg,rgba(30,37,54,.92),rgba(10,14,22,.92));
-  backdrop-filter:blur(24px);box-shadow:0 12px 32px rgba(0,0,0,.45),
+  -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);box-shadow:0 12px 32px rgba(0,0,0,.45),
     inset 0 1px 0 rgba(255,255,255,.16);
   transition:opacity .2s, transform .2s}
 .trigger-tab i{font-style:normal;color:var(--mint);font-size:8px}
@@ -503,7 +503,7 @@ body{
   background:linear-gradient(145deg,rgba(30,37,54,.94),rgba(9,13,21,.94));
   border:1px solid rgba(255,255,255,.18);border-radius:12px;
   box-shadow:0 30px 80px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.18);
-  backdrop-filter:blur(30px) saturate(150%);padding:10px;display:none}
+  -webkit-backdrop-filter:blur(30px) saturate(150%);backdrop-filter:blur(30px) saturate(150%);padding:10px;display:none}
 .slot-popover.show{display:block}
 .sp-head{display:flex;align-items:center;gap:6px;margin-bottom:3px}
 .sp-badge{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:#0A0D14;
@@ -555,7 +555,7 @@ body{
   background:linear-gradient(145deg,rgba(30,37,54,.97),rgba(9,13,21,.97));
   border:1px solid rgba(255,255,255,.18);border-radius:12px;
   box-shadow:0 30px 70px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.18);
-  backdrop-filter:blur(30px) saturate(150%);display:flex;flex-direction:column;gap:4px;
+  -webkit-backdrop-filter:blur(30px) saturate(150%);backdrop-filter:blur(30px) saturate(150%);display:flex;flex-direction:column;gap:4px;
   opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-4px) scale(.97);
   transition:opacity .16s ease,transform .2s cubic-bezier(.2,.8,.2,1),visibility 0s linear .2s}
 .settings-menu.show{opacity:1;visibility:visible;pointer-events:auto;transform:none;
@@ -584,7 +584,7 @@ body{
   padding:6px 11px;border-radius:8px;white-space:nowrap;
   font-family:var(--sans);font-size:12px;font-weight:550;letter-spacing:.01em;color:var(--text);
   background:linear-gradient(180deg,rgba(26,33,48,.94),rgba(14,19,29,.94));
-  border:1px solid rgba(45,226,197,.28);backdrop-filter:blur(16px);
+  border:1px solid rgba(45,226,197,.28);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
   box-shadow:0 10px 28px rgba(0,0,0,.45),0 0 18px rgba(45,226,197,.10),inset 0 1px 0 rgba(255,255,255,.08);
   opacity:0;transform:translateY(-4px) scale(.96);transition:opacity .14s ease,transform .18s cubic-bezier(.2,.9,.3,1.3)}
 .ui-tip::before{content:"";position:absolute;left:var(--arrow-x,50%);width:8px;height:8px;
@@ -599,14 +599,13 @@ body{
    SVG displacement filter built in app.js (liquidGlass); only Chromium applies it. */
 .liquid-glass{--lg-tint:rgba(14,30,32,.38);isolation:isolate;border:none;
   background:linear-gradient(180deg,rgba(180,232,222,.14),rgba(95,200,182,.05) 55%,rgba(95,200,182,.10)),var(--lg-tint);
-  backdrop-filter:blur(3px) saturate(135%) brightness(1.1);
-  -webkit-backdrop-filter:blur(3px) saturate(135%) brightness(1.1);
+  -webkit-backdrop-filter:blur(3px) saturate(135%) brightness(1.1);backdrop-filter:blur(3px) saturate(135%) brightness(1.1);
   box-shadow:
     0 12px 32px rgba(0,0,0,.32), 0 2px 6px rgba(0,0,0,.18), 0 0 24px rgba(95,200,182,.10),
     inset 1.5px 1.5px 0 -.5px rgba(215,245,239,.6),
     inset -1px -1px 0 -.5px rgba(95,200,182,.35),
     inset 0 0 16px rgba(95,200,182,.12)}
-.liquid-glass.lg-refract{backdrop-filter:var(--lg-filter) blur(2px) saturate(135%) brightness(1.1)}
+.liquid-glass.lg-refract{-webkit-backdrop-filter:blur(2px) saturate(135%) brightness(1.1);backdrop-filter:var(--lg-filter) blur(2px) saturate(135%) brightness(1.1);}
 .liquid-glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
   background:linear-gradient(135deg,rgba(225,248,243,.8),rgba(95,200,182,.30) 30%,rgba(95,200,182,.06) 55%,rgba(95,200,182,.28) 80%,rgba(185,238,228,.6));
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
@@ -615,6 +614,19 @@ body{
   border-radius:999px 999px 40% 40%;pointer-events:none;z-index:-1;
   background:linear-gradient(180deg,rgba(210,242,236,.18),rgba(95,200,182,0))}
 .liquid-glass > *{position:relative;z-index:2}
+/* WebKit path (app.js liquidGlass): the refracted backdrop is a canvas inside the
+   element (.lg-backdrop) and the tint sits on top of it (.lg-tint), so the element
+   itself carries no backdrop-filter / background. Same look as the Chromium path. */
+.liquid-glass.lg-canvas{background:none;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;}
+.liquid-glass.lg-canvas > .lg-backdrop{position:absolute;inset:0;border-radius:inherit;overflow:hidden;z-index:-3;pointer-events:none}
+.liquid-glass.lg-canvas > .lg-backdrop > canvas{position:absolute;display:block}
+.liquid-glass.lg-canvas > .lg-tint{position:absolute;inset:0;border-radius:inherit;z-index:-2;pointer-events:none;
+  background:linear-gradient(180deg,rgba(180,232,222,.14),rgba(95,200,182,.05) 55%,rgba(95,200,182,.10)),var(--lg-tint)}
+.trigger-tab.liquid-glass.lg-canvas:hover > .lg-tint{
+  background:linear-gradient(180deg,rgba(180,232,222,.18),rgba(95,200,182,.08) 55%,rgba(95,200,182,.14)),var(--lg-tint)}
+.trigger-view .detector-panel.liquid-glass.lg-canvas > :is(.lg-backdrop,.lg-tint),
+.trigger-view .inspector.liquid-glass.lg-canvas > :is(.lg-backdrop,.lg-tint){display:none}
+html.reduce-transparency .liquid-glass.lg-canvas > :is(.lg-backdrop,.lg-tint){display:none}
 .search-box.liquid-glass{transition:box-shadow .2s}
 .search-box.liquid-glass:focus-within{
   box-shadow:
@@ -626,8 +638,8 @@ body{
 .trigger.liquid-glass::after,.detector-panel.liquid-glass::after,.inspector.liquid-glass::after{left:24px;right:24px;height:28px;border-radius:15px 15px 50% 50%;
   background:linear-gradient(180deg,rgba(210,242,236,.10),rgba(95,200,182,0))}
 .trigger.liquid-glass,.detector-panel.liquid-glass,.inspector.liquid-glass,.trigger.liquid-glass.lg-refract,.detector-panel.liquid-glass.lg-refract,.inspector.liquid-glass.lg-refract{
-  backdrop-filter:var(--lg-filter,blur(0)) blur(5px) saturate(155%) brightness(1.12);
-  -webkit-backdrop-filter:blur(5px) saturate(155%) brightness(1.12)}
+  /* Chromium already used the prefixed value here (it came last): same look kept */
+  -webkit-backdrop-filter:blur(5px) saturate(155%) brightness(1.12);backdrop-filter:blur(5px) saturate(155%) brightness(1.12);}
 .trigger:not(.open){transform:translateY(calc(100% + 50px))}
 .trigger.liquid-glass,.detector-panel.liquid-glass,.inspector.liquid-glass{--lg-tint:rgba(10,22,26,.38);
   box-shadow:
@@ -687,7 +699,7 @@ body{
   color:#E9EEF7;cursor:pointer;background:linear-gradient(145deg,rgba(30,37,54,.82),rgba(10,14,22,.74));
   border:1px solid rgba(255,255,255,.14);
   box-shadow:0 12px 32px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.16);
-  backdrop-filter:blur(24px) saturate(150%);transition:.18s}
+  -webkit-backdrop-filter:blur(24px) saturate(150%);backdrop-filter:blur(24px) saturate(150%);transition:.18s}
 .slot-dock .trigger-tab i{font-style:normal;font-size:9px;color:var(--mint);transition:transform .2s}
 .slot-dock .trigger-tab:hover{transform:translateY(-2px);border-color:rgba(45,226,197,.32);
   background:linear-gradient(145deg,rgba(36,52,58,.9),rgba(10,20,20,.8));
@@ -963,7 +975,7 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
     inset 1px 1px 0 -.5px rgba(215,245,239,.50),
     inset -1px -1px 0 -.5px rgba(95,200,182,.30),
     inset 0 0 24px rgba(95,200,182,.08);
-  backdrop-filter:blur(24px) saturate(145%) brightness(1.05)}
+  -webkit-backdrop-filter:blur(24px) saturate(145%) brightness(1.05);backdrop-filter:blur(24px) saturate(145%) brightness(1.05);}
 /* output cluster becomes a glass pill */
 .top-master{
   border:1px solid var(--glass-line);border-left:1px solid var(--glass-line);
@@ -972,7 +984,7 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
   box-shadow:0 8px 22px rgba(0,0,0,.26),0 0 16px var(--glass-glow),
     inset 1px 1px 0 -.5px var(--glass-hi),
     inset -1px -1px 0 -.5px var(--glass-lo);
-  backdrop-filter:blur(10px) saturate(135%) brightness(1.05)}
+  -webkit-backdrop-filter:blur(10px) saturate(135%) brightness(1.05);backdrop-filter:blur(10px) saturate(135%) brightness(1.05);}
 .top-knob{
   background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.20),rgba(10,22,26,.50));
   border-color:rgba(215,245,239,.26);
@@ -984,7 +996,7 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
   box-shadow:0 6px 18px rgba(0,0,0,.22),0 0 14px var(--glass-glow),
     inset 1px 1px 0 -.5px var(--glass-hi),
     inset -1px -1px 0 -.5px var(--glass-lo);
-  backdrop-filter:blur(8px) saturate(130%) brightness(1.04)}
+  -webkit-backdrop-filter:blur(8px) saturate(130%) brightness(1.04);backdrop-filter:blur(8px) saturate(130%) brightness(1.04);}
 .top-actions .btn.ghost:not(.active):hover{
   background:linear-gradient(180deg,rgba(180,232,222,.20),rgba(95,200,182,.06) 55%,rgba(95,200,182,.12)),rgba(14,30,32,.40);
   border-color:rgba(215,245,239,.30)}
@@ -999,8 +1011,7 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
   box-shadow:0 12px 30px rgba(0,0,0,.28),0 0 18px var(--glass-glow),
     inset 1px 1px 0 -.5px var(--glass-hi),
     inset -1px -1px 0 -.5px var(--glass-lo);
-  backdrop-filter:blur(12px) saturate(130%) brightness(1.05);
-  -webkit-backdrop-filter:blur(12px) saturate(130%) brightness(1.05);
+  -webkit-backdrop-filter:blur(12px) saturate(130%) brightness(1.05);backdrop-filter:blur(12px) saturate(130%) brightness(1.05);
   transition:transform .18s cubic-bezier(.2,.8,.2,1),border-color .18s ease,
     box-shadow .18s ease,background .18s ease,color .18s ease}
 .side-bracket.left{left:0;border-left:none;border-radius:0 14px 14px 0;
@@ -1068,8 +1079,7 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
   border:1px solid var(--line);
   border-radius:10px;
   box-shadow:none;
-  backdrop-filter:none;
-  -webkit-backdrop-filter:none}
+  -webkit-backdrop-filter:none;backdrop-filter:none;}
 .trigger-view .detector-panel.liquid-glass::before,
 .trigger-view .inspector.liquid-glass::before,
 .trigger-view .detector-panel.liquid-glass::after,
@@ -1404,7 +1414,7 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
   background:linear-gradient(180deg,rgba(180,232,222,.14),rgba(95,200,182,.04) 55%,rgba(95,200,182,.09)),rgba(10,22,26,.80);
   box-shadow:0 30px 70px rgba(0,0,0,.60),0 0 30px rgba(95,200,182,.10),
     inset 1px 1px 0 -.5px rgba(215,245,239,.50),inset -1px -1px 0 -.5px rgba(95,200,182,.30);
-  backdrop-filter:blur(24px) saturate(145%) brightness(1.05);
+  -webkit-backdrop-filter:blur(24px) saturate(145%) brightness(1.05);backdrop-filter:blur(24px) saturate(145%) brightness(1.05);
   opacity:0;visibility:hidden;pointer-events:none;transform:translate(6px,-50%) scale(.97);
   transition:opacity .16s ease,transform .2s cubic-bezier(.2,.8,.2,1),visibility 0s linear .2s}
 .visual-panel.show{opacity:1;visibility:visible;pointer-events:auto;transform:translate(0,-50%);transition-delay:0s}
@@ -1414,7 +1424,7 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
   padding:10px 12px;border:1px solid rgba(215,245,239,.22);border-radius:12px;
   background:linear-gradient(180deg,rgba(180,232,222,.14),rgba(95,200,182,.04) 55%,rgba(95,200,182,.09)),rgba(10,22,26,.88);
   box-shadow:0 20px 50px rgba(0,0,0,.55),inset 1px 1px 0 -.5px rgba(215,245,239,.45);
-  backdrop-filter:blur(20px) saturate(140%);
+  -webkit-backdrop-filter:blur(20px) saturate(140%);backdrop-filter:blur(20px) saturate(140%);
   opacity:0;visibility:hidden;pointer-events:none;transform:translate(-50%,8px);
   transition:opacity .18s ease,transform .2s ease,visibility 0s linear .2s}
 .analysis-panel.show{opacity:1;visibility:visible;transform:translate(-50%,0);transition-delay:0s}
@@ -1433,7 +1443,7 @@ body.dragging-planet,body.dragging-planet *{cursor:grabbing!important}
   background:linear-gradient(180deg,rgba(180,232,222,.14),rgba(95,200,182,.04) 55%,rgba(95,200,182,.09)),rgba(10,22,26,.82);
   box-shadow:0 30px 70px rgba(0,0,0,.60),0 0 30px rgba(95,200,182,.10),
     inset 1px 1px 0 -.5px rgba(215,245,239,.50),inset -1px -1px 0 -.5px rgba(95,200,182,.30);
-  backdrop-filter:blur(24px) saturate(145%) brightness(1.05);
+  -webkit-backdrop-filter:blur(24px) saturate(145%) brightness(1.05);backdrop-filter:blur(24px) saturate(145%) brightness(1.05);
   opacity:0;visibility:hidden;pointer-events:none;transform:translate(6px,-50%) scale(.97);
   transition:opacity .16s ease,transform .2s cubic-bezier(.2,.8,.2,1),visibility 0s linear .2s}
 .library-panel.show{opacity:1;visibility:visible;pointer-events:auto;transform:translate(0,-50%);transition-delay:0s}
@@ -1504,7 +1514,7 @@ html.reduce-motion .slot-dock .slot{transform:none !important}
 
 /* ---------- Reduce transparency: solid surfaces, no backdrop blur ---------- */
 html.reduce-transparency *,html.reduce-transparency *::before{
-  backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+  -webkit-backdrop-filter:none !important;backdrop-filter:none !important;}
 html.reduce-transparency :is(.liquid-glass,.settings-menu,.visual-panel,.slot-popover,.ui-tip,.top-master,
   .side-bracket,.slot,.btn,.trigger-tab,.library-panel,.universe.files-mode .tree-pane,.inspector,.detector-panel,.trigger,
   .tree-pane,.file-main,.name-bar,.slot-fader){

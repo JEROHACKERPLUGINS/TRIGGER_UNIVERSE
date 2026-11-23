@@ -138,140 +138,54 @@ struct WavFeatures
   double zcr = 0;
   double rms = 0;
   double peak = 0;
-  int version = 2;
+  double lufs = -70, druminess = 0, lateTransient = 0;
+  int version = tu::kAnalysisVersion;
   bool ok = false;
+  int cls = -1;
+  double conf = 0;
+  std::vector<float> fp;
 };
 
+// Recognition engine (DSP/SampleAnalysis.h): drum type + fingerprint for the map.
+// Only the start of the file is decoded (the analysis uses the first 5 s);
+// the duration comes from the WAV header.
 static WavFeatures AnalyzeWav(const std::string& path)
 {
   WavFeatures out;
   std::vector<std::vector<float>> channels;
   double sr = 0;
-  if (!LoadWavFile(path, channels, sr) || channels.empty() || sr <= 0)
+  const WavInfo info = ReadWavInfo(path);
+  if (!LoadWavFile(path, channels, sr, 8u << 20) || channels.empty() || sr <= 0)
+    return out; // ok = false, centroid 0: the UI keeps it off the map
+
+  const tu::SampleFeatures f = tu::AnalyzeSample(channels, sr, info.durMs);
+  if (!f.ok)
     return out;
 
-  const size_t frames = channels[0].size();
-  if (!frames)
-    return out;
-
-  out.durMs = (double) frames / sr * 1000.0;
-
-  const size_t n = std::min(frames, (size_t) std::max(1.0, sr * 5.0));
-  const int nch = (int) channels.size();
-  std::vector<float> mono(n, 0.f);
-  for (int c = 0; c < nch; ++c)
+  out.durMs = f.durMs;
+  out.centroid = f.centroid;
+  out.rolloff = 0;
+  out.flatness = f.noiseFlat;
+  out.attack = f.attackMs;
+  out.decay = f.decay40;
+  out.crest = f.rms > 1e-9 ? f.peak / f.rms : 0;
+  out.zcr = 0;
+  out.rms = f.rms;
+  out.peak = f.peak;
+  out.lufs = f.lufs;
+  out.druminess = f.druminess;
+  out.lateTransient = f.lateTransient;
+  out.cls = f.cls;
+  out.conf = f.conf;
+  // Ambiguous audio: an explicit word in the file name ("kick", "hat", ...) decides.
+  if (f.conf < 0.2)
   {
-    const auto& src = channels[(size_t) c];
-    const size_t m = std::min(n, src.size());
-    for (size_t i = 0; i < m; ++i)
-      mono[i] += src[i] / (float) nch;
+    const int byName = tu::DrumClassFromName(PathBaseName(path));
+    if (byName >= 0) { out.cls = byName; out.conf = 0.2; }
   }
-
-  double peak = 0, sum = 0;
-  for (size_t i = 0; i < n; ++i)
-  {
-    const double a = std::abs(mono[i]);
-    if (a > peak) peak = a;
-    sum += (double) mono[i] * mono[i];
-  }
-  out.peak = peak;
-  out.rms = std::sqrt(sum / (double) std::max<size_t>(1, n));
-  out.crest = out.rms > 1e-9 ? out.peak / out.rms : 0;
-
-  const size_t zcN = std::min(n, (size_t) std::max(1.0, sr * 2.0));
-  int crossings = 0;
-  for (size_t i = 1; i < zcN; ++i)
-    if ((mono[i] >= 0.f) != (mono[i - 1] >= 0.f))
-      ++crossings;
-  out.zcr = zcN > 1 ? (double) crossings / ((double) zcN / sr) : 0;
-
-  const size_t block = std::max<size_t>(1, (size_t)(sr * 0.001));
-  const size_t blocks = n / block;
-  if (blocks)
-  {
-    std::vector<float> env(blocks, 0.f);
-    for (size_t b = 0; b < blocks; ++b)
-    {
-      float p = 0.f;
-      for (size_t i = 0; i < block; ++i)
-        p = std::max(p, std::abs(mono[b * block + i]));
-      env[b] = p;
-    }
-    size_t peakIdx = 0;
-    for (size_t b = 1; b < blocks; ++b)
-      if (env[b] > env[peakIdx]) peakIdx = b;
-    const float thr = env[peakIdx] * 0.1f;
-    size_t start = peakIdx;
-    while (start > 0 && env[start - 1] > thr) --start;
-    size_t end = peakIdx;
-    while (end + 1 < blocks && env[end + 1] > thr) ++end;
-    const double blockMs = 1000.0 * (double) block / sr;
-    out.attack = (double)(peakIdx - start) * blockMs;
-    out.decay = (double)(end - peakIdx) * blockMs;
-  }
-
-  const int N = 2048;
-  const size_t search = std::min(n, (size_t) std::max(1.0, sr * 2.0));
-  size_t best = 0;
-  double bestEnergy = -1;
-  for (size_t start = 0; start + (size_t) N <= search; start += N / 2)
-  {
-    double e = 0;
-    for (int i = 0; i < N; ++i)
-      e += (double) mono[start + i] * mono[start + i];
-    if (e > bestEnergy) { bestEnergy = e; best = start; }
-  }
-  if (bestEnergy <= 0)
-    best = 0;
-
-  std::vector<WDL_FFT_REAL> buf((size_t) N, 0);
-  constexpr double kPi = 3.14159265358979323846;
-  for (int i = 0; i < N; ++i)
-  {
-    const double w = 0.5 - 0.5 * std::cos(2.0 * kPi * i / (N - 1));
-    buf[(size_t) i] = (best + (size_t) i < n)
-      ? (WDL_FFT_REAL)(mono[best + (size_t) i] * w) : 0;
-  }
-
-  WDL_real_fft(buf.data(), N, 0);
-
-  double num = 0, den = 0, sumLog = 0;
-  int bins = 0;
-  std::vector<double> mags((size_t) N / 2, 0.0);
-  for (int i = 1; i < N / 2; ++i)
-  {
-    const int idx = WDL_fft_permute(N / 2, i);
-    const double re = buf[(size_t) idx * 2];
-    const double im = buf[(size_t) idx * 2 + 1];
-    const double mag = std::sqrt(re * re + im * im);
-    mags[(size_t) i] = mag;
-    const double f = (double) i * sr / (double) N;
-    num += f * mag;
-    den += mag;
-    sumLog += std::log(mag + 1e-12);
-    ++bins;
-  }
-
-  out.centroid = den > 0 ? num / den : 0;
-
-  double acc = 0;
-  const double target = den * 0.85;
-  for (int i = 1; i < N / 2; ++i)
-  {
-    acc += mags[(size_t) i];
-    if (acc >= target)
-    {
-      out.rolloff = (double) i * sr / (double) N;
-      break;
-    }
-  }
-
-  const double geo = bins > 0 ? std::exp(sumLog / (double) bins) : 0;
-  const double arith = bins > 0 ? den / (double) bins : 0;
-  out.flatness = arith > 1e-12 ? geo / arith : 0;
-
+  out.fp.assign(f.fp, f.fp + tu::kFpSize);
+  out.fp.insert(out.fp.end(), f.desc, f.desc + tu::kDescSize); // stored as one feature row
   out.ok = true;
-  out.version = 2;
   return out;
 }
 #endif
@@ -433,6 +347,7 @@ void DrumReplacer::OnIdle()
 {
   for (auto& slot : mSlots)
     slot.CollectGarbage();
+  mPreview.CollectGarbage();
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
   std::vector<AnalysisResult> pending;
@@ -458,9 +373,34 @@ void DrumReplacer::OnIdle()
         continue;
       }
 
+      if (r.isMap)
+      {
+        nlohmann::json pts = nlohmann::json::array();
+        for (size_t k = 0; k < r.mapIndex.size(); k++)
+        {
+          const int idx = r.mapIndex[k];
+          if (idx < 0 || idx >= (int) mLibraryFiles.size()) continue;
+          auto& lf = mLibraryFiles[(size_t) idx];
+          const auto& mp = r.mapPts[k];
+          lf.mapX = mp.x;
+          lf.mapY = mp.y;
+          std::copy(mp.e, mp.e + 4, lf.emb);
+          if (k < r.mapCls.size()) lf.cls = r.mapCls[k];
+          pts.push_back({idx, mp.x, mp.y, mp.e[0], mp.e[1], mp.e[2], mp.e[3], tu::DrumClassName(lf.cls)});
+        }
+        SaveLibrarySettings();
+        if (mUIOpen)
+          SendJSONFromDelegate({{"id", "map"}, {"pts", pts}, {"modelClasses", r.modelClasses}, {"modelFiles", r.modelFiles}});
+        continue;
+      }
+
       if (r.index >= 0 && r.index < (int) mLibraryFiles.size())
       {
         auto& f = mLibraryFiles[(size_t) r.index];
+        f.cls = r.cls;
+        f.clsConf = r.clsConf;
+        f.fp = r.fp;
+        f.mapX = f.mapY = -1.f; // placed by the next map
         f.durMs = r.durMs;
         f.centroidHz = r.centroid;
         f.rolloffHz = r.rolloff;
@@ -471,6 +411,9 @@ void DrumReplacer::OnIdle()
         f.zcr = r.zcr;
         f.rms = r.rms;
         f.peak = r.peak;
+        f.lufs = r.lufs;
+        f.druminess = r.druminess;
+        f.lateTransient = r.lateTransient;
         f.featureVersion = r.featureVersion;
         f.analyzed = r.analyzed;
       }
@@ -482,7 +425,9 @@ void DrumReplacer::OnIdle()
                               {"flatness", r.flatness}, {"attack", r.attack},
                               {"decay", r.decay}, {"crest", r.crest},
                               {"zcr", r.zcr}, {"rms", r.rms}, {"peak", r.peak},
+                              {"lufs", r.lufs}, {"drum", r.druminess}, {"late", r.lateTransient},
                               {"v", r.featureVersion}, {"analyzed", r.analyzed},
+                              {"cls", tu::DrumClassName(r.cls)}, {"conf", r.clsConf},
                               {"name", r.name}, {"done", r.processed}, {"total", r.total}});
 
       if (r.processed > 0 && r.processed % 100 == 0)
@@ -611,6 +556,19 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     outputs[0][i] = (dryL * g * (1. - m) + wetL[i] * m) * o;
     outputs[1][i] = (dryR * g * (1. - m) + wetR[i] * m) * o;
   }
+
+  // 5. Preview (library hover / slot audition): on top of everything, not
+  //    affected by MIX or OUTPUT, so it is heard even with MIX at 0%.
+  float* prevL = mPrev[0].data();
+  float* prevR = mPrev[1].data();
+  std::fill(prevL, prevL + nFrames, 0.f);
+  std::fill(prevR, prevR + nFrames, 0.f);
+  mPreview.Render(prevL, prevR, nFrames, sr);
+  for (int i = 0; i < nFrames; i++)
+  {
+    outputs[0][i] += prevL[i];
+    outputs[1][i] += prevR[i];
+  }
 }
 
 void DrumReplacer::SendMidiOut(int offset, float velocity)
@@ -635,6 +593,8 @@ void DrumReplacer::OnReset()
 {
   const double sr = GetSampleRate();
   for (auto& w : mWet)
+    w.assign(GetBlockSize(), 0.f);
+  for (auto& w : mPrev)
     w.assign(GetBlockSize(), 0.f);
 
   mDetector.Reset(sr);
@@ -763,6 +723,44 @@ bool DrumReplacer::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* 
     return true;
   }
 
+  if (msgTag == kMsgTagPreviewPath)
+  {
+    if (pData && dataSize > 0)
+    {
+      // Only the first ~2 MB: a preview plays <= 0.8 s, long multitrack
+      // files must not stall the UI thread.
+      const std::string path((const char*) pData, (size_t) dataSize);
+      std::vector<std::vector<float>> chans;
+      double sr = 0.;
+      if (LoadWavFile(path, chans, sr, 2u << 20) && !chans.empty() && sr > 0.)
+      {
+        auto* pData2 = new SampleData;
+        pData2->numChannels = std::min((int) chans.size(), 2);
+        for (int c = 0; c < pData2->numChannels; c++)
+          pData2->ch[c] = std::move(chans[c]);
+        pData2->numFrames = (int) pData2->ch[0].size();
+        pData2->sampleRate = sr;
+        mPreview.SetSample(pData2);
+      }
+    }
+    return true;
+  }
+
+  if (msgTag == kMsgTagRebuildMap)
+  {
+#ifdef WEBVIEW_EDITOR_DELEGATE
+    mForceMapRebuild = true;
+    StartLibraryAnalysis();
+#endif
+    return true;
+  }
+
+  if (msgTag == kMsgTagPreviewStop)
+  {
+    mPreview.Stop();
+    return true;
+  }
+
   if (ctrlTag < 0 || ctrlTag >= kNumSlots)
     return false;
 
@@ -848,12 +846,26 @@ void DrumReplacer::LoadLibrarySettings()
       lf.zcr = f.value("zcr", 0.0);
       lf.rms = f.value("rms", 0.0);
       lf.peak = f.value("peak", 0.0);
+      lf.lufs = f.value("lufs", -70.0);
+      lf.druminess = f.value("drum", 0.0);
+      lf.lateTransient = f.value("late", 0.0);
+      if (f.contains("e") && f["e"].is_array() && f["e"].size() == 4)
+        for (int k = 0; k < 4; k++) lf.emb[k] = f["e"][(size_t) k].get<float>();
       lf.featureVersion = f.value("v", 0);
       lf.analyzed = f.value("analyzed", false);
+      lf.cls = f.value("cls", -1);
+      lf.clsConf = f.value("conf", 0.0);
+      lf.mapX = f.value("mx", -1.0f);
+      lf.mapY = f.value("my", -1.0f);
+      if (f.contains("fp") && f["fp"].is_array() && f["fp"].size() == (size_t) tu::kFeatSize)
+        lf.fp = f["fp"].get<std::vector<float>>();
       if (!lf.path.empty())
         mLibraryFiles.push_back(std::move(lf));
     }
   }
+  // positions from another map layout are not reused: the map is rebuilt
+  if (j.value("mapVersion", 0) != tu::kMapVersion)
+    for (auto& lf : mLibraryFiles) lf.mapX = lf.mapY = -1.f;
   mLibraryScanned = !mLibraryRoots.empty() && !mLibraryFiles.empty();
 }
 
@@ -867,16 +879,31 @@ void DrumReplacer::SaveLibrarySettings() const
 
   nlohmann::json j;
   j["roots"] = mLibraryRoots;
+  j["mapVersion"] = tu::kMapVersion;
   j["files"] = nlohmann::json::array();
   for (const auto& f : mLibraryFiles)
-    j["files"].push_back({{"root", f.root}, {"path", f.path}, {"name", f.name},
-                          {"rel", f.rel}, {"size", f.size}, {"dur", f.durMs},
-                          {"sr", f.sampleRate}, {"ch", f.channels},
-                          {"centroid", f.centroidHz}, {"rolloff", f.rolloffHz},
-                          {"flatness", f.flatness}, {"attack", f.attackMs},
-                          {"decay", f.decayMs}, {"crest", f.crest},
-                          {"zcr", f.zcr}, {"rms", f.rms}, {"peak", f.peak},
-                          {"v", f.featureVersion}, {"analyzed", f.analyzed}});
+  {
+    nlohmann::json e = {{"root", f.root}, {"path", f.path}, {"name", f.name},
+                        {"rel", f.rel}, {"size", f.size}, {"dur", f.durMs},
+                        {"sr", f.sampleRate}, {"ch", f.channels},
+                        {"centroid", f.centroidHz}, {"rolloff", f.rolloffHz},
+                        {"flatness", f.flatness}, {"attack", f.attackMs},
+                        {"decay", f.decayMs}, {"crest", f.crest},
+                        {"zcr", f.zcr}, {"rms", f.rms}, {"peak", f.peak},
+                     {"lufs", f.lufs}, {"drum", f.druminess}, {"late", f.lateTransient},
+                     {"e", {f.emb[0], f.emb[1], f.emb[2], f.emb[3]}},
+                        {"lufs", f.lufs}, {"drum", f.druminess}, {"late", f.lateTransient},
+                        {"e", {f.emb[0], f.emb[1], f.emb[2], f.emb[3]}},
+                        {"v", f.featureVersion}, {"analyzed", f.analyzed},
+                        {"cls", f.cls}, {"conf", f.clsConf}, {"mx", f.mapX}, {"my", f.mapY}};
+    if ((int) f.fp.size() == tu::kFeatSize)
+    {
+      nlohmann::json fp = nlohmann::json::array();
+      for (float v : f.fp) fp.push_back(std::round(v * 1000.f) / 1000.f); // 3 decimals: smaller file
+      e["fp"] = fp;
+    }
+    j["files"].push_back(std::move(e));
+  }
 
   std::ofstream out(path);
   if (out)
@@ -928,9 +955,28 @@ void DrumReplacer::ScanLibraryAndSend()
         lf.durMs = oit->second.durMs;
         lf.sampleRate = oit->second.sampleRate;
         lf.channels = oit->second.channels;
+        // Keep every analyzed feature: dropping rolloff/flatness/... and the
+        // version made each rescan (or a new location) un-place every sample.
         lf.centroidHz = oit->second.centroidHz;
+        lf.rolloffHz = oit->second.rolloffHz;
+        lf.flatness = oit->second.flatness;
+        lf.attackMs = oit->second.attackMs;
+        lf.decayMs = oit->second.decayMs;
+        lf.crest = oit->second.crest;
+        lf.zcr = oit->second.zcr;
         lf.rms = oit->second.rms;
+        lf.peak = oit->second.peak;
+        lf.lufs = oit->second.lufs;
+        lf.druminess = oit->second.druminess;
+        lf.lateTransient = oit->second.lateTransient;
+        std::copy(oit->second.emb, oit->second.emb + 4, lf.emb);
+        lf.featureVersion = oit->second.featureVersion;
         lf.analyzed = oit->second.analyzed;
+        lf.cls = oit->second.cls;
+        lf.clsConf = oit->second.clsConf;
+        lf.fp = oit->second.fp;
+        lf.mapX = oit->second.mapX; // known files keep their place; new ones are inserted
+        lf.mapY = oit->second.mapY;
       }
       if (!lf.analyzed)
       {
@@ -973,30 +1019,49 @@ void DrumReplacer::SendLibraryToUI()
                      {"flatness", f.flatness}, {"attack", f.attackMs},
                      {"decay", f.decayMs}, {"crest", f.crest},
                      {"zcr", f.zcr}, {"rms", f.rms}, {"peak", f.peak},
-                     {"v", f.featureVersion}, {"analyzed", f.analyzed}});
+                     {"v", f.featureVersion}, {"analyzed", f.analyzed},
+                     {"cls", f.cls >= 0 ? tu::DrumClassName(f.cls) : ""}, {"conf", f.clsConf},
+                     {"mx", f.mapX}, {"my", f.mapY}});
 
   SendJSONFromDelegate({{"id", "library"}, {"roots", roots}, {"files", files}});
 #endif
 }
 
+// Not analyzed with the current recognition engine yet. A file that failed to
+// decode is marked analyzed with centroid 0: it is not retried on every open.
+bool DrumReplacer::NeedsAnalysis(const LibraryFile& f)
+{
+  return !f.analyzed || f.featureVersion < tu::kAnalysisVersion;
+}
+
+// Background job: analyse what is missing (type + fingerprint), then build the
+// XO-style map (t-SNE) over the whole library. Works on a snapshot, so the UI
+// thread can keep using mLibraryFiles; results come back through OnIdle.
 void DrumReplacer::StartLibraryAnalysis()
 {
   StopLibraryAnalysis();
 
-  struct Job { int index; std::string path; std::string name; };
-  std::vector<Job> jobs;
-  jobs.reserve(mLibraryFiles.size());
+  struct Item { int index; std::string path; std::string name; bool needs; bool ok; double durMs; int cls; std::vector<float> fp; float mx, my; };
+  std::vector<Item> items;
+  items.reserve(mLibraryFiles.size());
+  int numJobs = 0;
+  bool mapMissing = false;
   for (size_t i = 0; i < mLibraryFiles.size(); ++i)
   {
     const auto& f = mLibraryFiles[i];
-    if (!f.analyzed || f.featureVersion < 2 || f.durMs <= 0 || f.centroidHz <= 0)
-      jobs.push_back({(int) i, f.path, f.name});
+    const bool needs = NeedsAnalysis(f);
+    const bool ok = !needs && f.centroidHz > 0 && (int) f.fp.size() == tu::kFeatSize;
+    // re-analysed files lose their old position: the map is rebuilt or they are inserted
+    items.push_back({(int) i, f.path, f.name, needs, ok, f.durMs, f.cls, f.fp, needs ? -1.f : f.mapX, needs ? -1.f : f.mapY});
+    numJobs += needs ? 1 : 0;
+    mapMissing |= ok && f.mapX < 0.f;
   }
+  if (mForceMapRebuild) mapMissing = true;
 
-  mAnalysisTotal = (int) jobs.size();
+  mAnalysisTotal = numJobs;
   mAnalysisDone = 0;
 
-  if (jobs.empty())
+  if (numJobs == 0 && !mapMissing)
   {
 #ifdef WEBVIEW_EDITOR_DELEGATE
     if (mUIOpen)
@@ -1006,28 +1071,28 @@ void DrumReplacer::StartLibraryAnalysis()
   }
 
   const int gen = ++mAnalysisGeneration;
+  mAnalysisCancel = false;
   mAnalysisRunning = true;
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
-  if (mUIOpen)
-    SendJSONFromDelegate({{"id", "analysisStart"}, {"total", (int) jobs.size()}});
+  if (mUIOpen && numJobs > 0)
+    SendJSONFromDelegate({{"id", "analysisStart"}, {"total", numJobs}});
 #endif
 
-  mAnalysisThread = std::thread([this, gen, jobs]() {
-    static std::once_flag fftOnce;
-    std::call_once(fftOnce, []() { WDL_fft_init(); });
-
+  const bool forceRebuild = mForceMapRebuild;
+  mForceMapRebuild = false;
+  mAnalysisThread = std::thread([this, gen, items = std::move(items), numJobs, forceRebuild]() mutable {
     int processed = 0;
-    for (const auto& job : jobs)
+    for (auto& it : items)
     {
-      if (mAnalysisGeneration.load() != gen)
-        return;
+      if (!it.needs) continue;
+      if (mAnalysisGeneration.load() != gen) return;
 
-      const WavFeatures feat = AnalyzeWav(job.path);
+      const WavFeatures feat = AnalyzeWav(it.path);
       AnalysisResult result;
       result.generation = gen;
-      result.index = job.index;
-      result.name = job.name;
+      result.index = it.index;
+      result.name = it.name;
       result.analyzed = true; // attempted; failed decodes stay at centroid 0
       result.durMs = feat.durMs;
       result.centroid = feat.centroid;
@@ -1039,31 +1104,94 @@ void DrumReplacer::StartLibraryAnalysis()
       result.zcr = feat.zcr;
       result.rms = feat.rms;
       result.peak = feat.peak;
+      result.lufs = feat.lufs;
+      result.druminess = feat.druminess;
+      result.lateTransient = feat.lateTransient;
       result.featureVersion = feat.version;
+      result.cls = feat.cls;
+      result.clsConf = feat.conf;
+      result.fp = feat.fp;
       result.processed = ++processed;
-      result.total = (int) jobs.size();
+      result.total = numJobs;
 
+      it.ok = feat.ok && feat.centroid > 0 && (int) feat.fp.size() == tu::kFeatSize;
+      it.durMs = feat.durMs;
+      it.cls = feat.cls;
+      it.fp = feat.fp;
+
+      std::lock_guard<std::mutex> lock(mAnalysisMutex);
+      mAnalysisResults.push_back(std::move(result));
+    }
+
+    int modelClasses = 0, modelFiles = 0;
+    // XO-like map over every analysable file: insert new ones into the stored
+    // map, or rebuild (aligned to the previous one) when most are new / asked.
+    // Own classifier: learns from the files whose name says the type, labels the rest.
+    {
+      std::vector<tu::MapItem> ci;
+      std::vector<size_t> where;
+      std::vector<int> nameCls, ruleCls;
+      for (size_t q = 0; q < items.size(); q++)
+        if (items[q].ok)
+        {
+          tu::MapItem m; m.feat = items[q].fp.data(); m.durMs = items[q].durMs; m.cls = 0;
+          ci.push_back(m); where.push_back(q);
+          nameCls.push_back(tu::DrumClassFromName(items[q].name));
+          ruleCls.push_back(items[q].cls);
+        }
+      if (!ci.empty())
       {
-        std::lock_guard<std::mutex> lock(mAnalysisMutex);
-        mAnalysisResults.push_back(std::move(result));
+        tu::MapParams cp; cp.wType = 0.; // the model must not see the type it predicts
+        auto X = tu::MapFeatureRows(ci, cp);
+        for (auto& row : X) row.resize(row.size() - tu::kNumClasses);
+        if (mAnalysisGeneration.load() != gen) return;
+        const auto R = tu::ClassifyLibrary(X, nameCls, ruleCls);
+        for (size_t q = 0; q < where.size(); q++) items[where[q]].cls = R.cls[q];
+        modelClasses = R.learnedClasses; modelFiles = R.trainingFiles;
       }
+    }
+
+    std::vector<tu::MapItem> mi;
+    AnalysisResult map;
+    map.generation = gen;
+    map.isMap = true;
+    map.modelClasses = modelClasses; map.modelFiles = modelFiles;
+    for (const auto& it : items)
+      if (it.ok)
+      {
+        map.mapCls.push_back(it.cls);
+        tu::MapItem m;
+        m.feat = it.fp.data();
+        m.durMs = it.durMs;
+        m.cls = it.cls;
+        m.prevX = it.mx; m.prevY = it.my;
+        mi.push_back(m);
+        map.mapIndex.push_back(it.index);
+      }
+    if (!mi.empty())
+    {
+      tu::MapParams P;
+      P.forceRebuild = forceRebuild;
+      map.mapPts = tu::ComputeSampleMap(mi, P, &mAnalysisCancel);
+      if (map.mapPts.size() != mi.size()) return; // cancelled
+      std::lock_guard<std::mutex> lock(mAnalysisMutex);
+      mAnalysisResults.push_back(std::move(map));
     }
 
     AnalysisResult done;
     done.generation = gen;
     done.done = true;
     done.processed = processed;
-    done.total = (int) jobs.size();
-    {
-      std::lock_guard<std::mutex> lock(mAnalysisMutex);
-      mAnalysisResults.push_back(std::move(done));
-    }
+    done.total = numJobs;
+    std::lock_guard<std::mutex> lock(mAnalysisMutex);
+    mAnalysisResults.push_back(std::move(done));
   });
 }
 
 void DrumReplacer::StopLibraryAnalysis()
 {
   ++mAnalysisGeneration;
+  mAnalysisCancel = true;
   if (mAnalysisThread.joinable())
     mAnalysisThread.join();
 
@@ -1094,8 +1222,9 @@ void DrumReplacer::OnUIOpen()
   else
   {
     SendLibraryToUI();
-    const bool needsAnalysis = std::any_of(mLibraryFiles.begin(), mLibraryFiles.end(),
-                                           [](const LibraryFile& f) { return !f.analyzed; });
+    const bool needsAnalysis = std::any_of(mLibraryFiles.begin(), mLibraryFiles.end(), [](const LibraryFile& f) {
+      return NeedsAnalysis(f) || (f.centroidHz > 0 && f.mapX < 0.f);
+    });
     if (needsAnalysis)
       StartLibraryAnalysis();
   }

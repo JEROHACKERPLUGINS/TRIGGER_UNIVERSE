@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TRIGGER UNIVERSE — UI Prototype</title>
-<link rel="stylesheet" href="style.css?v=224">
-<script src="native-ui.js?v=3"></script>
+<link rel="stylesheet" href="style.css?v=225">
+<script src="native-ui.js?v=4"></script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs id="lgDefs"></defs></svg>
@@ -275,6 +275,7 @@
   <div class="lp-actions">
     <button class="lp-btn primary" id="libraryAdd">ADD NEW LOCATION</button>
     <button class="lp-btn" id="libraryRescan">RESCAN ALL</button>
+    <button class="lp-btn" id="libraryRebuildMap" title="Re-arma el mapa entero (los samples nuevos se insertan solos sin mover el resto). Mantiene cada familia del mismo lado.">REBUILD MAP</button>
   </div>
   <div class="lp-list" id="libraryList"></div>
   <p class="lp-note">Se escanean archivos .wav. Cada location queda guardada y aparece en FILE SEARCH y en el UNIVERSE.</p>
@@ -321,6 +322,6 @@
 </div>
 <canvas class="drag-fx" id="dragFx" aria-hidden="true"></canvas>
 <div class="ui-tip" id="uiTip" role="tooltip"></div>
-<script src="app.js?v=227"></script>
+<script src="app.js?v=241"></script>
 </body>
 </html>

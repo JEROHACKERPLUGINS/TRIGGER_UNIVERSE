@@ -50,6 +50,9 @@
 #define APP_MULT 1
 #define APP_COPY_AUV3 0
 #define APP_SIGNAL_VECTOR_SIZE 64
+// Standalone app: open only the audio output (the input comes from the host in the AU;
+// the app has no input and must not ask for the microphone). Patched in IPlugAPP_host.cpp.
+#define APP_NO_AUDIO_INPUT 1
 
 // 1 = Pro build (Transient Gate enabled). 0 = base version: gate shown disabled.
 #define DRUMREPLACER_PRO 1

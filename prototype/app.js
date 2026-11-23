@@ -428,8 +428,10 @@ function loadVisualPrefs() {
     prefs = Object.assign(d, JSON.parse(stored || '{}'));
   } catch (e) { prefs = d; }
   // Inside the AU there is no browser zoom and the host window is often
-  // smaller than the design: start at 90% so the slot dock stays visible.
-  if (!stored && window.__TU_NATIVE__) prefs.scale = 90;
+  // smaller than the design: start at 90% only then, so the slot dock stays
+  // visible. At the design size (the app opens at 1440x900) it is 100%, exactly
+  // like the browser.
+  if (!stored && window.__TU_NATIVE__ && window.innerHeight < 860) prefs.scale = 90;
   // >100% zoom makes the fixed trigger page taller than the viewport and the
   // fader bank overlaps the slot dock. The trigger page is a 100vh layout, so
   // only 90/100 are safe at every viewport.
@@ -961,6 +963,7 @@ function drawUniverse() {
     ctx.restore();
   }
   ctx.restore();
+  if (window.__lgUpdate) window.__lgUpdate(); // WebKit liquid glass follows the universe
 }
 
 const PICK_RADIUS = 20;
@@ -1002,10 +1005,20 @@ function sampleDistance(a, b) {
   return cat + dur + bright + drum;
 }
 
+// Similar sounds: with the engine's 4-D timbre embedding when there is one
+// (same type weighs a bit), otherwise the prototype's feature distance.
+function similarityDistance(a, b) {
+  if (a.e && b.e) {
+    const d = Math.hypot(a.e[0] - b.e[0], a.e[1] - b.e[1], a.e[2] - b.e[2], a.e[3] - b.e[3]);
+    return d + (a.category === b.category ? 0 : .35);
+  }
+  return sampleDistance(a, b);
+}
+
 function similarSamples(smp, limit = 32) {
   const ranked = state.samples
     .filter(s => s.id !== smp.id)
-    .map(s => ({ s, d: sampleDistance(smp, s) }))
+    .map(s => ({ s, d: similarityDistance(smp, s) }))
     .sort((a, b) => a.d - b.d)
     .map(x => x.s);
   // Keep the closest timbres, but enforce a minimum visual spread so the
@@ -2419,10 +2432,13 @@ function applyNativeLibrary(msg) {
     const parts = rel.split('/');
     parts.pop();
     const sub = parts.join('/');
-    const category = nativeCategory(f.name);
+    // Type from the recognition engine (audio); the file name only until it is analysed.
+    const category = CAT[f.cls] ? f.cls : nativeCategory(f.name);
     const dur = clamp(f.dur > 0 ? f.dur : (f.size || 0) / 192000 * 1000, 20, 8000);
+    const mapped = f.mx >= 0 && f.my >= 0;
     const centroid = f.centroid > 0 ? f.centroid : 0;
-    const analyzed = !!f.analyzed && (f.v || 0) >= 2;
+    // centroid 0 = the file could not be decoded: keep it out of the map layout
+    const analyzed = !!f.analyzed && (f.v || 0) >= 2 && centroid > 0;
     return {
       id: 20000 + idx,
       nativeIndex: idx,
@@ -2441,9 +2457,14 @@ function applyNativeLibrary(msg) {
       peak: f.peak || 0,
       featureVersion: f.v || 0,
       analyzed,
-      drum: .5,
-      x: analyzed ? clamp(normLog(dur, DUR.min, DUR.max), .002, .998) : .5,
-      y: analyzed ? clamp(normLog(Math.max(30, centroid || 30), BRI.min, BRI.max), .002, .998) : .5,
+      drum: f.drum != null ? f.drum : .5,
+      lufs: f.lufs != null ? f.lufs : -70,
+      late: f.late || 0,
+      e: Array.isArray(f.e) && f.e.length === 4 && f.e.some(v => v) ? f.e : null,
+      x: mapped ? f.mx : analyzed ? clamp(normLog(Math.max(30, centroid || 30), BRI.min, BRI.max), .002, .998) : .5,
+      y: mapped ? 1 - f.my : analyzed ? clamp(1 - normLog(dur, DUR.min, DUR.max), .002, .998) : .5,
+      mapped,
+      typeConf: f.conf || 0,
       z: clamp((f.rms || 0) * 3, .15, .95),
       folder: sub || rootLabel,
       path: sub ? `${rootLabel}/${sub}` : rootLabel,
@@ -2458,6 +2479,7 @@ function applyNativeLibrary(msg) {
   samples.length = 0;
   samples.push(...real);
   state.samples = samples;
+  assignNativeDepth();
   state.libraryRoots = roots.map((r, i) => ({ path: r.path, name: labels[i] }));
   state.favorites = new Set();
   state.selectedSample = real[0] || null;
@@ -2484,6 +2506,13 @@ window.addEventListener('tu-native-message', e => {
     applyAnalyzedFeature(d);
     updateAnalysis(d);
     if (++analysisLayoutCounter >= 24) { analysisLayoutCounter = 0; recomputeUniverseLayout(); }
+  }
+  else if (d.id === 'map') {
+    assignNativeDepth(); applyNativeMap(d); renderFileList();
+    if (d.modelClasses > 0 && !nativeModelToastShown) {
+      nativeModelToastShown = true;
+      toast(`Tipos aprendidos de tu biblioteca · ${d.modelClasses} clases · ${d.modelFiles} archivos con nombre`);
+    }
   }
   else if (d.id === 'analysisDone') {
     analysisLayoutCounter = 0;
@@ -2528,7 +2557,7 @@ function finishAnalysis(d) {
 function applyAnalyzedFeature(d) {
   const s = state.samples.find(x => x.nativeIndex === d.index);
   if (!s) return;
-  s.analyzed = !!d.analyzed;
+  s.analyzed = !!d.analyzed && d.centroid > 0;
   s.featureVersion = d.v || 0;
   if (d.dur > 0) s.dur = d.dur;
   if (d.centroid > 0) { s.centroid = d.centroid; s.bright = d.centroid; }
@@ -2540,7 +2569,63 @@ function applyAnalyzedFeature(d) {
   if (d.zcr >= 0) s.zcr = d.zcr;
   if (d.rms >= 0) s.rms = d.rms;
   if (d.peak >= 0) s.peak = d.peak;
-  s.z = clamp((s.rms || 0) * 3, .15, .95);
+  if (CAT[d.cls]) { s.category = d.cls; s.typeConf = d.conf || 0; }
+  if (d.lufs != null) s.lufs = d.lufs;
+  if (d.drum != null) s.drum = d.drum;
+  if (d.late != null) s.late = d.late;
+  s.mapped = false; // the engine re-maps the library when the analysis ends
+}
+
+// Depth (size / glow / parallax) for the library: spread over the whole
+// library like the web universe (percentile of the level + a fixed per-sample
+// variation), instead of the raw RMS, which is near zero for most one-shots.
+function hash01(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 10007) / 10006;
+}
+function assignNativeDepth() {
+  const list = state.samples.filter(s => s.nativeIndex != null);
+  if (!list.length) return;
+  // louder (LUFS) = closer; falls back to the level for libraries analysed before v5
+  const level = s => (s.lufs != null && s.lufs > -70) ? s.lufs : 20 * Math.log10(Math.max(1e-4, (s.rms || 0) + (s.peak || 0) * .1));
+  const sorted = list.map(level).sort((a, b) => a - b);
+  for (const s of list) {
+    const v = level(s);
+    let lo = 0, hi = sorted.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] < v) lo = m + 1; else hi = m; }
+    const pct = sorted.length > 1 ? lo / (sorted.length - 1) : .5;
+    s.z = clamp(.12 + .86 * (.55 * pct + .45 * hash01(s.nativePath || s.name)), .12, .98);
+  }
+}
+
+// Map from the engine: bass left / bright right, short top / long bottom, similar sounds together.
+// Points glide to their new place (inserted samples fly in from where they were
+// provisionally drawn; a REBUILD MAP morphs the whole map) instead of jumping.
+let mapTween = 0;
+let nativeModelToastShown = false;
+function applyNativeMap(d) {
+  if (!d || !Array.isArray(d.pts)) return;
+  const byIndex = new Map(state.samples.filter(s => s.nativeIndex != null).map(s => [s.nativeIndex, s]));
+  const moves = [];
+  for (const [idx, x, y, e0, e1, e2, e3, cls] of d.pts) {
+    const s = byIndex.get(idx);
+    if (!s) continue;
+    if (e0 != null) s.e = [e0, e1, e2, e3];
+    if (CAT[cls]) s.category = cls; // final type: file name / own model / rules
+    const tx = x, ty = 1 - y;
+    if (Math.abs(s.x - tx) > 1e-4 || Math.abs(s.y - ty) > 1e-4) moves.push({ s, x0: s.x, y0: s.y, tx, ty });
+    s.mapped = true;
+  }
+  cancelAnimationFrame(mapTween);
+  const t0 = performance.now(), dur = isReducedMotion() ? 0 : 650;
+  const step = now => {
+    const k = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - Math.pow(1 - k, 3);
+    for (const m of moves) { m.s.x = m.x0 + (m.tx - m.x0) * e; m.s.y = m.y0 + (m.ty - m.y0) * e; }
+    drawUniverse();
+    if (k < 1) mapTween = requestAnimationFrame(step);
+  };
+  mapTween = requestAnimationFrame(step);
 }
 
 // ---------- XO-like layout: features -> PCA 2D ----------
@@ -2580,6 +2665,18 @@ function pcaPercentile(sorted, p) {
 }
 
 function recomputeUniverseLayout() {
+  // With the engine's map, only samples not placed yet get a provisional spot
+  // (duration across, brightness up) until the next map arrives.
+  if (state.samples.some(s => s.mapped)) {
+    // same axes as the engine's map: bass left / bright right, short top / long bottom
+    for (const s of state.samples) {
+      if (s.mapped || !s.analyzed) continue;
+      s.x = clamp(normLog(Math.max(30, s.centroid || 30), BRI.min, BRI.max), .02, .98);
+      s.y = clamp(1 - normLog(Math.max(20, s.dur), DUR.min, DUR.max), .02, .98);
+    }
+    drawUniverse();
+    return;
+  }
   const pts = state.samples.filter(s => s.analyzed && s.featureVersion >= 2);
   if (!pts.length) { drawUniverse(); return; }
 
@@ -2934,7 +3031,14 @@ function auditionSlot(i) {
     el.classList.remove('slot-audition'); void el.offsetWidth; el.classList.add('slot-audition');
     setTimeout(() => el.classList.remove('slot-audition'), 380);
   }
-  if (!slotSample(state.slots[i])) return;
+  const smp = slotSample(state.slots[i]);
+  if (!smp) return;
+  if (window.__TU_NATIVE__) {
+    // ponytail: the native engine has no per-slot audition voice yet; preview
+    // the slot's file (raw, without the slot's edits) so the click is heard.
+    if (smp.nativePath && window.__TU_nativePreview) window.__TU_nativePreview(smp.nativePath);
+    return;
+  }
   ensureAudio();
   playSlot(i, .01);
 }
@@ -4790,6 +4894,10 @@ $('#libraryRescan').onclick = () => {
   if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') SAMFUI(9, 0, 0);
   else toast('RESCAN only available inside the plugin');
 };
+$('#libraryRebuildMap').onclick = () => {
+  if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') { SAMFUI(13, 0, 0); toast('REBUILD MAP · armando el mapa…'); }
+  else toast('REBUILD MAP only available inside the plugin');
+};
 $('#libraryList').addEventListener('click', e => {
   const b = e.target.closest('[data-lib-remove]');
   if (!b) return;
@@ -4940,6 +5048,7 @@ let hoverPreview = { src: null, gain: null, id: null };
 
 function stopHoverPreview() {
   const { src, gain } = hoverPreview;
+  if (window.__TU_NATIVE__ && hoverPreview.id != null && window.__TU_nativePreviewStop) window.__TU_nativePreviewStop();
   hoverPreview = { src: null, gain: null, id: null };
   if (!src) return;
   try {
@@ -4957,6 +5066,15 @@ function stopHoverPreview() {
 
 function playHoverPreview(smp) {
   if (!smp) { stopHoverPreview(); return; }
+  // AU / app: there is no Web Audio in the plugin's WebView; the C++ engine
+  // plays the preview (-8 dB, 0.8 s, same as here) on top of the output.
+  if (window.__TU_NATIVE__) {
+    if (smp.nativePath && window.__TU_nativePreview) {
+      window.__TU_nativePreview(smp.nativePath);
+      hoverPreview = { src: null, gain: null, id: smp.id };
+    }
+    return;
+  }
   const ctx = ensureAudio();
   if (!ctx || !masterGain) return;
   const buf = getBuffer(smp);
@@ -6070,55 +6188,173 @@ function init() {
 })();
 
 // ---------- liquid glass: per-element displacement map that bends the backdrop near the edge ----------
+// Chromium: an SVG feDisplacementMap inside backdrop-filter (url()).
+// WebKit (the AU / app's WKWebView) has no url() in backdrop-filter, so the same
+// effect is rebuilt with a canvas: the element's backdrop (page background +
+// universe canvas, both ours) is copied, bent with the SAME displacement map,
+// then blurred / saturated / brightened with the same values. Force it in
+// Chrome with ?lgfallback=1 to compare.
 (function liquidGlass() {
-  // backdrop-filter:url() only works in Chromium; others keep the plain glass look.
-  if (!navigator.userAgentData) return;
-  const defs = $('#lgDefs'), NS = 'http://www.w3.org/2000/svg';
+  const NS = 'http://www.w3.org/2000/svg';
   const opts = { bandMax: 16, scalePill: 12, scalePanel: 18 };
-  document.querySelectorAll('.liquid-glass').forEach((el, n) => {
-    const id = 'lgRefract' + n;
-    const filter = document.createElementNS(NS, 'filter');
-    filter.setAttribute('id', id);
-    ['x', 'y'].forEach(k => filter.setAttribute(k, '0'));
-    ['width', 'height'].forEach(k => filter.setAttribute(k, '100%'));
-    filter.setAttribute('color-interpolation-filters', 'sRGB');
-    const img = document.createElementNS(NS, 'feImage');
-    img.setAttribute('preserveAspectRatio', 'none'); img.setAttribute('result', 'map');
-    const disp = document.createElementNS(NS, 'feDisplacementMap');
-    disp.setAttribute('in', 'SourceGraphic'); disp.setAttribute('in2', 'map');
-    disp.setAttribute('xChannelSelector', 'R'); disp.setAttribute('yChannelSelector', 'G');
-    filter.append(img, disp); defs.append(filter);
+  const forceCanvas = /[?&]lgfallback=1(?:&|$)/.test(location.search);
+  const useSvg = !!navigator.userAgentData && !forceCanvas;
 
-    const build = () => {
-      const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
-      if (!w || !h) return;
-      const R = Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0, w / 2, h / 2);
-      const band = Math.min(opts.bandMax, R || opts.bandMax, h / 5 + 4);
-      const c = document.createElement('canvas'); c.width = w; c.height = h;
-      const ctx = c.getContext('2d'), data = ctx.createImageData(w, h), px = data.data;
-      const hx = w / 2 - R, hy = h / 2 - R;
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        // rounded-rect SDF: distance to edge (d) and outward normal (nx, ny)
-        const ox = x + .5 - w / 2, oy = y + .5 - h / 2;
-        const qx = Math.abs(ox) - hx, qy = Math.abs(oy) - hy;
-        let d, nx, ny;
-        if (qx > 0 && qy > 0) { const l = Math.hypot(qx, qy); d = R - l; nx = qx / l; ny = qy / l; }
-        else if (qx > qy) { d = R - qx; nx = 1; ny = 0; } else { d = R - qy; nx = 0; ny = 1; }
-        nx *= Math.sign(ox) || 1; ny *= Math.sign(oy) || 1;
-        const t = d < band ? Math.pow(1 - Math.max(d, 0) / band, 2) : 0;
-        const i = (y * w + x) * 4;
-        px[i] = 128 - nx * t * 127; px[i + 1] = 128 - ny * t * 127; px[i + 2] = 128; px[i + 3] = 255;
-      }
-      ctx.putImageData(data, 0, 0);
-      img.setAttribute('href', c.toDataURL());
-      img.setAttribute('width', w); img.setAttribute('height', h);
-      disp.setAttribute('scale', h < 80 ? opts.scalePill : opts.scalePanel);
-      el.style.setProperty('--lg-filter', `url(#${id})`);
-      el.classList.add('lg-refract');
+  // displacement map shared by both paths: R/G = 128 - normal * falloff * 127
+  function dispMap(el) {
+    const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
+    if (!w || !h) return null;
+    const R = Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0, w / 2, h / 2);
+    const band = Math.min(opts.bandMax, R || opts.bandMax, h / 5 + 4);
+    const rg = new Uint8ClampedArray(w * h * 2);
+    const hx = w / 2 - R, hy = h / 2 - R;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      // rounded-rect SDF: distance to edge (d) and outward normal (nx, ny)
+      const ox = x + .5 - w / 2, oy = y + .5 - h / 2;
+      const qx = Math.abs(ox) - hx, qy = Math.abs(oy) - hy;
+      let d, nx, ny;
+      if (qx > 0 && qy > 0) { const l = Math.hypot(qx, qy); d = R - l; nx = qx / l; ny = qy / l; }
+      else if (qx > qy) { d = R - qx; nx = 1; ny = 0; } else { d = R - qy; nx = 0; ny = 1; }
+      nx *= Math.sign(ox) || 1; ny *= Math.sign(oy) || 1;
+      const t = d < band ? Math.pow(1 - Math.max(d, 0) / band, 2) : 0;
+      const i = (y * w + x) * 2;
+      rg[i] = 128 - nx * t * 127; rg[i + 1] = 128 - ny * t * 127;
+    }
+    return { w, h, rg, scale: h < 80 ? opts.scalePill : opts.scalePanel };
+  }
+
+  if (useSvg) {
+    const defs = $('#lgDefs');
+    document.querySelectorAll('.liquid-glass').forEach((el, n) => {
+      const id = 'lgRefract' + n;
+      const filter = document.createElementNS(NS, 'filter');
+      filter.setAttribute('id', id);
+      ['x', 'y'].forEach(k => filter.setAttribute(k, '0'));
+      ['width', 'height'].forEach(k => filter.setAttribute(k, '100%'));
+      filter.setAttribute('color-interpolation-filters', 'sRGB');
+      const img = document.createElementNS(NS, 'feImage');
+      img.setAttribute('preserveAspectRatio', 'none'); img.setAttribute('result', 'map');
+      const disp = document.createElementNS(NS, 'feDisplacementMap');
+      disp.setAttribute('in', 'SourceGraphic'); disp.setAttribute('in2', 'map');
+      disp.setAttribute('xChannelSelector', 'R'); disp.setAttribute('yChannelSelector', 'G');
+      filter.append(img, disp); defs.append(filter);
+      const build = () => {
+        const m = dispMap(el);
+        if (!m) return;
+        const c = document.createElement('canvas'); c.width = m.w; c.height = m.h;
+        const ctx = c.getContext('2d'), data = ctx.createImageData(m.w, m.h), px = data.data;
+        for (let k = 0, i = 0; k < m.w * m.h; k++, i += 4) { px[i] = m.rg[k * 2]; px[i + 1] = m.rg[k * 2 + 1]; px[i + 2] = 128; px[i + 3] = 255; }
+        ctx.putImageData(data, 0, 0);
+        img.setAttribute('href', c.toDataURL());
+        img.setAttribute('width', m.w); img.setAttribute('height', m.h);
+        disp.setAttribute('scale', m.scale);
+        el.style.setProperty('--lg-filter', `url(#${id})`);
+        el.classList.add('lg-refract');
+      };
+      build();
+      new ResizeObserver(build).observe(el);
+    });
+    return;
+  }
+
+  // ---- canvas path (WebKit) ----
+  // The page background, drawn exactly like body{background} in style.css.
+  function drawPageBackground(ctx, W, H) {
+    const lin = (deg, stops) => {
+      const a = deg * Math.PI / 180, sx = Math.sin(a), sy = -Math.cos(a);
+      const len = Math.abs(W * sx) + Math.abs(H * sy);
+      const g = ctx.createLinearGradient(W / 2 - sx * len / 2, H / 2 - sy * len / 2, W / 2 + sx * len / 2, H / 2 + sy * len / 2);
+      stops.forEach(([o, c]) => g.addColorStop(o, c));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     };
-    build();
+    const rad = (rx, ry, px, py, rgb, a, end) => {
+      ctx.save();
+      ctx.translate(px * W, py * H); ctx.scale(1, ry / rx);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+      g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(end, `rgba(${rgb},0)`); g.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.fillStyle = g; ctx.fillRect(-px * W, -py * H * rx / ry, W, H * rx / ry);
+      ctx.restore();
+    };
+    lin(160, [[0, '#05070C'], [.45, '#0A101B'], [1, '#06080E']]);
+    rad(700, 500, .40, .55, '77,156,255', .10, .65);
+    rad(900, 700, .76, 1.12, '255,122,198', .16, .62);
+    rad(900, 640, .98, .04, '45,226,197', .20, .60);
+    rad(1100, 720, .10, -.12, '124,92,255', .34, .62);
+  }
+
+  const universe = $('#universe');
+  const scratch = document.createElement('canvas');
+  const items = [];
+  document.querySelectorAll('.liquid-glass').forEach(el => {
+    el.classList.add('lg-canvas');
+    const wrap = document.createElement('div'); wrap.className = 'lg-backdrop'; wrap.setAttribute('aria-hidden', 'true');
+    const cv = document.createElement('canvas'); wrap.append(cv);
+    const tint = document.createElement('div'); tint.className = 'lg-tint'; tint.setAttribute('aria-hidden', 'true');
+    el.prepend(wrap, tint);
+    const it = { el, cv, map: null, pad: 0, filter: '' };
+    const build = () => {
+      it.map = dispMap(el);
+      const cs = getComputedStyle(el);
+      // same blur / saturate / brightness as that element's Chromium backdrop-filter
+      const panel = el.matches('.trigger, .detector-panel, .inspector');
+      if (panel) it.map = it.map && { ...it.map, rg: new Uint8ClampedArray(it.map.rg.length).fill(128) }; // panels: blur only, like Chromium
+      it.filter = panel ? 'blur(5px) saturate(155%) brightness(1.12)' : 'blur(2px) saturate(135%) brightness(1.1)';
+      it.pad = panel ? 15 : 6; // room for the blur, so its edge is the real backdrop, not black
+      cv.style.filter = it.filter;
+      cv.style.left = cv.style.top = -it.pad + 'px';
+      void cs;
+      update(it);
+    };
+    items.push(it);
     new ResizeObserver(build).observe(el);
+    build();
   });
+
+  function update(it) {
+    const el = it.el, m = it.map;
+    if (!m || !el.offsetParent) return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const dpr = window.devicePixelRatio || 1, pad = it.pad;
+    const W = Math.round((m.w + pad * 2) * dpr), H = Math.round((m.h + pad * 2) * dpr);
+    const cv = it.cv;
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; cv.style.width = (m.w + pad * 2) + 'px'; cv.style.height = (m.h + pad * 2) + 'px'; }
+    // 1) backdrop = page background + universe, in this element's area (+pad)
+    if (scratch.width !== W || scratch.height !== H) { scratch.width = W; scratch.height = H; }
+    const sc = scratch.getContext('2d');
+    sc.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sc.save(); sc.translate(-(r.left - pad), -(r.top - pad));
+    drawPageBackground(sc, window.innerWidth, window.innerHeight);
+    const ur = universe.getBoundingClientRect();
+    if (ur.width && ur.height) sc.drawImage(universe, ur.left, ur.top, ur.width, ur.height);
+    sc.restore();
+    // 2) bend it with the displacement map (same math as feDisplacementMap)
+    const src = sc.getImageData(0, 0, W, H), out = cv.getContext('2d').createImageData(W, H);
+    const S = src.data, O = out.data, k = m.scale * dpr;
+    O.set(S);
+    const x0 = Math.round(pad * dpr), y0 = Math.round(pad * dpr);
+    for (let y = 0; y < Math.round(m.h * dpr); y++) {
+      const my = Math.min(m.h - 1, (y / dpr) | 0);
+      for (let x = 0; x < Math.round(m.w * dpr); x++) {
+        const mi = (my * m.w + Math.min(m.w - 1, (x / dpr) | 0)) * 2;
+        const R = m.rg[mi], G = m.rg[mi + 1];
+        if (R === 128 && G === 128) continue;
+        const sx = Math.max(0, Math.min(W - 1, Math.round(x0 + x + k * (R / 255 - .5))));
+        const sy = Math.max(0, Math.min(H - 1, Math.round(y0 + y + k * (G / 255 - .5))));
+        const di = ((y0 + y) * W + x0 + x) * 4, si = (sy * W + sx) * 4;
+        O[di] = S[si]; O[di + 1] = S[si + 1]; O[di + 2] = S[si + 2]; O[di + 3] = S[si + 3];
+      }
+    }
+    cv.getContext('2d').putImageData(out, 0, 0);
+  }
+  let queued = false;
+  window.__lgUpdate = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; items.forEach(update); });
+  };
+  addEventListener('resize', () => window.__lgUpdate());
+  window.__lgUpdate();
 })();
 
 init();
