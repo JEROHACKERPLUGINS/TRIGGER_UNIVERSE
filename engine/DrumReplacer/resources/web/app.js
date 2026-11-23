@@ -2563,7 +2563,7 @@ window.addEventListener('tu-native-message', e => {
   else if (d.id === 'hit') onNativeHit(d.vel || 0);
   else if (d.id === 'audio') onNativeAudioSetup(d);
   else if (d.id === 'inmeter') onNativeInputMeter(d);
-  else if (d.id === 'outmeter') onNativeOutMeter(d.peak || 0);
+  else if (d.id === 'outmeter') onNativeOutMeter(d.peak || 0, d.slots);
   else if (d.id === 'libraryStale') {
     toast(`${d.count} samples sin analizar con el motor actual · RESCAN para analizarlos`);
   }
@@ -4786,6 +4786,7 @@ let inputRAF = null;
 // The engine bakes it into what the slot plays, exactly like BOUNCE (renderSlotOffline).
 // Polled: any edit (envelope drag, knobs, AUTO PHASE, reverse...) is picked up.
 const nativeShapeSent = [];
+const nativeMixSent = [];
 let nativeGateSent = '';
 function nativeSlotShape(s) {
   const smp = slotSample(s);
@@ -4798,6 +4799,9 @@ function nativeSlotShape(s) {
 function syncNativeShapes() {
   if (!window.__TU_NATIVE__ || typeof SAMFUI !== 'function' || !window.__TU_nativeBridgeReady) return;
   state.slots.forEach((s, i) => {
+    // fader / pan / velocity / mute / solo: the layer mix, applied by the engine in real time
+    const mix = JSON.stringify([s.level, s.pan, s.velSens ?? 100, !!s.mute, !!s.solo]);
+    if (mix !== nativeMixSent[i] && window.__TU_sendSlot) { nativeMixSent[i] = mix; window.__TU_sendSlot(i, s); }
     const sh = nativeSlotShape(s);
     if (!sh) { nativeShapeSent[i] = ''; return; }
     const txt = JSON.stringify(sh);
@@ -4807,15 +4811,26 @@ function syncNativeShapes() {
   const g = JSON.stringify({ th: d.gateThreshold, atk: d.attack, hold: d.hold, rel: d.release });
   if (g !== nativeGateSent) { nativeGateSent = g; SAMFUI(21, 0, tuB64Utf8(g)); }
 }
-if (window.__TU_NATIVE__) setInterval(syncNativeShapes, 150);
+if (window.__TU_NATIVE__) setInterval(syncNativeShapes, 60);
 
 // ---------- native OUTPUT meter (peak after MIX / OUTPUT, from the engine) ----------
 let nativeOutHold = 0;
-function onNativeOutMeter(peak) {
+const nativeSlotHold = new Float32Array(8);
+function onNativeOutMeter(peak, slots) {
   nativeOutHold = Math.max(peak, nativeOutHold * 0.82);
   const vu = Math.round(clamp(nativeOutHold * 100, 0, 100));
   const ov = $('#outVuBar'); if (ov) ov.style.height = vu + '%';
   const mm = $('#masterMeter'); if (mm) mm.style.width = vu + '%';
+  // fader VU of every layer (after its fader / pan / gate), like the web meters
+  (slots || []).forEach((pk, i) => {
+    if (i >= 8) return;
+    nativeSlotHold[i] = Math.max(pk, nativeSlotHold[i] * 0.82);
+    const held = nativeSlotHold[i];
+    const h = held > 0.001 ? Math.round(faderDbToPos(20 * Math.log10(held)) * 1000) / 10 : 0;
+    if (h === slotMeterVals[i]) return;
+    slotMeterVals[i] = h;
+    const mt = $(`#meter-${i}`); if (mt) mt.style.height = h + '%';
+  });
 }
 
 // ---------- native live INPUT (peaks every 1 ms + hits from the engine) ----------

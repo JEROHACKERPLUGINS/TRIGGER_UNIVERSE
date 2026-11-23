@@ -139,6 +139,13 @@ Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el
 - Estado del plugin v3: guarda la forma de cada slot (v2 sigue cargando).
 - `app.js?v=246`. Test: `tests/slot_shape_test.cpp`.
 
+## 2.11 Sesión 23/11/2026 (00:25) — mixer de capas como Trigger 2 y ediciones en tiempo real
+
+- **Faders / pan / velocity / mute / solo** de cada capa: la UI los manda al motor apenas cambian (mismo sondeo que la forma, ahora cada 60 ms). Se aplican por bloque, también sobre los golpes que ya suenan (balance de lo que se está triggeando, como el mixer de Trigger 2).
+- **VU de cada fader**: el motor mide cada capa después de su fader / pan / gate (`outmeter.slots`) y la UI los dibuja como en la web.
+- **Ediciones en tiempo real**: un cambio de envolvente / TONE / CUT / GAIN / Ø / OFFSET / START-END / reverse ya no espera al próximo golpe ni corta el que suena: las voces pasan al buffer nuevo en la misma posición con un crossfade de 5 ms (`Slot::SetSample(p, true)`, `SamplerVoice::Retarget`). El buffer viejo se libera recién cuando terminó el crossfade. Un archivo nuevo en el slot sigue cortando las voces viejas.
+- `app.js?v=247`. Test: `tests/realtime_edit_test.cpp`.
+
 ## 3. Cómo retomar ahora mismo
 
 ### 3.1 Abrir el prototipo

@@ -255,6 +255,8 @@ private:
   std::vector<float> mGateEnv;     // this block, sized in OnReset
   std::vector<float> mTmp[2];      // one GATE slot's render, sized in OnReset
   std::atomic<float> mOutPeak{0.f}; // OUTPUT meter, read in OnIdle
+  std::atomic<float> mSlotPeak[kNumSlots] = {}; // fader VU meters (after level / pan / gate)
+  bool mContinueOnRender = false;  // RenderSlotNow from an edit: voices keep playing
   std::vector<float> mMeterPeaks;  // OnIdle scratch
   std::vector<InputMeter::HitMark> mMeterHits;
   bool mInputPlayingSent = false;  // last state told to the UI

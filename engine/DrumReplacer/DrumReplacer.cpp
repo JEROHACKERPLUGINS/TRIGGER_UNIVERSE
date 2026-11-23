@@ -399,7 +399,7 @@ void DrumReplacer::RenderSlotNow(int slot)
 {
   if (slot < 0 || slot >= kNumSlots) return;
   if (!mSlotSource[slot]) { mSlots[slot].SetSample(new SampleData); return; } // empty clears the slot
-  mSlots[slot].SetSample(tu::RenderShapedSample(*mSlotSource[slot], mSlotShape[slot]));
+  mSlots[slot].SetSample(tu::RenderShapedSample(*mSlotSource[slot], mSlotShape[slot]), mContinueOnRender);
 }
 
 bool DrumReplacer::ApplySlotShapeJSON(int slot, const std::string& json)
@@ -437,7 +437,12 @@ bool DrumReplacer::ApplySlotShapeJSON(int slot, const std::string& json)
   mSlotMode[slot].store(sh.mode);
   mSlotShape[slot] = std::move(sh);
   mSlotShapeJson[slot] = json;
-  if (audioChanged) RenderSlotNow(slot);
+  if (audioChanged)
+  {
+    mContinueOnRender = true; // an edit: the ringing hits move to the new sound (real time)
+    RenderSlotNow(slot);
+    mContinueOnRender = false;
+  }
   return true;
 }
 
@@ -452,7 +457,9 @@ void DrumReplacer::OnIdle()
   if (mUIOpen)
   {
     const float outPk = mOutPeak.exchange(0.f);
-    SendJSONFromDelegate({{"id", "outmeter"}, {"peak", std::round(std::min(outPk, 4.f) * 10000.f) / 10000.f}});
+    nlohmann::json sl = nlohmann::json::array();
+    for (int k = 0; k < kNumSlots; k++) sl.push_back(std::round(std::min(mSlotPeak[k].exchange(0.f), 4.f) * 10000.f) / 10000.f);
+    SendJSONFromDelegate({{"id", "outmeter"}, {"peak", std::round(std::min(outPk, 4.f) * 10000.f) / 10000.f}, {"slots", sl}});
     const uint32_t from = mInputMeter.Drain(mMeterPeaks, mMeterHits);
     if (!mMeterPeaks.empty())
     {
@@ -676,18 +683,22 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     p.attackSamples = 0.;  // the SAMPLE ENVELOPE does attack / decay / release
     p.sustainFrac = 1.;
     p.releaseSamples = 0.;
-    if (mSlotMode[s].load(std::memory_order_relaxed) == 1)
+    float* tL = mTmp[0].data();
+    float* tR = mTmp[1].data();
+    std::fill(tL, tL + nFrames, 0.f);
+    std::fill(tR, tR + nFrames, 0.f);
+    slot.Render(tL, tR, nFrames, p);
+    // GATE: the sample follows the INPUT GATE (lasts as long as the hit at the input)
+    const bool gate = mSlotMode[s].load(std::memory_order_relaxed) == 1;
+    float pk = 0.f;
+    for (int i = 0; i < nFrames; i++)
     {
-      // GATE: the sample follows the INPUT GATE (lasts as long as the hit at the input)
-      float* tL = mTmp[0].data();
-      float* tR = mTmp[1].data();
-      std::fill(tL, tL + nFrames, 0.f);
-      std::fill(tR, tR + nFrames, 0.f);
-      slot.Render(tL, tR, nFrames, p);
-      for (int i = 0; i < nFrames; i++) { wetL[i] += tL[i] * mGateEnv[(size_t) i]; wetR[i] += tR[i] * mGateEnv[(size_t) i]; }
+      const float g = gate ? mGateEnv[(size_t) i] : 1.f;
+      const float l = tL[i] * g, r = tR[i] * g;
+      wetL[i] += l; wetR[i] += r;
+      pk = std::max(pk, std::max(std::fabs(l), std::fabs(r)));
     }
-    else
-      slot.Render(wetL, wetR, nFrames, p);
+    if (pk > mSlotPeak[s].load(std::memory_order_relaxed)) mSlotPeak[s].store(pk, std::memory_order_relaxed); // fader VU
   }
 
   // 4. Delayed dry (through the hit-keyed gate) + wet mix, output gain

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <vector>
@@ -31,6 +32,8 @@ public:
 
   void Start(const SampleData* pSample, int offset, float velocity)
   {
+    mPrev = nullptr;
+    mXfadeLeft = 0;
     mSample = pSample;
     mOffset = offset;
     mVelocity = velocity;
@@ -40,7 +43,18 @@ public:
     mActive = true;
   }
 
-  void Stop() { mActive = false; }
+  void Stop() { mActive = false; mPrev = nullptr; mXfadeLeft = 0; }
+
+  // Real-time edit: keep playing from the same position, now on the new buffer,
+  // crossfading from the old one over `samples` (no click, no restart).
+  void Retarget(const SampleData* pNew, int samples)
+  {
+    if (!mActive || !pNew || pNew->numFrames < 2) { Stop(); return; }
+    mPrev = mSample;
+    mSample = pNew;
+    mXfadeLen = mXfadeLeft = std::max(1, samples);
+  }
+  bool Crossfading() const { return mActive && mXfadeLeft > 0; }
 
   // Adds into outL/outR.
   void Render(float* outL, float* outR, int nFrames, const VoiceParams& p)
@@ -56,12 +70,34 @@ public:
 
     for (int i = mOffset; i < nFrames; i++)
     {
-      if (mPos >= last || mRelGain <= 0.f) { mActive = false; break; }
+      const bool xf = mXfadeLeft > 0 && mPrev != nullptr;
+      if ((mPos >= last && !xf) || mRelGain <= 0.f) { mActive = false; mPrev = nullptr; mXfadeLeft = 0; break; }
 
       const int i0 = (int) mPos;
       const float frac = (float) (mPos - i0);
-      const float l = srcL[i0] + (srcL[i0 + 1] - srcL[i0]) * frac;
-      const float r = srcR[i0] + (srcR[i0 + 1] - srcR[i0]) * frac;
+      float l = 0.f, r = 0.f;
+      if (mPos < last)
+      {
+        l = srcL[i0] + (srcL[i0 + 1] - srcL[i0]) * frac;
+        r = srcR[i0] + (srcR[i0 + 1] - srcR[i0]) * frac;
+      }
+      if (xf)
+      {
+        // old buffer fades out while the new one fades in
+        const float a = (float) mXfadeLeft / (float) mXfadeLen;
+        float ol = 0.f, orr = 0.f;
+        const int plast = mPrev->numFrames - 1;
+        if (mPos < plast)
+        {
+          const float* pL = mPrev->ch[0].data();
+          const float* pR = mPrev->numChannels > 1 ? mPrev->ch[1].data() : pL;
+          ol = pL[i0] + (pL[i0 + 1] - pL[i0]) * frac;
+          orr = pR[i0] + (pR[i0 + 1] - pR[i0]) * frac;
+        }
+        l = l * (1.f - a) + ol * a;
+        r = r * (1.f - a) + orr * a;
+        if (--mXfadeLeft <= 0) mPrev = nullptr;
+      }
 
       float env = mVelocity;
       if (mAge < p.attackSamples) env *= (float) (mAge / p.attackSamples);
@@ -79,6 +115,8 @@ public:
 
 private:
   const SampleData* mSample = nullptr;
+  const SampleData* mPrev = nullptr; // crossfading from this one (real-time edit)
+  int mXfadeLeft = 0, mXfadeLen = 1;
   double mPos = 0.;
   long mAge = 0;
   int mOffset = 0;
@@ -103,17 +141,35 @@ public:
   }
 
   // --- UI / non-audio thread ---
-  void SetSample(SampleData* pSample) { delete mPending.exchange(pSample); }
-  void CollectGarbage() { delete mRetired.exchange(nullptr); }
+  // continuePlaying: the voices that are sounding move to the new buffer
+  // (crossfade) instead of stopping: an edit of the envelope / tone / phase is
+  // heard right away on the hit that is ringing. A new file stops them.
+  void SetSample(SampleData* pSample, bool continuePlaying = false)
+  {
+    mPendingContinue.store(continuePlaying);
+    delete mPending.exchange(pSample);
+  }
+  void CollectGarbage()
+  {
+    if (mCrossfading.load()) return; // voices still read the old buffer
+    delete mRetired.exchange(nullptr);
+  }
 
   // --- audio thread ---
   void SwapIfPending()
   {
     if (mRetired.load() != nullptr) return; // previous one not collected yet, try next block
+    if (mCrossfading.load()) return;
     SampleData* pNew = mPending.exchange(nullptr);
     if (!pNew) return;
-    // ponytail: hard-stops voices of the old sample (click on load), fade-out if it bothers
-    for (auto& v : mVoices) v.Stop();
+    const bool cont = mPendingContinue.load() && pNew->numFrames > 1;
+    bool any = false;
+    for (auto& v : mVoices)
+    {
+      if (cont && v.IsActive()) { v.Retarget(pNew, kXfadeSamples); any = true; }
+      else v.Stop(); // ponytail: a new file hard-stops the old voices
+    }
+    mCrossfading.store(any);
     mRetired.store(mCurrent);
     mCurrent = pNew;
   }
@@ -137,12 +193,17 @@ public:
   void Render(float* outL, float* outR, int nFrames, const VoiceParams& p)
   {
     if (!HasSample()) return;
-    for (auto& v : mVoices) v.Render(outL, outR, nFrames, p);
+    bool xf = false;
+    for (auto& v : mVoices) { v.Render(outL, outR, nFrames, p); xf |= v.Crossfading(); }
+    if (!xf && mCrossfading.load(std::memory_order_relaxed)) mCrossfading.store(false);
   }
 
 private:
+  static constexpr int kXfadeSamples = 256; // ~5 ms
   std::atomic<SampleData*> mPending{nullptr};
   std::atomic<SampleData*> mRetired{nullptr};
+  std::atomic<bool> mPendingContinue{false};
+  std::atomic<bool> mCrossfading{false};
   SampleData* mCurrent = nullptr;
   SamplerVoice mVoices[kNumVoices];
 };
