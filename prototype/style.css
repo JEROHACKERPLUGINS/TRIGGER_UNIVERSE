@@ -1989,3 +1989,8 @@ html.cat-shapes .sim-dots i.cat-mark.active{width:11px;height:11px}
 .ap-status.err{color:#FF8A8A;border-color:rgba(255,110,110,.35);background:rgba(255,80,80,.06)}
 .ap-status .ap-note{display:block;color:#F3D28A;margin-top:3px}
 .ap-actions{justify-content:space-between}
+
+/* trigger mode (ONE SHOT / GATE) in the slot's PHASE box */
+.ap-trigmode .ap-all{margin-left:2px;border:1px solid var(--line);background:transparent;color:var(--muted);
+  border-radius:4px;font:8px var(--sans);letter-spacing:.06em;padding:2px 5px;cursor:pointer}
+.ap-trigmode .ap-all:hover{color:var(--text);border-color:var(--line-strong)}

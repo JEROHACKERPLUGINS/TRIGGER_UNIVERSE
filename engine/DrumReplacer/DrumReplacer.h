@@ -9,6 +9,9 @@
 #include "DSP/PreviewCache.h"
 #include "DSP/InputPlayer.h"
 #include "DSP/InputMeter.h"
+#include "DSP/InputGate.h"
+#include "DSP/SlotShape.h"
+#include <memory>
 #include "DSP/SampleMap.h"
 #include "DSP/SampleClassifier.h"
 #include <atomic>
@@ -21,7 +24,7 @@ using namespace iplug;
 
 const int kNumPresets = 1;
 const int kNumSlots = 8;
-const int kStateVersion = 2; // v2: 8 slots (v1 had 16, not loadable)
+const int kStateVersion = 3; // v3: + per-slot shape (envelope / tone / phase / mode); v2 still loads
 
 #if DRUMREPLACER_PRO
 constexpr bool kIsPro = true;
@@ -106,7 +109,9 @@ enum EMsgTags
   kMsgTagAudioGet = 16,   // standalone app: list devices + current audio state
   kMsgTagAudioSet = 17,   // data = JSON {in, out, sr, buffer}
   kMsgTagAudioTest = 18,  // play a test tone on the output
-  kMsgTagMidiIn = 19      // data = MIDI input port name ("off" = none)
+  kMsgTagMidiIn = 19,     // data = MIDI input port name ("off" = none)
+  kMsgTagSlotShape = 20,  // ctrlTag = slot, data = JSON shape (envelope, tone, phase, mode)
+  kMsgTagGateParams = 21  // data = JSON {th, atk, hold, rel}: INPUT GATE used by the GATE mode
 };
 
 class DrumReplacer final : public Plugin
@@ -220,6 +225,8 @@ private:
   void SendMidiOut(int offset, float velocity);
   void SendSlotToUI(int slot);
   void SendAudioSetupToUI(); // standalone app only (no-op in the AU)
+  bool ApplySlotShapeJSON(int slot, const std::string& json); // parse + re-render the slot
+  void RenderSlotNow(int slot);
 
   // Hits waiting to fire. countdown = samples from the start of the next block.
   // Everything is scheduled kLatency samples late so it lines up with the delayed dry signal.
@@ -235,6 +242,19 @@ private:
   PreviewCache mPreviewCache;      // decoded preview heads (filled by the analyser and by previews)
   InputPlayer mInputPlayer;        // demo / file INPUT, summed with the live input
   InputMeter mInputMeter;          // live input peaks + hits for the TRIGGER view
+  // Per slot: the file as loaded, the shape the UI set (SAMPLE ENVELOPE / TONE /
+  // PHASE), baked into what the voices play; and the trigger mode (ONE SHOT / GATE).
+  std::shared_ptr<SampleData> mSlotSource[kNumSlots];
+  tu::SlotShape mSlotShape[kNumSlots];
+  std::string mSlotShapeJson[kNumSlots];
+  std::atomic<int> mSlotMode[kNumSlots] = {};
+  InputGate mInGate;               // GATE mode envelope (INPUT GATE threshold / attack / hold / release)
+  std::atomic<double> mGateTh{-24.}, mGateAtk{0.5}, mGateHold{30.}, mGateRel{150.};
+  std::vector<float> mGateDelay;   // gate gain delayed to line up with the dry signal
+  int mGateDelayPos = 0;
+  std::vector<float> mGateEnv;     // this block, sized in OnReset
+  std::vector<float> mTmp[2];      // one GATE slot's render, sized in OnReset
+  std::atomic<float> mOutPeak{0.f}; // OUTPUT meter, read in OnIdle
   std::vector<float> mMeterPeaks;  // OnIdle scratch
   std::vector<InputMeter::HitMark> mMeterHits;
   bool mInputPlayingSent = false;  // last state told to the UI

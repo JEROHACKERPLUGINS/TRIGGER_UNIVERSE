@@ -206,6 +206,13 @@
                     <span class="ap-name" id="apSampleName">empty slot</span>
                   </div>
                   <label class="ap-offset" title="Offset of this slot in ms (−5 … +50). Type it · Enter confirms · Alt+click clears your manual part">OFFSET <input id="apOffset" type="text" inputmode="decimal" spellcheck="false" autocomplete="off" value="0.0"><span class="ap-unit">ms</span></label>
+                  <div class="ap-shift ap-trigmode"><span class="lbl">MODE</span>
+                    <div class="seg" id="slotMode">
+                      <button data-mode="one-shot" title="ONE SHOT · the sample plays whole on every hit (its envelope decides the length)">ONE SHOT</button>
+                      <button data-mode="gate" title="GATE · the sample lasts as long as the hit at the input (INPUT GATE threshold / hold / release)">GATE</button>
+                    </div>
+                    <button class="ap-all" id="slotModeAll" title="Apply this mode to every slot">ALL</button>
+                  </div>
                   <div class="ap-shift"><span class="lbl">PHASE</span>
                     <div class="seg" id="slotShift">
                       <button data-shift="0" title="0° · no shift">0°</button>

@@ -258,7 +258,7 @@ void DrumReplacer::InitParams()
   // Gain
   GetParam(kInputGain)->InitGain("Input Gain", 0., -24., 24.);
   GetParam(kOutputGain)->InitGain("Output Gain", 0., -24., 24.);
-  GetParam(kMix)->InitPercentage("Mix", 0.);
+  GetParam(kMix)->InitPercentage("Mix", 100.); // starts on the triggered samples
 
   // Gate
   GetParam(kGateEnabled)->InitBool("Gate On", false);
@@ -316,6 +316,8 @@ bool DrumReplacer::SerializeState(IByteChunk& chunk) const
   chunk.PutStr(mPresetName.Get());
   for (int s = 0; s < kNumSlots; s++)
     chunk.PutStr(mSlotPaths[s].Get());
+  for (int s = 0; s < kNumSlots; s++) // v3: the slot's shape (SAMPLE ENVELOPE / TONE / PHASE / mode)
+    chunk.PutStr(mSlotShapeJson[s].c_str());
 
   return SerializeParams(chunk);
 }
@@ -324,15 +326,25 @@ int DrumReplacer::UnserializeState(const IByteChunk& chunk, int startPos)
 {
   int version = 0;
   startPos = chunk.Get(&version, startPos);
-  if (startPos < 0 || version != kStateVersion)
+  if (startPos < 0 || (version != 2 && version != kStateVersion))
     return -1;
 
   startPos = chunk.GetStr(mBaseDir, startPos);
   startPos = chunk.GetStr(mPresetName, startPos);
   for (int s = 0; s < kNumSlots && startPos >= 0; s++)
     startPos = chunk.GetStr(mSlotPaths[s], startPos);
+  WDL_String shapes[kNumSlots];
+  if (version >= 3)
+    for (int s = 0; s < kNumSlots && startPos >= 0; s++)
+      startPos = chunk.GetStr(shapes[s], startPos);
   if (startPos < 0)
     return -1;
+  for (int s = 0; s < kNumSlots; s++)
+  {
+    mSlotShapeJson[s] = shapes[s].Get();
+    mSlotShape[s] = tu::SlotShape();
+    if (!mSlotShapeJson[s].empty()) ApplySlotShapeJSON(s, mSlotShapeJson[s]); // re-rendered by LoadSlot below
+  }
 
   for (int s = 0; s < kNumSlots; s++)
   {
@@ -370,10 +382,63 @@ bool DrumReplacer::LoadSlot(int slot, const char* path)
       pData->ch[c] = std::move(chans[c]);
     pData->numFrames = (int) pData->ch[0].size();
     pData->sampleRate = sr;
+    mSlotSource[slot].reset(pData);
   }
-  mSlots[slot].SetSample(pData); // empty SampleData clears the slot
+  else
+  {
+    delete pData;
+    mSlotSource[slot].reset();
+  }
   mSlotOk[slot] = ok;
+  RenderSlotNow(slot);
   return ok;
+}
+
+// The voices play the sample with the slot's shape baked in (DSP/SlotShape.h).
+void DrumReplacer::RenderSlotNow(int slot)
+{
+  if (slot < 0 || slot >= kNumSlots) return;
+  if (!mSlotSource[slot]) { mSlots[slot].SetSample(new SampleData); return; } // empty clears the slot
+  mSlots[slot].SetSample(tu::RenderShapedSample(*mSlotSource[slot], mSlotShape[slot]));
+}
+
+bool DrumReplacer::ApplySlotShapeJSON(int slot, const std::string& json)
+{
+  if (slot < 0 || slot >= kNumSlots) return false;
+  const auto j = nlohmann::json::parse(json, nullptr, false);
+  if (j.is_discarded() || !j.is_object()) return false;
+  auto num = [&](const char* k, double def) {
+    const auto it = j.find(k);
+    return (it != j.end() && it->is_number() && std::isfinite(it->get<double>())) ? it->get<double>() : def;
+  };
+  auto flag = [&](const char* k) { const auto it = j.find(k); return it != j.end() && ((it->is_boolean() && it->get<bool>()) || (it->is_number() && it->get<double>() != 0)); };
+  tu::SlotShape sh;
+  sh.valid = true;
+  if (j.contains("path") && j["path"].is_string()) sh.path = j["path"].get<std::string>();
+  sh.start = std::clamp(num("start", 0.), 0., 1.);
+  sh.end = std::clamp(num("end", 1.), 0., 1.);
+  sh.reverse = flag("reverse");
+  sh.tune = std::clamp(num("tune", 0.), -48., 48.);
+  sh.cut = std::clamp(num("cut", 100.), 0., 100.);
+  sh.tone = std::clamp(num("tone", 0.), -100., 100.);
+  sh.gainDb = std::clamp(num("gain", 0.), -70., 12.);
+  sh.fadeInMs = std::max(0., num("fadeIn", 0.));
+  sh.fadeOutMs = std::max(0., num("fadeOut", 0.));
+  sh.polarity = flag("pol");
+  sh.offsetMs = std::clamp(num("offset", 0.), -tu::kLookMs, 50.);
+  sh.mode = (int) num("mode", 0.) == 1 ? 1 : 0;
+  sh.durMs = std::max(0., num("dur", 0.));
+  if (j.contains("env") && j["env"].is_array())
+    for (const auto& p : j["env"])
+      if (p.is_array() && p.size() >= 2 && p[0].is_number() && p[1].is_number())
+        sh.env.push_back({std::max(0., p[0].get<double>()), std::clamp(p[1].get<double>(), 0., 1.)});
+  if (sh.env.size() < 2) sh.env = {{0., 0.}, {0.001, 1.}, {1e7, 1.}};
+  const bool audioChanged = !sh.SameAudio(mSlotShape[slot]);
+  mSlotMode[slot].store(sh.mode);
+  mSlotShape[slot] = std::move(sh);
+  mSlotShapeJson[slot] = json;
+  if (audioChanged) RenderSlotNow(slot);
+  return true;
 }
 
 void DrumReplacer::OnIdle()
@@ -386,6 +451,8 @@ void DrumReplacer::OnIdle()
 #ifdef WEBVIEW_EDITOR_DELEGATE
   if (mUIOpen)
   {
+    const float outPk = mOutPeak.exchange(0.f);
+    SendJSONFromDelegate({{"id", "outmeter"}, {"peak", std::round(std::min(outPk, 4.f) * 10000.f) / 10000.f}});
     const uint32_t from = mInputMeter.Drain(mMeterPeaks, mMeterHits);
     if (!mMeterPeaks.empty())
     {
@@ -525,6 +592,17 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
                       GetParam(kDetail)->Value(), GetParam(kLowCut)->Value(),
                       GetParam(kHighCut)->Value(), GetParam(kSuppression)->Value());
   mInputMeter.Push(inL, inR, nFrames, inGain); // live INPUT for the TRIGGER view
+  // INPUT GATE for the GATE mode, delayed to line up with the dry signal / voices
+  mInGate.SetParams(mGateTh.load(), mGateAtk.load(), mGateHold.load(), mGateRel.load());
+  if ((int) mGateEnv.size() < nFrames) mGateEnv.resize((size_t) nFrames);
+  for (int i = 0; i < nFrames; i++)
+  {
+    const float g = (float) mInGate.Process(std::fabs((inL[i] + inR[i]) * 0.5 * inGain));
+    if (mGateDelay.empty()) { mGateEnv[(size_t) i] = g; continue; }
+    mGateEnv[(size_t) i] = mGateDelay[(size_t) mGateDelayPos];
+    mGateDelay[(size_t) mGateDelayPos] = g;
+    if (++mGateDelayPos >= (int) mGateDelay.size()) mGateDelayPos = 0;
+  }
   const int detLatency = mDetector.LatencySamples();
   mDetector.Process(inL, inR, nFrames, inGain, [&](int offset, float velocity) {
     if (mNumHits < kMaxHits) mHits[mNumHits++] = {offset, velocity};
@@ -588,16 +666,28 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
     if (!audible) continue; // voices keep their place, just silent this block
 
     VoiceParams p;
-    const float vol = (float) GetParam(SlotParam(s, kSlotVol))->DBToAmp()
-                    * (GetParam(SlotParam(s, kSlotPhase))->Bool() ? -1.f : 1.f);
+    // polarity and TUNE are baked into the slot's sample (SlotShape), with the
+    // envelope, tone and offset; per hit only level, pan and velocity remain
+    const float vol = (float) GetParam(SlotParam(s, kSlotVol))->DBToAmp();
     const double pan = GetParam(SlotParam(s, kSlotPan))->Value() / 100.; // -1..1, equal power, unity at center
     p.gainL = vol * (float) (std::cos((pan + 1.) * M_PI / 4.) * M_SQRT2);
     p.gainR = vol * (float) (std::sin((pan + 1.) * M_PI / 4.) * M_SQRT2);
-    p.ratio = slot.SampleRate() / sr * std::pow(2., GetParam(SlotParam(s, kSlotTune))->Value() / 12.);
-    p.attackSamples = GetParam(SlotParam(s, kSlotAttack))->Value() * 0.001 * sr;
-    p.sustainFrac = GetParam(SlotParam(s, kSlotSustain))->Value() / 100.;
-    p.releaseSamples = GetParam(SlotParam(s, kSlotRelease))->Value() * 0.001 * sr;
-    slot.Render(wetL, wetR, nFrames, p);
+    p.ratio = slot.SampleRate() / sr;
+    p.attackSamples = 0.;  // the SAMPLE ENVELOPE does attack / decay / release
+    p.sustainFrac = 1.;
+    p.releaseSamples = 0.;
+    if (mSlotMode[s].load(std::memory_order_relaxed) == 1)
+    {
+      // GATE: the sample follows the INPUT GATE (lasts as long as the hit at the input)
+      float* tL = mTmp[0].data();
+      float* tR = mTmp[1].data();
+      std::fill(tL, tL + nFrames, 0.f);
+      std::fill(tR, tR + nFrames, 0.f);
+      slot.Render(tL, tR, nFrames, p);
+      for (int i = 0; i < nFrames; i++) { wetL[i] += tL[i] * mGateEnv[(size_t) i]; wetR[i] += tR[i] * mGateEnv[(size_t) i]; }
+    }
+    else
+      slot.Render(wetL, wetR, nFrames, p);
   }
 
   // 4. Delayed dry (through the hit-keyed gate) + wet mix, output gain
@@ -636,11 +726,14 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   std::fill(prevL, prevL + nFrames, 0.f);
   std::fill(prevR, prevR + nFrames, 0.f);
   mPreview.Render(prevL, prevR, nFrames, sr);
+  float outPk = 0.f;
   for (int i = 0; i < nFrames; i++)
   {
     outputs[0][i] += prevL[i];
     outputs[1][i] += prevR[i];
+    outPk = std::max(outPk, (float) std::max(std::fabs(outputs[0][i]), std::fabs(outputs[1][i])));
   }
+  if (outPk > mOutPeak.load(std::memory_order_relaxed)) mOutPeak.store(outPk, std::memory_order_relaxed); // OUTPUT meter
 }
 
 void DrumReplacer::SendMidiOut(int offset, float velocity)
@@ -674,9 +767,19 @@ void DrumReplacer::OnReset()
   mDetector.Reset(sr);
   mInputMeter.Reset(sr);
   mGate.Reset();
-  const int latency = mDetector.LatencySamples();
+  // dry delay = detector window + kLookMs (room for a negative OFFSET: every
+  // shaped sample starts with kLookMs + OFFSET of silence, see SlotShape.h)
+  const int look = (int) std::lround(tu::kLookMs * 0.001 * sr);
+  const int latency = mDetector.LatencySamples() + look;
   for (auto& d : mDelay)
     d.assign(latency, 0.);
+  mInGate.Reset(sr);
+  // the prototype's gate opens 1 ms before the transient
+  mGateDelay.assign((size_t) std::max(0, latency - (int) std::lround(0.001 * sr)), 0.f);
+  mGateDelayPos = 0;
+  mGateEnv.assign((size_t) GetBlockSize(), 0.f);
+  for (auto& w : mTmp)
+    w.assign((size_t) GetBlockSize(), 0.f);
   mDelayPos = 0;
   if (GetLatency() != latency)
     SetLatency(latency);
@@ -855,6 +958,33 @@ bool DrumReplacer::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* 
   if (msgTag == kMsgTagInputStop)
   {
     mInputPlayer.Stop();
+    return true;
+  }
+
+  if (msgTag == kMsgTagSlotShape)
+  {
+    if (ctrlTag >= 0 && ctrlTag < kNumSlots && pData && dataSize > 0)
+      ApplySlotShapeJSON(ctrlTag, std::string((const char*) pData, (size_t) dataSize));
+    return true;
+  }
+
+  if (msgTag == kMsgTagGateParams)
+  {
+    if (pData && dataSize > 0)
+    {
+      const auto j = nlohmann::json::parse(std::string((const char*) pData, (size_t) dataSize), nullptr, false);
+      auto num = [&](const char* k, double def) {
+        const auto it = j.find(k);
+        return (!j.is_discarded() && it != j.end() && it->is_number()) ? it->get<double>() : def;
+      };
+      if (!j.is_discarded())
+      {
+        mGateTh.store(std::clamp(num("th", -24.), -80., 0.));
+        mGateAtk.store(std::clamp(num("atk", 0.5), 0., 500.));
+        mGateHold.store(std::clamp(num("hold", 30.), 0., 2000.));
+        mGateRel.store(std::clamp(num("rel", 150.), 0., 5000.));
+      }
+    }
     return true;
   }
 

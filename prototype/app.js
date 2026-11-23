@@ -607,7 +607,7 @@ const state = {
   // slots. ref = 'INPUT' or a slot index 0..7 (that slot is left untouched and
   // the others align to it). mode = 'offset' | 'polarity' | 'both'.
   ap: { on: true, ref: 'INPUT', mode: 'polarity' },
-  detector: { attack: .5, hold: 30, release: 150, sens: 51, retrig: 30, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 0, gate: false, gateThreshold: -24, gateAuto: 'learn' },
+  detector: { attack: .5, hold: 30, release: 150, sens: 51, retrig: 30, detail: 14, low: 20, high: 20000, supp: 0, input: 0, mix: 100, gate: false, gateThreshold: -24, gateAuto: 'learn' },
 };
 
 function pickByCategory(cat, offset = 0) {
@@ -1986,7 +1986,7 @@ function assignSample(i, smp) {
   s.start = 0; s.end = 1; s.fadeIn = 0; s.fadeOut = 0;
   s.reverse = false;
   s.tone = 0; s.cut = 100; s.velSens = 100; s.gain = 0;
-  s.playback = 'one-shot'; s.loop = false;
+  s.playback = s.playback === 'gate' ? 'gate' : 'one-shot'; s.loop = false; // a new sample keeps the slot's mode
   delete s._forwardEnv;
   s.polarity = false; s.shift = 0; s.offset = 0;
   s.ap = null;
@@ -2563,6 +2563,7 @@ window.addEventListener('tu-native-message', e => {
   else if (d.id === 'hit') onNativeHit(d.vel || 0);
   else if (d.id === 'audio') onNativeAudioSetup(d);
   else if (d.id === 'inmeter') onNativeInputMeter(d);
+  else if (d.id === 'outmeter') onNativeOutMeter(d.peak || 0);
   else if (d.id === 'libraryStale') {
     toast(`${d.count} samples sin analizar con el motor actual · RESCAN para analizarlos`);
   }
@@ -3826,6 +3827,8 @@ function updateAutoPhasePanel() {
   inp.classList.toggle('auto', !!apAutoLag(slot));
   const choice = phaseChoice(slot);
   $$('#slotShift button').forEach(b => b.classList.toggle('active', +b.dataset.shift === choice));
+  const mode = slot.playback === 'gate' ? 'gate' : 'one-shot';
+  $$('#slotMode button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   let res;
   if (!smp) res = 'Drop a sample in this slot.';
   else if (slot.ap && slot.ap.isRef) res = 'Reference layer · not moved';
@@ -3916,6 +3919,21 @@ function commitApOffset() {
     inp.blur(); renderSlots(); updateAutoPhasePanel();
   });
 })();
+// ---------- trigger mode: ONE SHOT / GATE (per slot) ----------
+$('#slotMode').addEventListener('click', e => {
+  const b = e.target.closest('button[data-mode]');
+  if (!b) return;
+  currentSlot().playback = b.dataset.mode === 'gate' ? 'gate' : 'one-shot';
+  updateAutoPhasePanel();
+  toast(`SLOT ${String(state.selectedSlot + 1).padStart(2, '0')} · ${b.dataset.mode === 'gate' ? 'GATE' : 'ONE SHOT'}`);
+});
+$('#slotModeAll').addEventListener('click', () => {
+  const mode = currentSlot().playback === 'gate' ? 'gate' : 'one-shot';
+  state.slots.forEach(s => { s.playback = mode; });
+  updateAutoPhasePanel();
+  toast(`Todos los slots · ${mode === 'gate' ? 'GATE' : 'ONE SHOT'}`);
+});
+
 $('#slotShift').addEventListener('click', e => {
   const b = e.target.closest('button[data-shift]');
   if (!b) return;
@@ -4764,6 +4782,42 @@ function drawInput(now) {
   if (imb) imb.style.height = meterPct(lvl) + '%';
 }
 let inputRAF = null;
+// ---------- native: every slot's shape (SAMPLE ENVELOPE / TONE / PHASE / MODE) -> engine ----------
+// The engine bakes it into what the slot plays, exactly like BOUNCE (renderSlotOffline).
+// Polled: any edit (envelope drag, knobs, AUTO PHASE, reverse...) is picked up.
+const nativeShapeSent = [];
+let nativeGateSent = '';
+function nativeSlotShape(s) {
+  const smp = slotSample(s);
+  if (!smp || !smp.nativePath) return null;
+  const env = slotEnvPoints(s, Math.max(1, (1 - s.start) * smp.dur)).map(q => [+q.t.toFixed(3), +q.v.toFixed(4)]);
+  return { path: smp.nativePath, dur: smp.dur, start: s.start, end: s.end, reverse: !!s.reverse, tune: s.tune || 0,
+           cut: s.cut ?? 100, tone: s.tone || 0, gain: s.gain || 0, fadeIn: s.fadeIn || 0, fadeOut: s.fadeOut || 0,
+           env, pol: effPolarity(s) ? 1 : 0, offset: effOffset(s), mode: s.playback === 'gate' ? 1 : 0 };
+}
+function syncNativeShapes() {
+  if (!window.__TU_NATIVE__ || typeof SAMFUI !== 'function' || !window.__TU_nativeBridgeReady) return;
+  state.slots.forEach((s, i) => {
+    const sh = nativeSlotShape(s);
+    if (!sh) { nativeShapeSent[i] = ''; return; }
+    const txt = JSON.stringify(sh);
+    if (txt !== nativeShapeSent[i]) { nativeShapeSent[i] = txt; SAMFUI(20, i, tuB64Utf8(txt)); }
+  });
+  const d = state.detector;
+  const g = JSON.stringify({ th: d.gateThreshold, atk: d.attack, hold: d.hold, rel: d.release });
+  if (g !== nativeGateSent) { nativeGateSent = g; SAMFUI(21, 0, tuB64Utf8(g)); }
+}
+if (window.__TU_NATIVE__) setInterval(syncNativeShapes, 150);
+
+// ---------- native OUTPUT meter (peak after MIX / OUTPUT, from the engine) ----------
+let nativeOutHold = 0;
+function onNativeOutMeter(peak) {
+  nativeOutHold = Math.max(peak, nativeOutHold * 0.82);
+  const vu = Math.round(clamp(nativeOutHold * 100, 0, 100));
+  const ov = $('#outVuBar'); if (ov) ov.style.height = vu + '%';
+  const mm = $('#masterMeter'); if (mm) mm.style.width = vu + '%';
+}
+
 // ---------- native live INPUT (peaks every 1 ms + hits from the engine) ----------
 const NATIVE_IN_CAP = 16384;
 const nativeIn = { peaks: new Float32Array(NATIVE_IN_CAP), last: -1, hits: [], silentSince: 0, lastMsgAt: 0 };

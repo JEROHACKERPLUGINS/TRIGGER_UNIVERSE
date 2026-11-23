@@ -127,6 +127,18 @@ Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el
 - Canal de entrada elegible (AUDIO / MIDI → Input channel): cada canal solo (mono → a los dos lados, sin perder 6 dB) o pares estéreo. Host: `in1/in2` de settings.ini → `firstChannel` / `nChannels` de RtAudio.
 - `app.js?v=245`. Test: `tests/input_meter_test.cpp`.
 
+## 2.10 Sesión 23/11/2026 (00:30) — cadena completa por slot en el motor, ONE SHOT / GATE, OUTPUT meter, MIX 100 %
+
+- **Orden** (pedido del usuario): INPUT → TRIGGER → TRIGGER SLOT → SAMPLE ENVELOPE → TONE → PHASE → OUTPUT.
+- Antes el motor de la app solo recibía nivel/pan/tune/velocity/fase/solo/mute: SAMPLE + ENVELOPE no hacía nada. Ahora la UI manda la **forma** de cada slot (mensaje 20, JSON: path, dur, start, end, reverse, tune, cut, tone, gain, fadeIn, fadeOut, env = `slotEnvPoints`, pol = `effPolarity`, offset = `effOffset`, mode), revisada cada 150 ms (cualquier edición entra). El motor (`DSP/SlotShape.h`) la hornea en el buffer que tocan las voces, con las mismas fórmulas que BOUNCE (`renderSlotOffline`): reverse, CUT/TONE de fase cero (magnitudes de BiquadFilterNode de Web Audio), START/END sobre la duración de la UI, TUNE, envolvente con todos los puntos (1 ms mínimo en el primer tramo, rampa a 0 en 4 ms), fades, GAIN, polaridad y OFFSET. **Verificado contra el prototipo en Chrome**: dos slots muy distintos dan −116 dB y −96 dB de diferencia máxima (correlación 1,000000).
+- **OFFSET negativo**: el seco se retrasa 5 ms más (`tu::kLookMs`, latencia = ventana del detector + 5 ms) y cada sample empieza con 5 ms + OFFSET de silencio.
+- Por golpe quedan en tiempo real: velocity/SENS, fader, pan, mute/solo y el modo. TUNE y Ø ya no se aplican en tiempo real (van horneados). 90° sigue sin DSP (como en el prototipo).
+- **ONE SHOT / GATE** por slot (caja PHASE del slot → MODE, botón ALL para todos; un sample nuevo conserva el modo). GATE = el sample se multiplica por la **puerta de entrada** (`DSP/InputGate.h`, port del gate del worklet: umbral/attack/hold/release de GATE, mensaje 21), retrasada para coincidir con el seco y las voces (abre 1 ms antes, como el prototipo).
+- **OUTPUT meter**: el motor manda el pico de salida (`outmeter`) → `#outVuBar` y `#masterMeter`.
+- **MIX arranca en 100 %** (motor y UI).
+- Estado del plugin v3: guarda la forma de cada slot (v2 sigue cargando).
+- `app.js?v=246`. Test: `tests/slot_shape_test.cpp`.
+
 ## 3. Cómo retomar ahora mismo
 
 ### 3.1 Abrir el prototipo
