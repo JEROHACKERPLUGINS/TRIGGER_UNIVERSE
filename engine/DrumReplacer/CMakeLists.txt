@@ -21,6 +21,7 @@ iplug_add_plugin(${PROJECT_NAME}
     DSP/PreviewPlayer.h
     DSP/PreviewCache.h
     DSP/InputPlayer.h
+    DSP/InputMeter.h
     DSP/SampleAnalysis.h
     DSP/SampleMap.h
     DSP/SampleClassifier.h

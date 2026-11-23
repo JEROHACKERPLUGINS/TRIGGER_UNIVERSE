@@ -13,6 +13,7 @@
 #ifdef OS_WIN
 #include <sys/stat.h>
 #include <cstdio>
+#include <algorithm>
 #include "win32_utf8.h"
 #endif
 
@@ -641,8 +642,11 @@ bool IPlugAPPHost::InitAudio(uint32_t inID, uint32_t outID, uint32_t sr, uint32_
     if (mDAC->isStreamOpen()) mDAC->closeStream();
     RtAudio::StreamParameters iParams, oParams;
     iParams.deviceId = inID;
-    iParams.nChannels = withInput ? std::min<uint32_t>(GetPlug()->MaxNChannels(ERoute::kInput), devInChans) : 0;
-    iParams.firstChannel = 0;
+    // chosen channels (settings.ini in1 / in2, 1-based): a pair, or one channel = mono
+    const uint32_t first = std::min<uint32_t>(std::max<uint32_t>(mState.mAudioInChanL, 1) - 1, devInChans > 0 ? devInChans - 1 : 0);
+    const uint32_t wanted = std::min<uint32_t>(std::max<int>(1, (int) mState.mAudioInChanR - (int) mState.mAudioInChanL + 1), 2);
+    iParams.nChannels = withInput ? std::min<uint32_t>({wanted, (uint32_t) GetPlug()->MaxNChannels(ERoute::kInput), devInChans - first}) : 0;
+    iParams.firstChannel = withInput ? first : 0;
     oParams.deviceId = outID;
     oParams.nChannels = GetPlug()->MaxNChannels(ERoute::kOutput);
     oParams.firstChannel = 0;
@@ -711,8 +715,8 @@ bool IPlugAPPHost::InitAudio(uint32_t inID, uint32_t outID, uint32_t sr, uint32_
     mAudioNote = "No se pudo abrir " + GetAudioDeviceName(outID) + ": " + (firstError.empty() ? mDAC->getErrorText() : firstError);
     return false;
   }
-  if (!noInput && devInChans == 1 && mAudioNote.empty())
-    mAudioNote = "Entrada mono: el canal 1 va a los dos lados";
+  if (mStreamInChans == 1 && mAudioNote.empty())
+    mAudioNote = "Entrada mono (canal " + std::to_string(mState.mAudioInChanL) + "): va a los dos lados";
   if (!crashNote.empty())
     mAudioNote = crashNote;
   if (mStreamInChans > 0)
@@ -748,8 +752,9 @@ std::vector<IPlugAPPHost::DeviceSummary> IPlugAPPHost::ListAudioDevices()
   return out;
 }
 
-bool IPlugAPPHost::ApplyAudioSettings(const char* inDev, const char* outDev, uint32_t sr, uint32_t bufferSize)
+bool IPlugAPPHost::ApplyAudioSettings(const char* inDev, const char* outDev, uint32_t sr, uint32_t bufferSize, uint32_t in1, uint32_t in2)
 {
+  if (in1 > 0) { mState.mAudioInChanL = in1; mState.mAudioInChanR = std::max(in1, in2 > 0 ? in2 : in1 + 1); }
   if (inDev && std::string_view(inDev) != mState.mAudioInDev.Get()) mInputChosen = std::string_view(inDev) != OFF_TEXT;
   if (inDev) mState.mAudioInDev.Set(inDev);
   if (outDev) mState.mAudioOutDev.Set(outDev);

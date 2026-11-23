@@ -384,6 +384,17 @@ void DrumReplacer::OnIdle()
   mInputPlayer.CollectGarbage();
 
 #ifdef WEBVIEW_EDITOR_DELEGATE
+  if (mUIOpen)
+  {
+    const uint32_t from = mInputMeter.Drain(mMeterPeaks, mMeterHits);
+    if (!mMeterPeaks.empty())
+    {
+      nlohmann::json pk = nlohmann::json::array(), hk = nlohmann::json::array();
+      for (float v : mMeterPeaks) pk.push_back(std::round(std::min(v, 4.f) * 10000.f) / 10000.f);
+      for (const auto& hm : mMeterHits) hk.push_back({hm.bin, std::round(hm.velocity * 1000.f) / 1000.f});
+      SendJSONFromDelegate({{"id", "inmeter"}, {"from", from}, {"peaks", pk}, {"hits", hk}});
+    }
+  }
   {
     const bool playing = mInputPlayer.IsPlaying();
     if (mUIOpen && playing != mInputPlayingSent)
@@ -513,8 +524,11 @@ void DrumReplacer::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
   mDetector.SetParams(GetParam(kSensitivity)->Value(), GetParam(kRetrigger)->Value(),
                       GetParam(kDetail)->Value(), GetParam(kLowCut)->Value(),
                       GetParam(kHighCut)->Value(), GetParam(kSuppression)->Value());
+  mInputMeter.Push(inL, inR, nFrames, inGain); // live INPUT for the TRIGGER view
+  const int detLatency = mDetector.LatencySamples();
   mDetector.Process(inL, inR, nFrames, inGain, [&](int offset, float velocity) {
     if (mNumHits < kMaxHits) mHits[mNumHits++] = {offset, velocity};
+    mInputMeter.MarkHit(nFrames - offset + detLatency, velocity); // at the onset
   });
 
   // 2. Take the hits due in this block; keep the rest for later blocks.
@@ -658,6 +672,7 @@ void DrumReplacer::OnReset()
     w.assign(GetBlockSize(), 0.);
 
   mDetector.Reset(sr);
+  mInputMeter.Reset(sr);
   mGate.Reset();
   const int latency = mDetector.LatencySamples();
   for (auto& d : mDelay)

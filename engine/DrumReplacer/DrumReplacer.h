@@ -8,6 +8,7 @@
 #include "DSP/PreviewPlayer.h"
 #include "DSP/PreviewCache.h"
 #include "DSP/InputPlayer.h"
+#include "DSP/InputMeter.h"
 #include "DSP/SampleMap.h"
 #include "DSP/SampleClassifier.h"
 #include <atomic>
@@ -233,6 +234,9 @@ private:
   PreviewPlayer mPreview;          // library / slot audition, independent of MIX
   PreviewCache mPreviewCache;      // decoded preview heads (filled by the analyser and by previews)
   InputPlayer mInputPlayer;        // demo / file INPUT, summed with the live input
+  InputMeter mInputMeter;          // live input peaks + hits for the TRIGGER view
+  std::vector<float> mMeterPeaks;  // OnIdle scratch
+  std::vector<InputMeter::HitMark> mMeterHits;
   bool mInputPlayingSent = false;  // last state told to the UI
   std::vector<sample> mIn[2];      // live input + INPUT player, sized in OnReset
   std::vector<float> mPrev[2];     // sized in OnReset

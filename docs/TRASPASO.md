@@ -121,6 +121,12 @@ Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el
 - **Biblioteca blindada**: `library.json` se lee entrada por entrada con valores tolerantes (un NaN guardado como `null` o una entrada rota ya no tira la app al abrir; esa entrada se re-analiza con RESCAN), se escribe sin NaN/inf, con UTF-8 inválido reemplazado y de forma atómica (`.tmp` + rename). El hilo de análisis atrapa excepciones (antes cerraban la app entera).
 - **UI**: SETTINGS → AUDIO / MIDI… abre el panel (Output + Test, Input con "Sin entrada", Sample rate, Buffer, MIDI input, estado, REFRESH, ▶ INPUT DE DEMO). Si al abrir la app el audio no está corriendo, el panel se abre solo. `app.js?v=244`.
 
+## 2.9 Sesión 23/11/2026 (00:05) — INPUT en vivo en la app y canal de entrada
+
+- La vista TRIGGER de la app no recibía nada del motor (dibujaba "INPUT DEL HOST" plano). Ahora `DSP/InputMeter.h` guarda el pico de la entrada cada 1 ms (después de INPUT, lo que ve el detector) y cada golpe en su onset; `OnIdle` los manda como `inmeter` {from, peaks, hits} y la UI los dibuja como el prototipo (onda, línea DETAIL, marcas naranjas, medidor y dB, ventana = zoom del detector). Si una entrada abierta no trae señal 2 s, avisa "SIN SEÑAL EN <placa> · CANAL n" (canal equivocado o permiso de Micrófono de macOS).
+- Canal de entrada elegible (AUDIO / MIDI → Input channel): cada canal solo (mono → a los dos lados, sin perder 6 dB) o pares estéreo. Host: `in1/in2` de settings.ini → `firstChannel` / `nChannels` de RtAudio.
+- `app.js?v=245`. Test: `tests/input_meter_test.cpp`.
+
 ## 3. Cómo retomar ahora mismo
 
 ### 3.1 Abrir el prototipo

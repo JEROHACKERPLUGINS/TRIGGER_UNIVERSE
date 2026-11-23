@@ -2562,6 +2562,7 @@ window.addEventListener('tu-native-message', e => {
   }
   else if (d.id === 'hit') onNativeHit(d.vel || 0);
   else if (d.id === 'audio') onNativeAudioSetup(d);
+  else if (d.id === 'inmeter') onNativeInputMeter(d);
   else if (d.id === 'libraryStale') {
     toast(`${d.count} samples sin analizar con el motor actual · RESCAN para analizarlos`);
   }
@@ -4616,8 +4617,8 @@ function resizeInput() {
 
 function drawInput(now) {
   if (realInputBuffer) { drawRealInput(now); return; }
-  // Native mode: the C++ engine owns the input. Do not animate a synthetic
-  // waveform; draw a flat line until the engine sends real data.
+  // Native mode: the C++ engine owns the input and streams it here ("inmeter").
+  if (window.__TU_NATIVE__ && nativeIn.last >= 0) { drawNativeInput(now); return; }
   if (window.__TU_NATIVE__) {
     const ctx = inputCanvas.getContext('2d');
     ctx.clearRect(0, 0, inW, inH);
@@ -4763,9 +4764,92 @@ function drawInput(now) {
   if (imb) imb.style.height = meterPct(lvl) + '%';
 }
 let inputRAF = null;
+// ---------- native live INPUT (peaks every 1 ms + hits from the engine) ----------
+const NATIVE_IN_CAP = 16384;
+const nativeIn = { peaks: new Float32Array(NATIVE_IN_CAP), last: -1, hits: [], silentSince: 0, lastMsgAt: 0 };
+function onNativeInputMeter(d) {
+  const from = d.from >>> 0, pk = d.peaks || [];
+  for (let k = 0; k < pk.length; k++) nativeIn.peaks[(from + k) % NATIVE_IN_CAP] = pk[k];
+  if (pk.length) nativeIn.last = from + pk.length - 1;
+  for (const [bin, vel] of (d.hits || [])) nativeIn.hits.push({ bin: bin >>> 0, vel });
+  if (nativeIn.hits.length > 400) nativeIn.hits.splice(0, nativeIn.hits.length - 400);
+  nativeIn.lastMsgAt = performance.now();
+  if (state.viewMode === 'trigger') startInputLoop();
+}
+function drawNativeInput(now) {
+  const ctx = inputCanvas.getContext('2d');
+  ctx.clearRect(0, 0, inW, inH);
+  const mid = inH / 2, amp = Math.max(10, mid - 6);
+  const waveAmp = amp / DETAIL_MAX;
+  const winMs = Math.round(clamp(detWin || 2, 0.25, 10) * 1000);
+  // the engine sends ~every 20-40 ms: advance with the clock so it scrolls smoothly
+  const ahead = Math.min(60, Math.max(0, now - nativeIn.lastMsgAt));
+  const end = nativeIn.last + ahead;
+  const start = end - winMs;
+  const pkAt = bin => (bin < 0 || bin > nativeIn.last || nativeIn.last - bin >= NATIVE_IN_CAP) ? 0 : nativeIn.peaks[bin % NATIVE_IN_CAP];
+  const cols = Math.max(1, Math.ceil(inW));
+  const col = new Float32Array(cols);
+  for (let x = 0; x < cols; x++) {
+    const b0 = Math.floor(start + x / cols * winMs), b1 = Math.max(b0 + 1, Math.floor(start + (x + 1) / cols * winMs));
+    let m = 0;
+    for (let b = b0; b < b1; b++) { const v = pkAt(b); if (v > m) m = v; }
+    col[x] = Math.min(DETAIL_MAX, m);
+  }
+  ctx.beginPath();
+  for (let x = 0; x < cols; x++) { const y = mid - col[x] * waveAmp; x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  for (let x = cols - 1; x >= 0; x--) ctx.lineTo(x, mid + col[x] * waveAmp * .65);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(118,190,255,.40)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(170,210,255,.30)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.18)';
+  ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(inW, mid); ctx.stroke();
+  // DETAIL threshold: the same level the engine's detector compares against
+  const dy = mid - detailThreshold() * waveAmp;
+  ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(45,226,197,.52)';
+  ctx.beginPath(); ctx.moveTo(0, dy); ctx.lineTo(inW, dy); ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = '600 7px ui-monospace, Menlo, monospace';
+  if (inW > 150) { ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(45,226,197,.72)'; ctx.fillText('DETAIL', inW - 3, Math.max(9, Math.min(inH - 4, dy - 3))); }
+  // hits (orange, at the onset)
+  for (const h of nativeIn.hits) {
+    if (h.bin < start || h.bin > end) continue;
+    const x = (h.bin - start) / winMs * inW;
+    const top = mid - Math.max(.04, Math.min(1, h.vel)) * waveAmp, bottom = mid + Math.max(.04, Math.min(1, h.vel)) * waveAmp * .65;
+    ctx.strokeStyle = 'rgba(255,150,90,.55)';
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,150,90,.85)';
+    ctx.beginPath(); ctx.moveTo(x, top - 4); ctx.lineTo(x - 3, top + 2); ctx.lineTo(x + 3, top + 2); ctx.closePath(); ctx.fill();
+  }
+  ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,255,255,.32)';
+  ctx.fillText(winMs < 1000 ? winMs + ' ms' : (winMs / 1000).toFixed(1) + ' s', inW - 3, inH - 4);
+  // level: peak of the last 300 ms (after INPUT gain, what the detector sees)
+  let recent = 0;
+  for (let b = nativeIn.last - 300; b <= nativeIn.last; b++) recent = Math.max(recent, pkAt(b));
+  inputMeterHold = Math.max(recent, (inputMeterHold || 0) * METER_HOLD);
+  const db = Math.round(20 * Math.log10(Math.max(inputMeterHold, 1e-4)));
+  const dbTxt = inputMeterHold < 1e-4 ? '−∞' : (db >= 0 ? '+' : '') + Math.max(-60, db);
+  const il = $('#inputLevel'); if (il) il.textContent = dbTxt + ' dB';
+  const ip = $('#inputPeakDb'); if (ip) ip.textContent = dbTxt;
+  const imb = $('#inputMeterBar'); if (imb) imb.style.height = (inputMeterHold < 1e-4 ? 2 : meterPct(db)) + '%';
+  // no signal at all for 2 s while an input is open: say why it may be
+  let any = 0;
+  for (let b = nativeIn.last - 2000; b <= nativeIn.last; b++) if (pkAt(b) > 1e-6) { any = 1; break; }
+  const a = audioSetup, inputOpen = a && a.running && a.inChans > 0;
+  if (!any) {
+    ctx.textAlign = 'center'; ctx.font = '600 9px ui-monospace, Menlo, monospace';
+    ctx.fillStyle = 'rgba(255,170,120,.9)';
+    const line1 = inputOpen ? `SIN SEÑAL EN ${(a.in || '').toUpperCase()} · CANAL ${a.in1 === a.in2 ? a.in1 : a.in1 + '-' + a.in2}`
+                            : 'SIN ENTRADA ABIERTA';
+    const line2 = inputOpen ? 'revisá el canal (AUDIO / MIDI) y el permiso de Micrófono'
+                            : 'elegí la placa en AUDIO / MIDI o usá ▶ INPUT';
+    ctx.fillText(line1, inW / 2, mid - 6);
+    ctx.font = '8px ui-monospace, Menlo, monospace'; ctx.fillStyle = 'rgba(255,190,150,.7)';
+    ctx.fillText(line2, inW / 2, mid + 8);
+  }
+}
+
 function startInputLoop() {
   if (inputRAF) return;
-  if (window.__TU_NATIVE__) { drawInput(performance.now()); return; }
+  if (window.__TU_NATIVE__ && nativeIn.last < 0) { drawInput(performance.now()); return; }
   const loop = now => { drawInput(now); inputRAF = requestAnimationFrame(loop); };
   inputRAF = requestAnimationFrame(loop);
 }
@@ -4990,6 +5074,16 @@ function renderAudioPanel() {
     || apOpt('', 'No hay salidas de audio', true);
   $('#apIn').innerHTML = apOpt('off', 'Sin entrada (solo salida)', a.in === 'off')
     + ins.map(d => apOpt(d.name, `${d.name} · ${d.in} ch` + (d.defIn ? '  (default)' : ''), d.name === a.in)).join('');
+  // input channels of the chosen input: each one alone (mono, to both sides) and the pairs
+  const inDev = ins.find(d => d.name === a.in);
+  const nIn = inDev ? inDev.in : 0;
+  let chOpts = '';
+  if (nIn > 0) {
+    for (let c = 1; c <= nIn; c++) chOpts += apOpt(`${c}-${c}`, `${c} (mono)`, a.in1 === c && a.in2 === c);
+    for (let c = 1; c + 1 <= nIn; c += 2) chOpts += apOpt(`${c}-${c + 1}`, `${c} + ${c + 1} (estéreo)`, a.in1 === c && a.in2 === c + 1);
+  }
+  $('#apCh').innerHTML = chOpts || apOpt('1-2', '—', true);
+  $('#apCh').disabled = !nIn;
   const outDev = outs.find(d => d.name === a.out);
   const rates = (outDev && outDev.rates && outDev.rates.length ? outDev.rates : AP_RATES);
   const sr = a.running ? Math.round(a.activeSR) : a.sr;
@@ -5000,7 +5094,7 @@ function renderAudioPanel() {
   const midi = a.midiIns || [];
   $('#apMidi').innerHTML = midi.map(m => apOpt(m, m === 'off' ? 'Ninguna' : m, m === a.midiIn)).join('') || apOpt('off', 'Ninguna', true);
   ['#apOut', '#apIn', '#apSr', '#apBuf', '#apMidi'].forEach(id => { $(id).disabled = false; });
-  const inTxt = a.in === 'off' || !a.inChans ? 'sin entrada' : `${a.in} (${a.inChans} ch)`;
+  const inTxt = a.in === 'off' || !a.inChans ? 'sin entrada' : `${a.in} · canal ${a.in1 === a.in2 || a.inChans === 1 ? a.in1 : a.in1 + '+' + a.in2}`;
   st.className = 'ap-status ' + (a.running ? 'ok' : 'err');
   st.innerHTML = (a.running
     ? `● Audio corriendo · ${esc(a.out)} · ${Math.round(a.activeSR)} Hz · buffer ${a.activeBuffer} · entrada: ${esc(inTxt)}`
@@ -5020,12 +5114,13 @@ function setAudioOpen(open) {
 }
 function applyAudioFromPanel() {
   if (!window.__TU_NATIVE__ || typeof SAMFUI !== 'function') return;
-  const cfg = { out: $('#apOut').value, in: $('#apIn').value, sr: +$('#apSr').value || 0, buffer: +$('#apBuf').value || 0 };
+  const [in1, in2] = ($('#apCh').value || '1-2').split('-').map(Number);
+  const cfg = { out: $('#apOut').value, in: $('#apIn').value, sr: +$('#apSr').value || 0, buffer: +$('#apBuf').value || 0, in1, in2 };
   $('#apStatus').className = 'ap-status';
   $('#apStatus').textContent = 'Aplicando…';
   SAMFUI(17, 0, tuB64Utf8(JSON.stringify(cfg)));
 }
-['#apOut', '#apIn', '#apSr', '#apBuf'].forEach(id => $(id).addEventListener('change', applyAudioFromPanel));
+['#apOut', '#apIn', '#apCh', '#apSr', '#apBuf'].forEach(id => $(id).addEventListener('change', applyAudioFromPanel));
 $('#apMidi').addEventListener('change', () => {
   if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') SAMFUI(19, 0, tuB64Utf8($('#apMidi').value || 'off'));
 });

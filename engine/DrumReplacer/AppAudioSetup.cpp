@@ -22,6 +22,7 @@ std::string TUAppAudioStateJSON()
                             {"in", st.mAudioInDev.Get()}, {"out", st.mAudioOutDev.Get()},
                             {"midiIn", st.mMidiInDev.Get()},
                             {"sr", st.mAudioSR}, {"buffer", st.mBufferSize},
+                            {"in1", st.mAudioInChanL}, {"in2", st.mAudioInChanR},
                             {"running", pHost->IsAudioRunning()},
                             {"activeSR", pHost->GetActiveSampleRate()},
                             {"activeBuffer", pHost->GetActiveBufferSize()},
@@ -40,7 +41,8 @@ void TUAppApplyAudio(const std::string& json)
     return;
   const std::string in = j.value("in", std::string(pHost->GetAppState().mAudioInDev.Get()));
   const std::string out = j.value("out", std::string(pHost->GetAppState().mAudioOutDev.Get()));
-  pHost->ApplyAudioSettings(in.c_str(), out.c_str(), j.value("sr", 0u), j.value("buffer", 0u));
+  pHost->ApplyAudioSettings(in.c_str(), out.c_str(), j.value("sr", 0u), j.value("buffer", 0u),
+                            j.value("in1", 0u), j.value("in2", 0u));
 }
 
 void TUAppApplyMidiIn(const std::string& name)

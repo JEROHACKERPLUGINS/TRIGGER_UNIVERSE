@@ -253,7 +253,8 @@ public:
   /** What went wrong / what was adjusted the last time audio was (re)started ("" = all fine). */
   const std::string& GetAudioNote() const { return mAudioNote; }
   /** inDev = OFF_TEXT for no input. Saves to settings.ini and restarts audio. */
-  bool ApplyAudioSettings(const char* inDev, const char* outDev, uint32_t sr, uint32_t bufferSize);
+  /** in1/in2: first/last input channel, 1-based (in1 == in2 = mono). 0 = keep. */
+  bool ApplyAudioSettings(const char* inDev, const char* outDev, uint32_t sr, uint32_t bufferSize, uint32_t in1 = 0, uint32_t in2 = 0);
   bool ApplyMidiInput(const char* name);
 private:
   int mStreamInChans = 0;          // input channels actually opened (0 = no input)
