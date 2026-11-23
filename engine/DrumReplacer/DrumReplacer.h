@@ -101,7 +101,11 @@ enum EMsgTags
   kMsgTagPreviewStop = 12,
   kMsgTagRebuildMap = 13, // rebuild the whole map (aligned to the current one)
   kMsgTagInputPlay = 14,  // data = path (empty = the bundled demo input): play it INTO the input
-  kMsgTagInputStop = 15
+  kMsgTagInputStop = 15,
+  kMsgTagAudioGet = 16,   // standalone app: list devices + current audio state
+  kMsgTagAudioSet = 17,   // data = JSON {in, out, sr, buffer}
+  kMsgTagAudioTest = 18,  // play a test tone on the output
+  kMsgTagMidiIn = 19      // data = MIDI input port name ("off" = none)
 };
 
 class DrumReplacer final : public Plugin
@@ -214,6 +218,7 @@ private:
 
   void SendMidiOut(int offset, float velocity);
   void SendSlotToUI(int slot);
+  void SendAudioSetupToUI(); // standalone app only (no-op in the AU)
 
   // Hits waiting to fire. countdown = samples from the start of the next block.
   // Everything is scheduled kLatency samples late so it lines up with the delayed dry signal.

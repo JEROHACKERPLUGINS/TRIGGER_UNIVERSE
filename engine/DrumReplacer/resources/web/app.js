@@ -1508,6 +1508,7 @@ function setSettingsOpen(open) {
   if (open) {
     $('#visualPanel').classList.remove('show');
     $('#libraryPanel').classList.remove('show');
+    if ($('#audioPanel')) $('#audioPanel').classList.remove('show');
   }
   $('#settingsMenu').classList.toggle('show', open);
   $('#settingsBtn').classList.toggle('active', open);
@@ -1518,6 +1519,7 @@ function dismissWindows() {
   hideSimilarity();
   setSettingsOpen(false);
   setLibraryOpen(false);
+  if ($('#audioPanel')) $('#audioPanel').classList.remove('show');
   if ($('#slotPopover')) closeSlotPopover();
 }
 
@@ -2559,6 +2561,7 @@ window.addEventListener('tu-native-message', e => {
     if (d.error) toast(d.error);
   }
   else if (d.id === 'hit') onNativeHit(d.vel || 0);
+  else if (d.id === 'audio') onNativeAudioSetup(d);
   else if (d.id === 'libraryStale') {
     toast(`${d.count} samples sin analizar con el motor actual · RESCAN para analizarlos`);
   }
@@ -4965,10 +4968,82 @@ document.addEventListener('pointerdown', e => {
   if (panel.contains(e.target) || e.target.closest('#settingsBtn') || e.target.closest('#menuFolders')) return;
   setLibraryOpen(false);
 }, true);
-$('#menuAudio').onclick = () => {
-  setSettingsOpen(false);
-  toast('Audio / MIDI settings (demo)');
+// ---------- AUDIO / MIDI SETUP (standalone app: iPlug2 host via SAMFUI 16–19) ----------
+const AP_BUFFERS = [32, 64, 128, 256, 512, 1024, 2048];
+const AP_RATES = [44100, 48000, 88200, 96000, 176400, 192000];
+let audioSetup = null;      // last {"id":"audio"} from the engine
+let audioSetupAutoOpened = false;
+function apOpt(value, label, selected) {
+  return `<option value="${esc(String(value))}"${selected ? ' selected' : ''}>${esc(label)}</option>`;
+}
+function renderAudioPanel() {
+  const a = audioSetup;
+  const st = $('#apStatus');
+  if (!a) {
+    ['#apOut', '#apIn', '#apSr', '#apBuf', '#apMidi'].forEach(id => { $(id).innerHTML = ''; $(id).disabled = true; });
+    st.className = 'ap-status';
+    st.textContent = window.__TU_NATIVE__ ? 'Consultando dispositivos…' : 'El audio lo maneja el navegador (Chrome). Este panel es para la app.';
+    return;
+  }
+  const outs = a.devices.filter(d => d.out > 0), ins = a.devices.filter(d => d.in > 0);
+  $('#apOut').innerHTML = outs.map(d => apOpt(d.name, d.name + (d.defOut ? '  (default)' : ''), d.name === a.out)).join('')
+    || apOpt('', 'No hay salidas de audio', true);
+  $('#apIn').innerHTML = apOpt('off', 'Sin entrada (solo salida)', a.in === 'off')
+    + ins.map(d => apOpt(d.name, `${d.name} · ${d.in} ch` + (d.defIn ? '  (default)' : ''), d.name === a.in)).join('');
+  const outDev = outs.find(d => d.name === a.out);
+  const rates = (outDev && outDev.rates && outDev.rates.length ? outDev.rates : AP_RATES);
+  const sr = a.running ? Math.round(a.activeSR) : a.sr;
+  $('#apSr').innerHTML = rates.map(r => apOpt(r, `${r} Hz` + (outDev && r === outDev.sr ? '  (dispositivo)' : ''), r === sr)).join('');
+  const buf = a.running ? a.activeBuffer : a.buffer;
+  const bufs = AP_BUFFERS.includes(buf) ? AP_BUFFERS : [...AP_BUFFERS, buf].sort((x, y) => x - y);
+  $('#apBuf').innerHTML = bufs.map(b => apOpt(b, `${b} samples (${(b / (sr || 48000) * 1000).toFixed(1)} ms)`, b === buf)).join('');
+  const midi = a.midiIns || [];
+  $('#apMidi').innerHTML = midi.map(m => apOpt(m, m === 'off' ? 'Ninguna' : m, m === a.midiIn)).join('') || apOpt('off', 'Ninguna', true);
+  ['#apOut', '#apIn', '#apSr', '#apBuf', '#apMidi'].forEach(id => { $(id).disabled = false; });
+  const inTxt = a.in === 'off' || !a.inChans ? 'sin entrada' : `${a.in} (${a.inChans} ch)`;
+  st.className = 'ap-status ' + (a.running ? 'ok' : 'err');
+  st.innerHTML = (a.running
+    ? `● Audio corriendo · ${esc(a.out)} · ${Math.round(a.activeSR)} Hz · buffer ${a.activeBuffer} · entrada: ${esc(inTxt)}`
+    : '● Audio detenido: la app no está sonando. Elegí la salida (y el sample rate de tu interfaz).')
+    + (a.note ? `<span class="ap-note">${esc(a.note)}</span>` : '');
+}
+function setAudioOpen(open) {
+  if (open) {
+    setSettingsOpen(false);
+    setLibraryOpen(false);
+    if (typeof setVisualOpen === 'function') setVisualOpen(false);
+    renderAudioPanel();
+    if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') SAMFUI(16, 0, 0); // fresh device list
+  }
+  $('#audioPanel').classList.toggle('show', open);
+  $('#settingsBtn').classList.toggle('active', open);
+}
+function applyAudioFromPanel() {
+  if (!window.__TU_NATIVE__ || typeof SAMFUI !== 'function') return;
+  const cfg = { out: $('#apOut').value, in: $('#apIn').value, sr: +$('#apSr').value || 0, buffer: +$('#apBuf').value || 0 };
+  $('#apStatus').className = 'ap-status';
+  $('#apStatus').textContent = 'Aplicando…';
+  SAMFUI(17, 0, tuB64Utf8(JSON.stringify(cfg)));
+}
+['#apOut', '#apIn', '#apSr', '#apBuf'].forEach(id => $(id).addEventListener('change', applyAudioFromPanel));
+$('#apMidi').addEventListener('change', () => {
+  if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') SAMFUI(19, 0, tuB64Utf8($('#apMidi').value || 'off'));
+});
+$('#apTest').onclick = () => {
+  if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') { SAMFUI(18, 0, 0); toast('Test · tres pitidos por la salida'); }
+  else toast('Test: solo en la app');
 };
+$('#apRefresh').onclick = () => { if (window.__TU_NATIVE__ && typeof SAMFUI === 'function') SAMFUI(16, 0, 0); };
+$('#apDemo').onclick = () => { playInput(); };
+$('#audioClose').onclick = () => setAudioOpen(false);
+$('#menuAudio').onclick = () => setAudioOpen(true);
+function onNativeAudioSetup(d) {
+  audioSetup = d;
+  renderAudioPanel();
+  // The app is mute: show the panel by itself once, so the user can pick an output.
+  if (!d.running && !audioSetupAutoOpened) { audioSetupAutoOpened = true; setAudioOpen(true); }
+  else if (d.note && !audioSetupAutoOpened) { audioSetupAutoOpened = true; toast(d.note); }
+}
 document.addEventListener('mousedown', e => {
   const menu = $('#settingsMenu');
   if (!menu.classList.contains('show')) return;

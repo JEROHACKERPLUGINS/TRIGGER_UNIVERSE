@@ -12,6 +12,8 @@ iplug_add_plugin(${PROJECT_NAME}
   SOURCES
     DrumReplacer.cpp
     DrumReplacer.h
+    AppAudioSetup.h
+    AppAudioSetup.cpp
     DSP/SlotEngine.h
     DSP/TransientDetector.h
     DSP/Dynamics.h

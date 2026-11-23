@@ -1973,3 +1973,19 @@ html.cat-shapes .sim-dots i.cat-mark.active{width:11px;height:11px}
   .auto-phase-panel{flex-direction:row;align-items:stretch}
   .auto-phase-panel .ap-group{flex:1 1 0}
 }
+
+/* ---------- AUDIO / MIDI SETUP (standalone app) ---------- */
+.audio-panel{width:min(520px,calc(100vw - 64px))}
+.ap-grid{display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center;margin-bottom:12px}
+.ap-grid label{font-size:12px;color:var(--muted);text-align:right;white-space:nowrap}
+.ap-grid select{width:100%;min-width:0;background:rgba(255,255,255,.04);color:var(--text);
+  border:1px solid var(--line-strong);border-radius:7px;font:12px var(--sans);padding:6px 8px;outline:none}
+.ap-grid select:focus{border-color:rgba(45,226,197,.45)}
+.ap-pair{display:flex;gap:8px;min-width:0}
+.ap-pair select{flex:1}
+.ap-status{font:11px var(--mono);padding:8px 10px;border-radius:8px;margin-bottom:12px;
+  border:1px solid var(--line);background:rgba(255,255,255,.025);color:var(--muted);line-height:1.45}
+.ap-status.ok{color:var(--mint);border-color:rgba(45,226,197,.30)}
+.ap-status.err{color:#FF8A8A;border-color:rgba(255,110,110,.35);background:rgba(255,80,80,.06)}
+.ap-status .ap-note{display:block;color:#F3D28A;margin-top:3px}
+.ap-actions{justify-content:space-between}

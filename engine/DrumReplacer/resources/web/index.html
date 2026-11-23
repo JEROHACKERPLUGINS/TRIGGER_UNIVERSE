@@ -281,6 +281,31 @@
   <p class="lp-note">Se escanean archivos .wav. Cada location queda guardada y aparece en FILE SEARCH y en el UNIVERSE.</p>
 </div>
 
+<div class="library-panel audio-panel" id="audioPanel" role="dialog" aria-label="Audio and MIDI setup">
+  <div class="lp-head">
+    <span class="vp-title">AUDIO / MIDI SETUP</span>
+    <button class="vp-close" id="audioClose" title="Close">×</button>
+  </div>
+  <div class="ap-grid">
+    <label for="apOut">Output</label>
+    <div class="ap-pair"><select id="apOut"></select><button class="lp-btn" id="apTest" title="Tres pitidos por la salida elegida">Test</button></div>
+    <label for="apIn">Input</label>
+    <select id="apIn"></select>
+    <label for="apSr">Sample rate</label>
+    <select id="apSr"></select>
+    <label for="apBuf">Audio buffer size</label>
+    <select id="apBuf"></select>
+    <label for="apMidi">MIDI input</label>
+    <select id="apMidi"></select>
+  </div>
+  <div class="ap-status" id="apStatus"></div>
+  <div class="lp-actions ap-actions">
+    <button class="lp-btn" id="apRefresh">REFRESH DEVICES</button>
+    <button class="lp-btn primary" id="apDemo" title="Reproduce el INPUT de demo (SN TOP 1) dentro del motor">▶ INPUT DE DEMO</button>
+  </div>
+  <p class="lp-note">Sin interfaz de entrada podés elegir Input: <b>Sin entrada</b> y probar con el INPUT de demo. Con MIX en 0 % se escucha solo el INPUT; subí MIX para escuchar los samples disparados.</p>
+</div>
+
 <div class="visual-panel" id="visualPanel" role="dialog" aria-label="Visual settings">
   <div class="vp-head">
     <span class="vp-title">VISUAL</span>

@@ -232,7 +232,33 @@ public:
   static WDL_DLGRET MainDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
   IPlugAPP* GetPlug() { return mIPlug.get(); }
+
+  // ---- TRIGGER UNIVERSE: audio / MIDI setup from the plugin's own (WebView) UI ----
+  struct DeviceSummary
+  {
+    uint32_t id = 0;
+    std::string name;
+    uint32_t inChannels = 0, outChannels = 0, preferredSR = 0;
+    std::vector<uint32_t> sampleRates;
+    bool isDefaultIn = false, isDefaultOut = false;
+  };
+  /** Every audio device RtAudio sees right now (re-probed on each call). */
+  std::vector<DeviceSummary> ListAudioDevices();
+  std::vector<std::string> ListMidiInputs() const { return mMidiInputDevNames; }
+  const AppState& GetAppState() const { return mState; }
+  bool IsAudioRunning() const { return mDAC && mDAC->isStreamOpen() && mDAC->isStreamRunning(); }
+  double GetActiveSampleRate() const { return mSampleRate; }
+  uint32_t GetActiveBufferSize() const { return mBufferSize; }
+  int GetActiveInputChannels() const { return mStreamInChans; }
+  /** What went wrong / what was adjusted the last time audio was (re)started ("" = all fine). */
+  const std::string& GetAudioNote() const { return mAudioNote; }
+  /** inDev = OFF_TEXT for no input. Saves to settings.ini and restarts audio. */
+  bool ApplyAudioSettings(const char* inDev, const char* outDev, uint32_t sr, uint32_t bufferSize);
+  bool ApplyMidiInput(const char* name);
 private:
+  int mStreamInChans = 0;          // input channels actually opened (0 = no input)
+  std::string mAudioNote;
+  double mZeroInput[APP_SIGNAL_VECTOR_SIZE] = {}; // feeds the plug when there is no (or a mono) input
   std::unique_ptr<IPlugAPP> mIPlug = nullptr;
   std::unique_ptr<RtAudio> mDAC = nullptr;
   std::unique_ptr<RtMidiIn> mMidiIn = nullptr;

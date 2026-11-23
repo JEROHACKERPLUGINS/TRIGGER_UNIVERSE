@@ -1,6 +1,7 @@
 #include "DrumReplacer.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IPlugPaths.h"
+#include "AppAudioSetup.h"
 #include "DSP/WavFile.h"
 #include <filesystem>
 #include <algorithm>
@@ -842,6 +843,49 @@ bool DrumReplacer::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* 
     return true;
   }
 
+  if (msgTag == kMsgTagAudioGet)
+  {
+    SendAudioSetupToUI();
+    return true;
+  }
+
+  if (msgTag == kMsgTagAudioSet)
+  {
+    if (pData && dataSize > 0)
+      TUAppApplyAudio(std::string((const char*) pData, (size_t) dataSize));
+    SendAudioSetupToUI();
+    return true;
+  }
+
+  if (msgTag == kMsgTagMidiIn)
+  {
+    TUAppApplyMidiIn(pData && dataSize > 0 ? std::string((const char*) pData, (size_t) dataSize) : std::string("off"));
+    SendAudioSetupToUI();
+    return true;
+  }
+
+  if (msgTag == kMsgTagAudioTest)
+  {
+    // Test tone: three short 660 Hz beeps on both sides, through the preview path
+    // (independent of MIX / OUTPUT), like the Test button of an audio setup.
+    const double sr = 48000.;
+    auto* pTone = new SampleData;
+    pTone->numChannels = 2;
+    pTone->sampleRate = sr;
+    const int n = (int) (0.75 * sr);
+    for (auto& c : pTone->ch) c.assign((size_t) n, 0.f);
+    for (int i = 0; i < n; i++)
+    {
+      const double t = i / sr, local = std::fmod(t, 0.25);
+      const double env = local < 0.15 ? std::min(1., std::min(local, 0.15 - local) / 0.01) : 0.;
+      const float v = (float) (0.5 * env * std::sin(2. * M_PI * 660. * t));
+      pTone->ch[0][(size_t) i] = pTone->ch[1][(size_t) i] = v;
+    }
+    pTone->numFrames = n;
+    mPreview.SetSample(pTone);
+    return true;
+  }
+
   if (msgTag == kMsgTagRebuildMap)
   {
 #ifdef WEBVIEW_EDITOR_DELEGATE
@@ -1288,6 +1332,19 @@ void DrumReplacer::StopLibraryAnalysis()
   }
 }
 
+void DrumReplacer::SendAudioSetupToUI()
+{
+#ifdef WEBVIEW_EDITOR_DELEGATE
+  const std::string j = TUAppAudioStateJSON();
+  if (!j.empty())
+  {
+    const auto parsed = nlohmann::json::parse(j, nullptr, false);
+    if (!parsed.is_discarded())
+      SendJSONFromDelegate(parsed);
+  }
+#endif
+}
+
 void DrumReplacer::OnUIClose()
 {
   mUIOpen = false;
@@ -1321,6 +1378,7 @@ void DrumReplacer::OnUIOpen()
 #endif
   for (int s = 0; s < kNumSlots; s++)
     SendSlotToUI(s);
+  SendAudioSetupToUI(); // standalone: the UI opens AUDIO SETUP by itself if audio is not running
 }
 
 void DrumReplacer::OnParamChange(int paramIdx)

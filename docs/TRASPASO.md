@@ -111,6 +111,13 @@ Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el
 - Ojo: con MIX en 0 % se escucha solo el INPUT (igual que en la web); para oír los samples disparados hay que subir MIX.
 - `app.js?v=243`. Test nuevo: `tests/input_player_test.cpp`.
 
+## 2.8 Sesión 22/11/2026 (23:45) — AUDIO / MIDI SETUP en la app y audio que no falla en silencio
+
+- **Por qué la app no sonaba**: el host APP de iPlug2 arrancaba en 44100 Hz con "Built-in Input/Output", pedía siempre 2 canales de entrada y, si el stream no abría (salida bloqueada en 48 kHz, entrada mono, sin entrada), quedaba muda sin decir nada.
+- **Host** (`_iPlug2/IPlug/APP/IPlugAPP_host.*`, parche local marcado "TRIGGER UNIVERSE"): `InitAudio` abre la entrada con los canales que tenga (mono → ambos lados), acepta "sin entrada" (`off`), y si falla reintenta al sample rate del dispositivo de salida y después solo salida; deja el motivo en `GetAudioNote()`. API pública nueva: `ListAudioDevices`, `ApplyAudioSettings`, `ApplyMidiInput`, `IsAudioRunning`, etc. Sin salida → aviso en el panel en vez de un MessageBox.
+- **Plugin**: `AppAudioSetup.{h,cpp}` (solo APP; aislado para que RtAudio/SWELL no entren al resto). Mensajes 16 = estado/dispositivos, 17 = aplicar {in,out,sr,buffer}, 18 = Test (3 pitidos de 660 Hz por la ruta del preview, independiente de MIX), 19 = entrada MIDI. Motor → UI `audio` {devices, in, out, sr, buffer, running, activeSR, activeBuffer, inChans, note}.
+- **UI**: SETTINGS → AUDIO / MIDI… abre el panel (Output + Test, Input con "Sin entrada", Sample rate, Buffer, MIDI input, estado, REFRESH, ▶ INPUT DE DEMO). Si al abrir la app el audio no está corriendo, el panel se abre solo. `app.js?v=244`.
+
 ## 3. Cómo retomar ahora mismo
 
 ### 3.1 Abrir el prototipo
