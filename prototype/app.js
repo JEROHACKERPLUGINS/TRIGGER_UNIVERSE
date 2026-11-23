@@ -2555,6 +2555,10 @@ window.addEventListener('tu-native-message', e => {
   }
   else if (d.id === 'init') {
     nativeDemo = { input: d.demoInput || '', sample: d.demoSample || '' };
+    // plugin (AU / VST): the input is the DAW track; audio device / rate / buffer belong to the DAW
+    window.__TU_HOST = d.host || 'app';
+    document.documentElement.classList.toggle('tu-plugin', window.__TU_HOST === 'plugin');
+    const ma = $('#menuAudio'); if (ma) ma.style.display = window.__TU_HOST === 'plugin' ? 'none' : '';
   }
   else if (d.id === 'input') {
     setNativeInputPlaying(!!d.playing);
@@ -4633,7 +4637,7 @@ function drawInput(now) {
     ctx.fillStyle = 'rgba(126,138,160,.75)';
     ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('INPUT DEL HOST', inW / 2, y - 8);
+    ctx.fillText(window.__TU_HOST === 'plugin' ? 'ENTRADA DEL PLUGIN (PISTA DEL DAW)' : 'INPUT DEL HOST', inW / 2, y - 8);
     return;
   }
   const dt = lastT ? Math.min(.05, (now - lastT) / 1000) : 0;
@@ -4891,7 +4895,14 @@ function drawNativeInput(now) {
   let any = 0;
   for (let b = nativeIn.last - 2000; b <= nativeIn.last; b++) if (pkAt(b) > 1e-6) { any = 1; break; }
   const a = audioSetup, inputOpen = a && a.running && a.inChans > 0;
-  if (!any) {
+  if (!any && window.__TU_HOST === 'plugin') {
+    // in a DAW silence is normal (transport stopped, no region): just say where the input comes from
+    ctx.textAlign = 'center'; ctx.font = '600 9px ui-monospace, Menlo, monospace';
+    ctx.fillStyle = 'rgba(126,138,160,.85)';
+    ctx.fillText('ENTRADA DEL PLUGIN · SIN SEÑAL', inW / 2, mid - 6);
+    ctx.font = '8px ui-monospace, Menlo, monospace'; ctx.fillStyle = 'rgba(126,138,160,.65)';
+    ctx.fillText('dale play a la pista del DAW (o ▶ INPUT de demo)', inW / 2, mid + 8);
+  } else if (!any) {
     ctx.textAlign = 'center'; ctx.font = '600 9px ui-monospace, Menlo, monospace';
     ctx.fillStyle = 'rgba(255,170,120,.9)';
     const line1 = inputOpen ? `SIN SEÑAL EN ${(a.in || '').toUpperCase()} · CANAL ${a.in1 === a.in2 ? a.in1 : a.in1 + '-' + a.in2}`

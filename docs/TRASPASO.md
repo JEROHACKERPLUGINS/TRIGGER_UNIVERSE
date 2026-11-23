@@ -153,6 +153,11 @@ Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el
 - **Modo de disparo**: solo ONE SHOT; un golpe nuevo **pisa** al que suena en ese slot (fade de 5 ms desde la posición del golpe nuevo, sin superponer). Se sacó la fila MODE (ONE SHOT/GATE) de la caja PHASE y el modo GATE por slot del motor.
 - `app.js?v=248`. Test: `tests/choke_test.cpp`.
 
+## 2.13 Sesión 23/11/2026 (00:45) — AU
+
+- El AU (`aumf TRGU DANT`, Music Effect) toma la entrada de la **pista del DAW** y sale a la **pista del DAW**: no hay placa, ni sample rate ni buffer propios. El motor le avisa a la UI `init.host = "plugin"` (o `"app"`); en plugin se oculta SETTINGS → AUDIO / MIDI… y la vista TRIGGER dice "ENTRADA DEL PLUGIN" (sin alarma por silencio: con el transporte parado es normal).
+- Build: `construir-au.command` (Release, instala en `~/Library/Audio/Plug-Ins/Components`, corre auval y deja `TriggerUniverse-AU.zip`). `app.js?v=249`.
+
 ## 3. Cómo retomar ahora mismo
 
 ### 3.1 Abrir el prototipo

@@ -1578,7 +1578,12 @@ void DrumReplacer::OnUIOpen()
   mUIOpen = true;
   mHitCountSent = mHitCount.load();
 #ifdef WEBVIEW_EDITOR_DELEGATE
-  SendJSONFromDelegate({{"id", "init"}, {"pro", kIsPro}, {"numSlots", kNumSlots},
+#if defined(APP_API)
+  const char* hostKind = "app";    // standalone: own audio device (AUDIO / MIDI SETUP)
+#else
+  const char* hostKind = "plugin"; // AU / VST: the input is the DAW track, no audio device
+#endif
+  SendJSONFromDelegate({{"id", "init"}, {"pro", kIsPro}, {"numSlots", kNumSlots}, {"host", hostKind},
                         {"demoInput", BundledFile("SN_TOP_1COMMIT_17-140.wav")},
                         {"demoSample", BundledFile("SNARE.cm.wav")}});
   // Opening the app / plugin never scans or analyses by itself: the cached
