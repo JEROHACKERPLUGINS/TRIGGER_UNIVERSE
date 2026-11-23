@@ -56,10 +56,12 @@ NS_ASSUME_NONNULL_BEGIN
   mIWebView = nullptr;
 }
 
+#if IPLUG_HAS_WKDOWNLOAD
 - (void)webView:(WKWebView*)webView navigationResponse:(WKNavigationResponse*)navigationResponse didBecomeDownload:(WKDownload*)download API_AVAILABLE(macos(11.3), ios(14.5))
 {
   download.delegate = self;
 }
+#endif // IPLUG_HAS_WKDOWNLOAD
 
 - (void)webView:(WKWebView*)webView decidePolicyForNavigationAction:(WKNavigationAction*)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
 {
@@ -84,6 +86,7 @@ NS_ASSUME_NONNULL_BEGIN
     decisionHandler(WKNavigationResponsePolicyCancel);
   }
   
+#if IPLUG_HAS_WKDOWNLOAD
   if (@available(macOS 11.3, iOS 14.5, *))
   {
     bool allowMimeType = mIWebView->OnCanDownloadMIMEType([navigationResponse.response.MIMEType UTF8String]);
@@ -98,6 +101,7 @@ NS_ASSUME_NONNULL_BEGIN
     }
   }
   else
+#endif
   {
     decisionHandler(WKNavigationResponsePolicyAllow);
   }
@@ -108,6 +112,7 @@ NS_ASSUME_NONNULL_BEGIN
   mIWebView->OnWebContentLoaded();
 }
 
+#if IPLUG_HAS_WKDOWNLOAD
 - (void)download:(WKDownload*)download decideDestinationUsingResponse:(NSURLResponse*)response suggestedFilename:(NSString*)filename completionHandler:(void (^_Nonnull)(NSURL* _Nullable))completionHandler API_AVAILABLE(macos(11.3), ios(14.5))
 {
   WDL_String localPath;
@@ -132,6 +137,7 @@ NS_ASSUME_NONNULL_BEGIN
   mIWebView->OnDownloadedFile([[downloadDestinationURL path] UTF8String]);
   downloadDestinationURL = nil;
 }
+#endif // IPLUG_HAS_WKDOWNLOAD
 
 NS_ASSUME_NONNULL_END
 

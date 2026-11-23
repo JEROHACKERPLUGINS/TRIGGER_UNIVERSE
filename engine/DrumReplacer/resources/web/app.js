@@ -2414,71 +2414,93 @@ function nativeCategory(name) {
   return 'Perc';
 }
 
-function applyNativeLibrary(msg) {
-  if (!msg || !Array.isArray(msg.files)) return;
-  const roots = Array.isArray(msg.roots) ? msg.roots : [];
+// The engine sends the library in blocks (libraryBegin / libraryChunk* / libraryEnd)
+// so a 100k+ file library is never one huge JSON message. 'library' (all in one)
+// is still accepted.
+let pendingLibrary = null;
+
+function nativeLibraryLabels(roots) {
   const used = new Set();
-  const labels = roots.map((r, i) => {
+  return roots.map((r, i) => {
     let base = r.name || `LOCATION ${i + 1}`;
     let label = base, n = 2;
     while (used.has(label)) label = `${base} ${n++}`;
     used.add(label);
     return label;
   });
+}
 
-  const real = msg.files.map((f, idx) => {
-    const rootLabel = labels[f.root] || 'SAMPLES';
-    const rel = f.rel || f.name;
-    const parts = rel.split('/');
-    parts.pop();
-    const sub = parts.join('/');
-    // Type from the recognition engine (audio); the file name only until it is analysed.
-    const category = CAT[f.cls] ? f.cls : nativeCategory(f.name);
-    const dur = clamp(f.dur > 0 ? f.dur : (f.size || 0) / 192000 * 1000, 20, 8000);
-    const mapped = f.mx >= 0 && f.my >= 0;
-    const centroid = f.centroid > 0 ? f.centroid : 0;
-    // centroid 0 = the file could not be decoded: keep it out of the map layout
-    const analyzed = !!f.analyzed && (f.v || 0) >= 2 && centroid > 0;
-    return {
-      id: 20000 + idx,
-      nativeIndex: idx,
-      name: f.name.replace(/\.[^.]+$/, ''),
-      category,
-      dur,
-      bright: centroid || 1200,
-      centroid,
-      rolloff: f.rolloff || 0,
-      flatness: f.flatness || 0,
-      attack: f.attack || 0,
-      decay: f.decay || 0,
-      crest: f.crest || 0,
-      zcr: f.zcr || 0,
-      rms: f.rms || 0,
-      peak: f.peak || 0,
-      featureVersion: f.v || 0,
-      analyzed,
-      drum: f.drum != null ? f.drum : .5,
-      lufs: f.lufs != null ? f.lufs : -70,
-      late: f.late || 0,
-      e: Array.isArray(f.e) && f.e.length === 4 && f.e.some(v => v) ? f.e : null,
-      x: mapped ? f.mx : analyzed ? clamp(normLog(Math.max(30, centroid || 30), BRI.min, BRI.max), .002, .998) : .5,
-      y: mapped ? 1 - f.my : analyzed ? clamp(1 - normLog(dur, DUR.min, DUR.max), .002, .998) : .5,
-      mapped,
-      typeConf: f.conf || 0,
-      z: clamp((f.rms || 0) * 3, .15, .95),
-      folder: sub || rootLabel,
-      path: sub ? `${rootLabel}/${sub}` : rootLabel,
-      root: rootLabel,
-      addedDays: 0,
-      favorite: false,
-      isReal: true,
-      nativePath: f.path,
-    };
-  });
+function nativeFileToSample(f, idx, labels) {
+  const rootLabel = labels[f.root] || 'SAMPLES';
+  const rel = f.rel || f.name;
+  const parts = rel.split('/');
+  parts.pop();
+  const sub = parts.join('/');
+  // Type from the recognition engine (audio); the file name only until it is analysed.
+  const category = CAT[f.cls] ? f.cls : nativeCategory(f.name);
+  const dur = clamp(f.dur > 0 ? f.dur : (f.size || 0) / 192000 * 1000, 20, 8000);
+  const mapped = f.mx >= 0 && f.my >= 0;
+  const centroid = f.centroid > 0 ? f.centroid : 0;
+  // centroid 0 = the file could not be decoded: keep it out of the map layout
+  const analyzed = !!f.analyzed && (f.v || 0) >= 2 && centroid > 0;
+  return {
+    id: 20000 + idx,
+    nativeIndex: idx,
+    name: f.name.replace(/\.[^.]+$/, ''),
+    category,
+    dur,
+    bright: centroid || 1200,
+    centroid,
+    rolloff: f.rolloff || 0,
+    flatness: f.flatness || 0,
+    attack: f.attack || 0,
+    decay: f.decay || 0,
+    crest: f.crest || 0,
+    zcr: f.zcr || 0,
+    rms: f.rms || 0,
+    peak: f.peak || 0,
+    featureVersion: f.v || 0,
+    analyzed,
+    drum: f.drum != null ? f.drum : .5,
+    lufs: f.lufs != null ? f.lufs : -70,
+    late: f.late || 0,
+    e: Array.isArray(f.e) && f.e.length === 4 && f.e.some(v => v) ? f.e : null,
+    x: mapped ? f.mx : analyzed ? clamp(normLog(Math.max(30, centroid || 30), BRI.min, BRI.max), .002, .998) : .5,
+    y: mapped ? 1 - f.my : analyzed ? clamp(1 - normLog(dur, DUR.min, DUR.max), .002, .998) : .5,
+    mapped,
+    typeConf: f.conf || 0,
+    z: clamp((f.rms || 0) * 3, .15, .95),
+    folder: sub || rootLabel,
+    path: sub ? `${rootLabel}/${sub}` : rootLabel,
+    root: rootLabel,
+    addedDays: 0,
+    favorite: false,
+    isReal: true,
+    nativePath: f.path,
+  };
+}
+
+function beginNativeLibrary(msg) {
+  const roots = Array.isArray(msg && msg.roots) ? msg.roots : [];
+  pendingLibrary = { roots, labels: nativeLibraryLabels(roots), real: [], next: 0 };
+}
+
+function addNativeLibraryChunk(msg) {
+  if (!pendingLibrary || !msg || !Array.isArray(msg.files)) return;
+  for (const f of msg.files)
+    pendingLibrary.real.push(nativeFileToSample(f, pendingLibrary.next++, pendingLibrary.labels));
+}
+
+function endNativeLibrary() {
+  if (!pendingLibrary) return;
+  const { roots, labels, real } = pendingLibrary;
+  pendingLibrary = null;
 
   samples.length = 0;
-  samples.push(...real);
+  for (const s of real) samples.push(s); // no spread: 100k+ args overflow the stack
   state.samples = samples;
+  state.nativeByIndex = new Map(real.map(s => [s.nativeIndex, s]));
+  state.fileListLimit = 1200;
   assignNativeDepth();
   state.libraryRoots = roots.map((r, i) => ({ path: r.path, name: labels[i] }));
   state.favorites = new Set();
@@ -2496,16 +2518,31 @@ function applyNativeLibrary(msg) {
   else toast('Sin locations · FILE SEARCH → CHANGE');
 }
 
+
+function applyNativeLibrary(msg) {
+  if (!msg || !Array.isArray(msg.files)) return;
+  beginNativeLibrary(msg);
+  addNativeLibraryChunk(msg);
+  endNativeLibrary();
+}
+
 window.addEventListener('tu-native-message', e => {
   const d = e.detail;
   if (!d) return;
   if (d.id === 'library') applyNativeLibrary(d);
+  else if (d.id === 'libraryBegin') beginNativeLibrary(d);
+  else if (d.id === 'libraryChunk') addNativeLibraryChunk(d);
+  else if (d.id === 'libraryEnd') endNativeLibrary();
   else if (d.id === 'slot' && d.ok === false) toast(`No se pudo cargar ${d.name || 'el sample'}`);
   else if (d.id === 'analysisStart') { showAnalysis(d.total, d.done); recomputeUniverseLayout(); }
   else if (d.id === 'analyzed') {
     applyAnalyzedFeature(d);
     updateAnalysis(d);
-    if (++analysisLayoutCounter >= 24) { analysisLayoutCounter = 0; recomputeUniverseLayout(); }
+    if (++analysisLayoutCounter >= 24 && Date.now() - analysisLastLayoutAt > 1500) {
+      analysisLayoutCounter = 0;
+      analysisLastLayoutAt = Date.now();
+      recomputeUniverseLayout();
+    }
   }
   else if (d.id === 'map') {
     assignNativeDepth(); applyNativeMap(d); renderFileList();
@@ -2525,6 +2562,7 @@ window.addEventListener('tu-native-message', e => {
 let analysisTotal = 0;
 let analysisHideTimer = 0;
 let analysisLayoutCounter = 0;
+let analysisLastLayoutAt = 0;
 
 function showAnalysis(total, done) {
   analysisTotal = total || 0;
@@ -2555,7 +2593,8 @@ function finishAnalysis(d) {
 }
 
 function applyAnalyzedFeature(d) {
-  const s = state.samples.find(x => x.nativeIndex === d.index);
+  const s = (state.nativeByIndex && state.nativeByIndex.get(d.index))
+    || state.samples.find(x => x.nativeIndex === d.index);
   if (!s) return;
   s.analyzed = !!d.analyzed && d.centroid > 0;
   s.featureVersion = d.v || 0;
@@ -2606,7 +2645,7 @@ let mapTween = 0;
 let nativeModelToastShown = false;
 function applyNativeMap(d) {
   if (!d || !Array.isArray(d.pts)) return;
-  const byIndex = new Map(state.samples.filter(s => s.nativeIndex != null).map(s => [s.nativeIndex, s]));
+  const byIndex = state.nativeByIndex || new Map(state.samples.filter(s => s.nativeIndex != null).map(s => [s.nativeIndex, s]));
   const moves = [];
   for (const [idx, x, y, e0, e1, e2, e3, cls] of d.pts) {
     const s = byIndex.get(idx);
@@ -2765,7 +2804,7 @@ function syncFilePreview() {
 
 function renderFileList() {
   const list = fileList();
-  const max = 1200;
+  const max = state.fileListLimit || 1200;
   const shown = list.slice(0, max);
   $('#fileList').innerHTML = shown.map(s => {
     const sel = state.selectedSample && state.selectedSample.id === s.id ? ' selected' : '';
@@ -2776,7 +2815,7 @@ function renderFileList() {
       <span class="num">${fmtMs(s.dur)}</span>
       <button class="fav-btn${fav ? ' on' : ''}" data-id="${s.id}" title="${fav ? 'Remove favorite' : 'Add favorite'}">♥</button>
     </div>`;
-  }).join('') + (list.length > max ? `<div class="file-row"><span class="fn">showing ${max} of ${list.length}…</span></div>` : '');
+  }).join('') + (list.length > max ? `<div class="file-row more-row"><span class="fn">showing ${max} of ${list.length} · SHOW MORE</span></div>` : '');
   if (!list.length) {
     const msg = state.fileFolder === 'FAV'
       ? 'No favorites yet. Tap ♥ on a sample.'
@@ -2812,6 +2851,12 @@ $('#fileList').addEventListener('mouseover', e => {
 });
 $('#fileList').addEventListener('mouseleave', () => setNameBar(null));
 $('#fileList').addEventListener('click', e => {
+  if (e.target.closest('.more-row')) {
+    e.preventDefault();
+    state.fileListLimit = (state.fileListLimit || 1200) + 2000;
+    renderFileList();
+    return;
+  }
   const btn = e.target.closest('.fav-btn[data-id]');
   if (!btn) return;
   e.preventDefault();

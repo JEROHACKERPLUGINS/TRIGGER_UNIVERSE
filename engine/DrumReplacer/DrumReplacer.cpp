@@ -890,8 +890,6 @@ void DrumReplacer::SaveLibrarySettings() const
                         {"flatness", f.flatness}, {"attack", f.attackMs},
                         {"decay", f.decayMs}, {"crest", f.crest},
                         {"zcr", f.zcr}, {"rms", f.rms}, {"peak", f.peak},
-                     {"lufs", f.lufs}, {"drum", f.druminess}, {"late", f.lateTransient},
-                     {"e", {f.emb[0], f.emb[1], f.emb[2], f.emb[3]}},
                         {"lufs", f.lufs}, {"drum", f.druminess}, {"late", f.lateTransient},
                         {"e", {f.emb[0], f.emb[1], f.emb[2], f.emb[3]}},
                         {"v", f.featureVersion}, {"analyzed", f.analyzed},
@@ -952,44 +950,21 @@ void DrumReplacer::ScanLibraryAndSend()
       const auto oit = old.find(lf.path);
       if (oit != old.end() && oit->second.size == lf.size)
       {
-        lf.durMs = oit->second.durMs;
-        lf.sampleRate = oit->second.sampleRate;
-        lf.channels = oit->second.channels;
-        // Keep every analyzed feature: dropping rolloff/flatness/... and the
-        // version made each rescan (or a new location) un-place every sample.
-        lf.centroidHz = oit->second.centroidHz;
-        lf.rolloffHz = oit->second.rolloffHz;
-        lf.flatness = oit->second.flatness;
-        lf.attackMs = oit->second.attackMs;
-        lf.decayMs = oit->second.decayMs;
-        lf.crest = oit->second.crest;
-        lf.zcr = oit->second.zcr;
-        lf.rms = oit->second.rms;
-        lf.peak = oit->second.peak;
-        lf.lufs = oit->second.lufs;
-        lf.druminess = oit->second.druminess;
-        lf.lateTransient = oit->second.lateTransient;
-        std::copy(oit->second.emb, oit->second.emb + 4, lf.emb);
-        lf.featureVersion = oit->second.featureVersion;
-        lf.analyzed = oit->second.analyzed;
-        lf.cls = oit->second.cls;
-        lf.clsConf = oit->second.clsConf;
-        lf.fp = oit->second.fp;
-        lf.mapX = oit->second.mapX; // known files keep their place; new ones are inserted
-        lf.mapY = oit->second.mapY;
+        // Keep every cached field (features, type, fingerprint, map place...):
+        // known files keep their analysis and their place; new ones are inserted.
+        LibraryFile cached = oit->second;
+        cached.root = lf.root;
+        cached.path = lf.path;
+        cached.name = lf.name;
+        cached.rel = lf.rel;
+        cached.size = lf.size;
+        lf = std::move(cached);
       }
-      if (!lf.analyzed)
-      {
-        const WavInfo wi = ReadWavInfo(lf.path);
-        lf.durMs = wi.durMs;
-        lf.sampleRate = wi.sampleRate;
-        lf.channels = wi.channels;
-      }
+      // New files are not opened here: the background analyzer reads the header
+      // and the features. On big libraries (100k+ files) reading every WAV
+      // header during the scan blocked the UI for minutes.
 
       mLibraryFiles.push_back(std::move(lf));
-
-      if (mLibraryFiles.size() >= 5000)
-        break;
     }
   }
 
@@ -1010,8 +985,14 @@ void DrumReplacer::SendLibraryToUI()
   for (const auto& r : mLibraryRoots)
     roots.push_back({{"path", r}, {"name", PathBaseName(r)}});
 
+  // A 100k+ file library serialises to tens of MB: send it in blocks so the
+  // WebView never has to parse one huge JSON message.
+  static constexpr size_t kChunkSize = 1500;
+  SendJSONFromDelegate({{"id", "libraryBegin"}, {"roots", roots}, {"total", (int) mLibraryFiles.size()}});
+
   nlohmann::json files = nlohmann::json::array();
   for (const auto& f : mLibraryFiles)
+  {
     files.push_back({{"root", f.root}, {"path", f.path}, {"name", f.name},
                      {"rel", f.rel}, {"size", f.size}, {"dur", f.durMs},
                      {"sr", f.sampleRate}, {"ch", f.channels},
@@ -1019,11 +1000,20 @@ void DrumReplacer::SendLibraryToUI()
                      {"flatness", f.flatness}, {"attack", f.attackMs},
                      {"decay", f.decayMs}, {"crest", f.crest},
                      {"zcr", f.zcr}, {"rms", f.rms}, {"peak", f.peak},
+                     {"lufs", f.lufs}, {"drum", f.druminess}, {"late", f.lateTransient},
+                     {"e", {f.emb[0], f.emb[1], f.emb[2], f.emb[3]}},
                      {"v", f.featureVersion}, {"analyzed", f.analyzed},
                      {"cls", f.cls >= 0 ? tu::DrumClassName(f.cls) : ""}, {"conf", f.clsConf},
                      {"mx", f.mapX}, {"my", f.mapY}});
-
-  SendJSONFromDelegate({{"id", "library"}, {"roots", roots}, {"files", files}});
+    if (files.size() >= kChunkSize)
+    {
+      SendJSONFromDelegate({{"id", "libraryChunk"}, {"files", files}});
+      files = nlohmann::json::array();
+    }
+  }
+  if (!files.empty())
+    SendJSONFromDelegate({{"id", "libraryChunk"}, {"files", files}});
+  SendJSONFromDelegate({{"id", "libraryEnd"}, {"total", (int) mLibraryFiles.size()}});
 #endif
 }
 

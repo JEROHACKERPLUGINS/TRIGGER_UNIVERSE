@@ -32,11 +32,24 @@
 #import <WebKit/WebKit.h>
 #import "IPlugWKWebView.h"
 
+// Local build fix: WKDownload only exists in the macOS 11.3+ SDK. Older
+// Command Line Tools (e.g. MacOSX11.1.sdk) can still build the WebView
+// without the download delegate.
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 110300
+#define IPLUG_HAS_WKDOWNLOAD 1
+#else
+#define IPLUG_HAS_WKDOWNLOAD 0
+#endif
+
 namespace iplug {
 class IWebView;
 }
 
-@interface IPLUG_WKWEBVIEW_DELEGATE : NSObject <WKNavigationDelegate, WKDownloadDelegate>
+@interface IPLUG_WKWEBVIEW_DELEGATE : NSObject <WKNavigationDelegate
+#if IPLUG_HAS_WKDOWNLOAD
+, WKDownloadDelegate
+#endif
+>
 NS_ASSUME_NONNULL_BEGIN
 {
   iplug::IWebView* mIWebView;
@@ -57,6 +70,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark WKDownloadDelegate
 
+#if IPLUG_HAS_WKDOWNLOAD
 - (void)webView:(WKWebView*)webView navigationResponse:(WKNavigationResponse*)navigationResponse 
                                      didBecomeDownload:(WKDownload*)download API_AVAILABLE(macos(11.3), ios(14.5));
 
@@ -69,6 +83,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)download:(WKDownload*)download didFailWithError:(NSError*)error API_AVAILABLE(macos(11.3), ios(14.5));
 
 - (void)downloadDidFinish:(WKDownload*)download API_AVAILABLE(macos(11.3), ios(14.5));
+
+#endif // IPLUG_HAS_WKDOWNLOAD
 
 NS_ASSUME_NONNULL_END
 

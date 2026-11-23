@@ -92,6 +92,16 @@ Todo esto está en `prototype/` (sin commit en git todavía). El README tiene el
 - `DSP/SampleMap.h`: además de x/y, cada sample tiene un **embedding 4D** (4 primeras componentes del espacio de timbre) → la lista de similares de la UI usa esa distancia (+0,35 si cambia el tipo). 93 % de los 5 más cercanos comparten tipo.
 - Plugin/UI: la biblioteca guarda `lufs`, `drum`, `late`, `e[4]`; el mensaje `map` trae `[idx, x, y, e0..e3, tipo]` + `modelClasses`/`modelFiles` (la UI avisa "Tipos aprendidos de tu biblioteca"). Profundidad del universe por percentil de LUFS. `app.js?v=241`.
 
+## 2.6 Sesión 22/11/2026 (23 h) — Mac Pro: bibliotecas enormes y build con SDK viejo
+
+- Rescatado del Mac Pro (cambios locales sin commitear) y adaptado al código nuevo:
+  - **Biblioteca en bloques**: `libraryBegin` / `libraryChunk` (1500 archivos) / `libraryEnd`; la UI sigue aceptando `library`. Índice `state.nativeByIndex`, re-layout durante el análisis como mucho cada 1,5 s, lista de FILE SEARCH con "SHOW MORE" (+2000).
+  - **Escaneo**: sin tope de 5000 archivos y sin abrir cada WAV (lo hace el analizador en segundo plano). Los archivos conocidos conservan toda su entrada cacheada.
+  - **iPlug2**: `WKDownloadDelegate` solo con SDK ≥ 11.3 (el Mac Pro compila con MacOSX11.1.sdk).
+- Bug arreglado del commit `3822f2d`: `lufs`/`drum`/`late`/`e` estaban duplicados al guardar y no se mandaban a la UI al abrir la biblioteca.
+- Ojo: el mapa busca vecinos por fuerza bruta (O(n²)); con 100k samples el armado en segundo plano va a tardar mucho. Pendiente: kd-tree.
+- `app.js?v=242`.
+
 ## 3. Cómo retomar ahora mismo
 
 ### 3.1 Abrir el prototipo
