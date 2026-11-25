@@ -65,6 +65,7 @@ Si el archivo no dice nada, decide la carpeta más cercana que nombre un solo ti
 - **Validación agrupada por pack** (`GroupKFold`): un pack nunca está a la vez en train y en test. Los samples de un mismo pack suenan parecido y comparten nombres, así que mezclarlos inflaría el número.
 - `kSure`: umbral que maximiza el acierto de "modelo si está seguro, si no reglas" en los packs de validación.
 - El C++ recorre los árboles (`PretrainedPredictRow`). `pretrained_test` exige una coincidencia de ≥ 99,9 % con sklearn.
+- Costo: ~50–120 µs por archivo según el build (≈ 2.000 árboles, nodos empaquetados de 12 bytes). El plugin lo guarda por archivo con `kModelId` (crc de los árboles), así que solo se calcula para archivos nuevos o después de reentrenar, repartido entre los núcleos.
 - Si cambia `kAnalysisVersion`, el modelo se apaga solo (`kTrainedAnalysisVersion`) hasta reentrenar.
 
 ## Resultado actual (librería KONTAKT2/SAMPLES, 25-11-2026)

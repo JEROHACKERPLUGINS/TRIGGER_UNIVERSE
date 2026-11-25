@@ -26,13 +26,15 @@ inline bool PretrainedPredictRow(const double* x, int& cls, double& prob)
 {
   using namespace pretrained;
   if (!kReady || kTrainedAnalysisVersion != kAnalysisVersion || kNumFeatures != kRawFeatSize) return false;
+  float xf[kRawFeatSize];
+  for (int d = 0; d < kRawFeatSize; d++) xf[d] = (float) x[d];
   double z[kOut > 0 ? kOut : 1];
   for (int k = 0; k < kOut; k++) z[k] = kBase[k];
   for (int t = 0; t < kNumTrees; t++)
   {
-    int n = kRoot[t];
-    while (kFeat[n] >= 0) n = x[kFeat[n]] <= kThr[n] ? kLeft[n] : kRight[n];
-    z[kTreeClass[t]] += kValue[n];
+    const Node* n = kNodes + kRoot[t];
+    while (n->feat >= 0) n = xf[n->feat] <= n->thr ? n + 1 : kNodes + n->right;
+    z[kTreeClass[t]] += n->thr;
   }
   int best = 0;
   for (int k = 1; k < kOut; k++) if (z[k] > z[best]) best = k;
@@ -63,6 +65,15 @@ inline int PretrainedOrRules(const float* feat, double durMs, int ruleCls, doubl
     return cls;
   }
   return ruleCls;
+}
+
+// The model's type when it is sure, else -1 (rules decide). Pure function of the
+// fingerprint: the plugin stores it per file with pretrained::kModelId and only
+// recomputes it when the model changes.
+inline int PretrainedSureClass(const float* feat, double durMs)
+{
+  int cls; double prob;
+  return PretrainedPredict(feat, durMs, cls, prob) && prob >= pretrained::kSure ? cls : -1;
 }
 
 } // namespace tu

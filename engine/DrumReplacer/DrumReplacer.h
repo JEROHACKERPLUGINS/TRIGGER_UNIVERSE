@@ -176,6 +176,8 @@ private:
     double clsConf = 0;
     float mapX = -1.f, mapY = -1.f;
     std::vector<float> fp; // tu::kFeatSize values (fingerprint + descriptors), kept to rebuild the map without re-analysing
+    int preCls = -1;       // pre-trained model's sure type (-1 = not sure), valid when preModel == kModelId
+    uint32_t preModel = 0;
   };
 
   struct AnalysisResult
@@ -201,11 +203,13 @@ private:
     std::string name;
     int cls = -1;
     double clsConf = 0;
+    int preCls = -1;
     std::vector<float> fp;
     // map result (sent once, after every file is analysed)
     bool isMap = false;
     std::vector<int> mapIndex;
     std::vector<int> mapCls;      // final type per mapped file (name / own model / rules)
+    std::vector<int> mapPre;      // pre-trained model's sure type per mapped file (stored, see preCls)
     int modelClasses = 0, modelFiles = 0;
     std::vector<tu::MapPoint> mapPts;
   };

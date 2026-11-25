@@ -31,7 +31,7 @@ Validador VST3: `../_iPlug2/Dependencies/IPlug/VST3_SDK/validator` (se compiló 
 | `DSP/SlotEngine.h` | `SampleData`, `SamplerVoice`, `Slot` (8 voces por slot, swap lock-free de samples) |
 | `DSP/Dynamics.h` | `ShapeVelocity` (curvas VELO/DYN) y `HitGate` |
 | `DSP/WavFile.h` | Lector WAV copiado de LReverb (`LoadWavFile`), mantener ambos en sync |
-| `DSP/PretrainedClassifier.h` | Clasificador de tipo de sample pre-entrenado (gradient-boosted trees). Reemplaza a las reglas de `ClassifyDrum` cuando su prob ≥ `kSure`. Lo usan `AnalyzeWav` y el paso de clasificación de la librería (recalculado desde el fingerprint guardado, sin re-analizar) |
+| `DSP/PretrainedClassifier.h` | Clasificador de tipo de sample pre-entrenado (gradient-boosted trees). Reemplaza a las reglas de `ClassifyDrum` cuando su prob ≥ `kSure`. Lo usan `AnalyzeWav` y el paso de clasificación de la librería. El resultado se guarda por archivo en la librería (`pc` = tipo o −1, `pm` = `kModelId`) y se recalcula, en paralelo y desde el fingerprint guardado, solo para los archivos con otro `pm`: tras reentrenar, la primera pasada lo hace una vez y las siguientes no cuestan nada |
 | `DSP/PretrainedWeights.h` | **Generado** por `../../ml/train.py`, no editar a mano. Con `kReady = false` todo sigue con las reglas. Ver `../../ml/README.md` |
 | `resources/web/index.html, style.css, ui.js` | UI |
 | `resources/web/script.js` | Puente JS de iPlug2 (no tocar) |

@@ -144,24 +144,32 @@ def main():
 
 
 def write_header(path, m, thr, n, acc_model, acc_rule, acc_final):
-    """Trees as flat node arrays. Node: feature (-1 = leaf), threshold, left, right, value.
-    Go left when x <= threshold (sklearn's rule; no missing values in our features).
-    Raw score of class k = base[k] + sum of the values of the leaves reached in its trees."""
+    """Trees as one packed node array (12 bytes per node, depth-first order, so the left
+    child of node i is always i + 1 and only the right child is stored).
+    Inner node: go to i + 1 when x[feat] <= thr, else to right. Leaf: feat = -1, thr = value.
+    Raw score of class k = base[k] + sum of the leaves reached in its trees."""
     K = len(m.classes_) if len(m.classes_) > 2 else 1
-    feat, thrs, left, right, val, roots, tcls = [], [], [], [], [], [], []
+    nodes_out, roots, tcls = [], [], []
     for it in m._predictors:
         for k, tree in enumerate(it):
-            nodes = tree.nodes
-            base = len(feat)
-            roots.append(base); tcls.append(k)
-            for nd in nodes:
-                leaf = bool(nd["is_leaf"])
-                feat.append(-1 if leaf else int(nd["feature_idx"]))
-                thrs.append(0.0 if leaf else float(nd["num_threshold"]))
-                left.append(0 if leaf else base + int(nd["left"]))
-                right.append(0 if leaf else base + int(nd["right"]))
-                val.append(float(nd["value"]) if leaf else 0.0)
+            nd = tree.nodes
+            roots.append(len(nodes_out)); tcls.append(k)
+
+            def emit(i):
+                at = len(nodes_out)
+                if nd[i]["is_leaf"]:
+                    nodes_out.append([float(nd[i]["value"]), -1, 0])
+                    return
+                nodes_out.append([float(nd[i]["num_threshold"]), int(nd[i]["feature_idx"]), 0])
+                emit(int(nd[i]["left"]))
+                nodes_out[at][2] = len(nodes_out)
+                emit(int(nd[i]["right"]))
+            emit(0)
     basev = np.asarray(m._baseline_prediction).ravel()
+    flt = lambda t: (lambda v: v if any(c in v for c in ".en") else v + ".")(f"{t:.9g}") + "f"
+    node_text = "static const Node kNodes[kNumNodes] = {\n" + ",".join(
+        f"{{{flt(t)},{ft},0,{r}}}" for t, ft, r in nodes_out) + "};\n\n}} // namespace tu::pretrained\n"
+    import zlib
     ints = lambda v: ",".join(map(str, v))
     dbl = lambda v: ",".join(f"{x:.9g}" for x in v)
     with open(path, "w") as f:
@@ -169,7 +177,10 @@ def write_header(path, m, thr, n, acc_model, acc_rule, acc_final):
         f.write(f"// Gradient-boosted trees trained on {n} named samples. Held-out by pack: rules {acc_rule:.1%}, "
                 f"model {acc_model:.1%}, model above threshold + rules {acc_final:.1%}.\n\n")
         f.write("#include <cstdint>\n\nnamespace tu { namespace pretrained {\n\n")
+        f.write("struct Node { float thr; int16_t feat; int16_t pad; int32_t right; }; // leaf: feat -1, thr = value\n")
         f.write("constexpr bool kReady = true;\n")
+        f.write(f"constexpr uint32_t kModelId = {zlib.crc32(node_text.encode())}u; "
+                "// crc of the trees: stored with each file's result\n")
         f.write("constexpr int kTrainedAnalysisVersion = 5; // tu::kAnalysisVersion of the features\n")
         f.write(f"constexpr int kNumFeatures = {NF};\n")
         f.write(f"constexpr int kOut = {K};\n")
@@ -179,13 +190,8 @@ def write_header(path, m, thr, n, acc_model, acc_rule, acc_final):
         f.write(f"constexpr int kNumTrees = {len(roots)};\n")
         f.write(f"static const int32_t kRoot[kNumTrees] = {{{ints(roots)}}};\n")
         f.write(f"static const uint8_t kTreeClass[kNumTrees] = {{{ints(tcls)}}};\n")
-        f.write(f"constexpr int kNumNodes = {len(feat)};\n")
-        f.write(f"static const int8_t kFeat[kNumNodes] = {{{ints(feat)}}};\n")
-        f.write(f"static const double kThr[kNumNodes] = {{{dbl(thrs)}}};\n")
-        f.write(f"static const int32_t kLeft[kNumNodes] = {{{ints(left)}}};\n")
-        f.write(f"static const int32_t kRight[kNumNodes] = {{{ints(right)}}};\n")
-        f.write(f"static const float kValue[kNumNodes] = {{{dbl(val)}}};\n\n")
-        f.write("}} // namespace tu::pretrained\n")
+        f.write(f"constexpr int kNumNodes = {len(nodes_out)};\n")
+        f.write(node_text)
 
 
 if __name__ == "__main__":

@@ -161,6 +161,7 @@ struct WavFeatures
   bool ok = false;
   int cls = -1;
   double conf = 0;
+  int preCls = -1; // pre-trained model's sure type (-1 = not sure)
   std::vector<float> fp;
 };
 
@@ -203,7 +204,7 @@ static WavFeatures AnalyzeWav(const std::string& path, PreviewCache* pCache = nu
     std::copy(f.desc, f.desc + tu::kDescSize, feat + tu::kFpSize);
     double prob = 0.;
     const int cls = tu::PretrainedOrRules(feat, f.durMs, f.cls, &prob);
-    if (prob > 0.) { out.cls = cls; out.conf = prob; }
+    if (prob > 0.) { out.cls = cls; out.conf = prob; out.preCls = cls; }
   }
   // Ambiguous audio: an explicit word in the file name ("kick", "hat", ...) decides.
   if (f.conf < 0.2)
@@ -523,6 +524,7 @@ void DrumReplacer::OnIdle()
           lf.mapY = mp.y;
           std::copy(mp.e, mp.e + 4, lf.emb);
           if (k < r.mapCls.size()) lf.cls = r.mapCls[k];
+          if (k < r.mapPre.size()) { lf.preCls = r.mapPre[k]; lf.preModel = tu::pretrained::kModelId; }
           pts.push_back({idx, mp.x, mp.y, mp.e[0], mp.e[1], mp.e[2], mp.e[3], tu::DrumClassName(lf.cls)});
         }
         SaveLibrarySettings();
@@ -536,6 +538,8 @@ void DrumReplacer::OnIdle()
         auto& f = mLibraryFiles[(size_t) r.index];
         f.cls = r.cls;
         f.clsConf = r.clsConf;
+        f.preCls = r.preCls;
+        f.preModel = tu::pretrained::kModelId;
         f.fp = r.fp;
         f.mapX = f.mapY = -1.f; // placed by the next map
         f.durMs = r.durMs;
@@ -1194,6 +1198,9 @@ void DrumReplacer::LoadLibrarySettings()
         lf.cls = (int) num(f, "cls", -1);
         if (lf.cls < -1 || lf.cls >= tu::kNumClasses) lf.cls = -1;
         lf.clsConf = num(f, "conf", 0);
+        lf.preCls = (int) num(f, "pc", -1);
+        if (lf.preCls < -1 || lf.preCls >= tu::kNumClasses) lf.preCls = -1;
+        lf.preModel = (uint32_t) num(f, "pm", 0);
         lf.mapX = (float) num(f, "mx", -1);
         lf.mapY = (float) num(f, "my", -1);
         if (f.contains("fp") && f["fp"].is_array() && f["fp"].size() == (size_t) tu::kFeatSize)
@@ -1247,7 +1254,8 @@ void DrumReplacer::SaveLibrarySettings() const
                         {"lufs", fin(f.lufs, -70)}, {"drum", fin(f.druminess, 0)}, {"late", fin(f.lateTransient, 0)},
                         {"e", {fin(f.emb[0], 0), fin(f.emb[1], 0), fin(f.emb[2], 0), fin(f.emb[3], 0)}},
                         {"v", f.featureVersion}, {"analyzed", f.analyzed},
-                        {"cls", f.cls}, {"conf", fin(f.clsConf, 0)}, {"mx", fin(f.mapX, -1)}, {"my", fin(f.mapY, -1)}};
+                        {"cls", f.cls}, {"conf", fin(f.clsConf, 0)}, {"mx", fin(f.mapX, -1)}, {"my", fin(f.mapY, -1)},
+                        {"pc", f.preCls}, {"pm", f.preModel}};
     if ((int) f.fp.size() == tu::kFeatSize)
     {
       nlohmann::json fp = nlohmann::json::array();
@@ -1395,7 +1403,7 @@ void DrumReplacer::StartLibraryAnalysis()
 {
   StopLibraryAnalysis();
 
-  struct Item { int index; std::string path; std::string name; bool needs; bool ok; double durMs; int cls; std::vector<float> fp; float mx, my; long long size; };
+  struct Item { int index; std::string path; std::string name; bool needs; bool ok; double durMs; int cls; std::vector<float> fp; float mx, my; long long size; int preCls; uint32_t preModel; };
   std::vector<Item> items;
   items.reserve(mLibraryFiles.size());
   int numJobs = 0;
@@ -1406,7 +1414,8 @@ void DrumReplacer::StartLibraryAnalysis()
     const bool needs = NeedsAnalysis(f);
     const bool ok = !needs && f.centroidHz > 0 && (int) f.fp.size() == tu::kFeatSize;
     // re-analysed files lose their old position: the map is rebuilt or they are inserted
-    items.push_back({(int) i, f.path, f.name, needs, ok, f.durMs, f.cls, f.fp, needs ? -1.f : f.mapX, needs ? -1.f : f.mapY, f.size});
+    items.push_back({(int) i, f.path, f.name, needs, ok, f.durMs, f.cls, f.fp, needs ? -1.f : f.mapX, needs ? -1.f : f.mapY, f.size,
+                     f.preCls, needs ? 0u : f.preModel});
     numJobs += needs ? 1 : 0;
     mapMissing |= ok && f.mapX < 0.f;
   }
@@ -1466,6 +1475,7 @@ void DrumReplacer::StartLibraryAnalysis()
       result.featureVersion = feat.version;
       result.cls = feat.cls;
       result.clsConf = feat.conf;
+      result.preCls = feat.preCls;
       result.fp = feat.fp;
       result.processed = ++processed;
       result.total = numJobs;
@@ -1473,6 +1483,8 @@ void DrumReplacer::StartLibraryAnalysis()
       it.ok = feat.ok && feat.centroid > 0 && (int) feat.fp.size() == tu::kFeatSize;
       it.durMs = feat.durMs;
       it.cls = feat.cls;
+      it.preCls = feat.preCls;
+      it.preModel = tu::pretrained::kModelId;
       it.fp = feat.fp;
 
       std::lock_guard<std::mutex> lock(mAnalysisMutex);
@@ -1484,6 +1496,30 @@ void DrumReplacer::StartLibraryAnalysis()
     // map, or rebuild (aligned to the previous one) when most are new / asked.
     // Own classifier: learns from the files whose name says the type, labels the rest.
     {
+      // Pre-trained model: only for files whose stored result is from another model (or
+      // none: libraries analysed before it existed). Stored per file afterwards, so the
+      // next passes cost nothing. Spread over the cores.
+      {
+        std::vector<size_t> todo;
+        for (size_t q = 0; q < items.size(); q++)
+          if (items[q].ok && items[q].preModel != tu::pretrained::kModelId)
+          {
+            if ((int) items[q].fp.size() == tu::kFeatSize) todo.push_back(q);
+            else { items[q].preCls = -1; items[q].preModel = tu::pretrained::kModelId; }
+          }
+        const unsigned nt = std::max(1u, std::min(16u, std::thread::hardware_concurrency()));
+        std::vector<std::thread> pool;
+        for (unsigned t = 0; t < nt && t < todo.size(); t++)
+          pool.emplace_back([&items, &todo, t, nt] {
+            for (size_t j = t; j < todo.size(); j += nt)
+            {
+              auto& it = items[todo[j]];
+              it.preCls = tu::PretrainedSureClass(it.fp.data(), it.durMs);
+              it.preModel = tu::pretrained::kModelId;
+            }
+          });
+        for (auto& th : pool) th.join();
+      }
       std::vector<tu::MapItem> ci;
       std::vector<size_t> where;
       std::vector<int> nameCls, ruleCls;
@@ -1493,11 +1529,8 @@ void DrumReplacer::StartLibraryAnalysis()
           tu::MapItem m; m.feat = items[q].fp.data(); m.durMs = items[q].durMs; m.cls = 0;
           ci.push_back(m); where.push_back(q);
           nameCls.push_back(tu::DrumClassFromName(items[q].name));
-          // rules, or the pre-trained model when it is sure (recomputed from the stored
-          // fingerprint, so a new model applies to the whole library without re-analysing)
-          ruleCls.push_back((int) items[q].fp.size() == tu::kFeatSize
-                              ? tu::PretrainedOrRules(items[q].fp.data(), items[q].durMs, items[q].cls)
-                              : items[q].cls);
+          // the pre-trained model's type when it is sure, else the stored rules / last type
+          ruleCls.push_back(items[q].preCls >= 0 ? items[q].preCls : items[q].cls);
         }
       if (!ci.empty())
       {
@@ -1520,6 +1553,7 @@ void DrumReplacer::StartLibraryAnalysis()
       if (it.ok)
       {
         map.mapCls.push_back(it.cls);
+        map.mapPre.push_back(it.preCls);
         tu::MapItem m;
         m.feat = it.fp.data();
         m.durMs = it.durMs;
