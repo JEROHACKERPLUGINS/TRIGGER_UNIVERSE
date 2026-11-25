@@ -103,6 +103,13 @@ Orden en el chunk: `kStateVersion` (int) → `mBaseDir` → `mPresetName` → pa
 - **Golpes hacia la UI:** el audio thread incrementa `mHitCount` (atómico) y guarda `mLastHitVelocity`. `OnIdle` (cada 20 ms) compara y manda `{"id":"hit"}` si la UI está abierta.
 - **Diálogo de archivo:** `PromptForWavFile` usa `osascript` (mismo enfoque que LReverb, porque no hay IGraphics) y bloquea el hilo de UI mientras está abierto. Solo macOS.
 
+## Librería grande (100k+ archivos)
+
+- **Análisis:** varios workers (`min(6, núcleos − 2)`) dentro de `mAnalysisThread`. Cada uno toma archivos con un índice atómico y solo toca los ítems que tomó. `PreviewCache` tiene su propio lock.
+- **Guardado:** el JSON de la librería pesa más de 100 MB. Durante el análisis se escribe en `mSaveThread` (`SaveLibrarySettingsAsync`, sobre una copia), como mucho cada `kSaveEverySec` (30 s). Antes se guardaba cada 100 archivos en el hilo de UI y la app quedaba congelada. `SaveLibrarySettings()` (síncrono, espera al de fondo) queda solo para el destructor.
+- **UI:** los archivos analizados llegan en un solo mensaje por tick (`analyzedBatch`). El recálculo del layout durante el análisis se espacia con el tamaño de la librería.
+- **Mapa denso** (`drawUniverseDense` en `app.js`): con ≥ 3000 puntos en vista no hay halos aditivos (con 100k puntos sumaban a blanco). Los puntos son chicos y su tamaño y opacidad siguen la densidad, así que al hacer zoom crecen, como en XO. Se dibuja un `Path2D` por color y nivel de profundidad.
+
 ## UI ↔ C++
 
 - **JS → C++:**

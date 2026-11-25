@@ -844,6 +844,61 @@ function drawScrubTrail(ctx) {
   ctx.restore();
 }
 
+// ---------- dense map (big libraries) ----------
+const DENSE_POINTS = 3000;  // points in view from which the dense mode is used
+const DENSE_LEVELS = 3;     // depth levels (size / opacity) per colour
+
+function countPointsInView(px, py, pw, ph) {
+  let n = 0;
+  for (const s of state.samples) {
+    if (s.analyzed === false) continue;
+    const p = toPx(s);
+    if (p.x >= px && p.x <= px + pw && p.y >= py && p.y <= py + ph) n++;
+  }
+  return n;
+}
+
+function drawUniverseDense(ctx, px, py, pw, ph, inView) {
+  // size and opacity follow the density: ~1 at DENSE_POINTS, smaller / fainter above
+  const k = Math.max(.38, Math.min(1, Math.sqrt(DENSE_POINTS / inView)));
+  const aK = Math.max(.42, Math.min(1, Math.sqrt(2 * DENSE_POINTS / inView)));
+  const shapes = visualPrefs.shapes;
+  const buckets = new Map(); // category|on|level -> { path, color, alpha }
+  for (const s of state.samples) {
+    if (s.analyzed === false) continue;
+    const p = toPx(s);
+    if (p.x < px - 4 || p.x > px + pw + 4 || p.y < py - 4 || p.y > py + ph + 4) continue;
+    const on = passes(s);
+    const depth = s.z ?? .5;
+    const level = Math.min(DENSE_LEVELS - 1, Math.floor(depth * DENSE_LEVELS));
+    const key = s.category + (on ? '|1|' : '|0|') + level;
+    let b = buckets.get(key);
+    if (!b) {
+      const path = new Path2D();
+      b = { path, color: CAT[s.category].color, on, level, shape: shapes ? CAT_SHAPE[s.category] : 'circle',
+            // shapePath() draws on a context: adapter that appends to this bucket's path
+            pctx: { beginPath() {}, closePath: () => path.closePath(), moveTo: (x, y) => path.moveTo(x, y),
+                    lineTo: (x, y) => path.lineTo(x, y), rect: (x, y, w, h) => path.rect(x, y, w, h),
+                    arc: (x, y, r, a0, a1, ccw) => { path.moveTo(x + r * Math.cos(a0), y + r * Math.sin(a0)); path.arc(x, y, r, a0, a1, ccw); },
+                    ellipse: (...a) => path.ellipse(...a) } };
+      buckets.set(key, b);
+    }
+    const r = Math.max(.55, (.55 + (level + .5) / DENSE_LEVELS * 1.5) * k);
+    if (r < 1.3) b.path.rect(p.x - r, p.y - r, 2 * r, 2 * r);            // sub-pixel: squares are as round and much faster
+    else if (b.shape === 'circle') { b.path.moveTo(p.x + r, p.y); b.path.arc(p.x, p.y, r, 0, 6.2832); }
+    else shapePath(b.pctx, b.shape, p.x, p.y, r * 1.15);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  // the filtered-out points first, faint, then the rest from far to near
+  const list = [...buckets.values()].sort((a, b) => (a.on - b.on) || (a.level - b.level));
+  for (const b of list) {
+    ctx.globalAlpha = b.on ? (.38 + (b.level + 1) / DENSE_LEVELS * .5) * aK : .05;
+    ctx.fillStyle = b.color;
+    ctx.fill(b.path);
+  }
+  ctx.globalAlpha = 1;
+}
+
 let universeRAF = null;
 function requestUniverseDraw() {
   if (universeRAF) return;
@@ -878,12 +933,19 @@ function drawUniverse() {
   }
   ctx.globalAlpha = 1;
 
-  let vis = 0;
+  // Big libraries (thousands of points in view): dense mode, like XO's map. The
+  // additive halos of the normal mode sum to a white blob with 100k points and
+  // drawing one arc per point is slow, so: small dots without halos, sized and
+  // faded by how many points are in view (zooming in makes them grow back),
+  // drawn as one path per colour / depth level instead of one per point.
+  const inView = countPointsInView(px, py, pw, ph);
+  if (inView >= DENSE_POINTS) {
+    drawUniverseDense(ctx, px, py, pw, ph, inView);
+  } else {
   ctx.globalCompositeOperation = 'lighter';
   for (const s of state.samples) {
     if (s.analyzed === false) continue;
     const on = passes(s);
-    if (on) vis++;
     const p = toPx(s);
     if (p.x < px - 8 || p.x > px + pw + 8 || p.y < py - 8 || p.y > py + ph + 8) continue;
     const depth = s.z ?? .5;
@@ -906,6 +968,7 @@ function drawUniverse() {
       ctx.beginPath(); ctx.arc(p.x - .8, p.y - .8, .55 + depth * .55, 0, 6.2832); ctx.fill();
       ctx.fillStyle = color;
     }
+  }
   }
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
@@ -2578,10 +2641,16 @@ window.addEventListener('tu-native-message', e => {
   else if (d.id === 'libraryEnd') endNativeLibrary();
   else if (d.id === 'slot' && d.ok === false) toast(`Couldn't load ${d.name || 'the sample'}`);
   else if (d.id === 'analysisStart') { showAnalysis(d.total, d.done); recomputeUniverseLayout(); }
-  else if (d.id === 'analyzed') {
-    applyAnalyzedFeature(d);
+  else if (d.id === 'analyzed' || d.id === 'analyzedBatch') {
+    // 'analyzedBatch': every file analysed since the last tick in one message
+    const items = d.id === 'analyzedBatch' ? (d.items || []) : [d];
+    for (const it of items) applyAnalyzedFeature(it);
     updateAnalysis(d);
-    if (++analysisLayoutCounter >= 24 && Date.now() - analysisLastLayoutAt > 1500) {
+    analysisLayoutCounter += items.length;
+    // the layout pass walks the whole library: with a big one, much less often
+    // (the engine sends the real map when the analysis ends anyway)
+    const every = Math.max(1500, state.samples.length * .08);
+    if (analysisLayoutCounter >= 24 && Date.now() - analysisLastLayoutAt > every) {
       analysisLayoutCounter = 0;
       analysisLastLayoutAt = Date.now();
       recomputeUniverseLayout();

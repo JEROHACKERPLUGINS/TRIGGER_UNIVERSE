@@ -19,6 +19,7 @@
 #include <vector>
 #include <string>
 #include <thread>
+#include <chrono>
 #include <mutex>
 
 using namespace iplug;
@@ -140,11 +141,13 @@ private:
   void InitParams();
   bool LoadSlot(int slot, const char* path); // non-audio thread
   void LoadLibrarySettings();
-  void SaveLibrarySettings() const;
+  void SaveLibrarySettings() const;  // now, on the calling thread (waits for a background save)
+  void SaveLibrarySettingsAsync();   // snapshot now, write on a background thread
+  struct LibraryFile;
+  static void WriteLibraryFile(const std::vector<std::string>& roots, const std::vector<LibraryFile>& files);
   void ScanLibraryAndSend();
   void SendLibraryToUI();
   void StartLibraryAnalysis();
-  struct LibraryFile;
   static bool NeedsAnalysis(const LibraryFile& f);
   void StopLibraryAnalysis();
 
@@ -219,6 +222,13 @@ private:
   bool mLibraryScanned = false;
 
   std::thread mAnalysisThread;
+  // Library saves: with 100k+ files the JSON is 100+ MB and takes seconds to write,
+  // so during analysis it is written on its own thread, at most every kSaveEverySec.
+  mutable std::thread mSaveThread;
+  std::atomic<bool> mSaveBusy{false};
+  bool mSaveAgain = false;
+  std::chrono::steady_clock::time_point mLastProgressSave{};
+  static constexpr int kSaveEverySec = 30;
   std::mutex mAnalysisMutex;
   std::atomic<int> mAnalysisGeneration{0};
   std::atomic<bool> mAnalysisRunning{false};

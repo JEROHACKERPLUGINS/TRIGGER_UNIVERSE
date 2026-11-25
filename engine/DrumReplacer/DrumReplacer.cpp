@@ -497,15 +497,27 @@ void DrumReplacer::OnIdle()
   if (!pending.empty())
   {
     const int currentGen = mAnalysisGeneration.load();
+    // Analysed files go to the UI as ONE message per tick ('analyzedBatch'), not one
+    // per file: 100k messages through the WebView kept the UI thread busy.
+    nlohmann::json batch = nlohmann::json::array();
+    int batchDone = 0, batchTotal = 0;
+    std::string batchName;
+    auto flushBatch = [&]() {
+      if (batch.empty()) return;
+      if (mUIOpen)
+        SendJSONFromDelegate({{"id", "analyzedBatch"}, {"items", batch}, {"done", batchDone}, {"total", batchTotal}, {"name", batchName}});
+      batch = nlohmann::json::array();
+    };
     for (const auto& r : pending)
     {
       if (r.generation != currentGen)
         continue;
+      if (r.done || r.isMap) flushBatch(); // keep the order: progress before done / map
 
       if (r.done)
       {
         mAnalysisRunning = false;
-        SaveLibrarySettings();
+        SaveLibrarySettingsAsync();
         if (mUIOpen)
           SendJSONFromDelegate({{"id", "analysisDone"}, {"total", r.total}});
         continue;
@@ -527,7 +539,7 @@ void DrumReplacer::OnIdle()
           if (k < r.mapPre.size()) { lf.preCls = r.mapPre[k]; lf.preModel = tu::pretrained::kModelId; }
           pts.push_back({idx, mp.x, mp.y, mp.e[0], mp.e[1], mp.e[2], mp.e[3], tu::DrumClassName(lf.cls)});
         }
-        SaveLibrarySettings();
+        SaveLibrarySettingsAsync();
         if (mUIOpen)
           SendJSONFromDelegate({{"id", "map"}, {"pts", pts}, {"modelClasses", r.modelClasses}, {"modelFiles", r.modelFiles}});
         continue;
@@ -561,20 +573,32 @@ void DrumReplacer::OnIdle()
       mAnalysisDone = r.processed;
 
       if (mUIOpen)
-        SendJSONFromDelegate({{"id", "analyzed"}, {"index", r.index}, {"dur", r.durMs},
-                              {"centroid", r.centroid}, {"rolloff", r.rolloff},
-                              {"flatness", r.flatness}, {"attack", r.attack},
-                              {"decay", r.decay}, {"crest", r.crest},
-                              {"zcr", r.zcr}, {"rms", r.rms}, {"peak", r.peak},
-                              {"lufs", r.lufs}, {"drum", r.druminess}, {"late", r.lateTransient},
-                              {"v", r.featureVersion}, {"analyzed", r.analyzed},
-                              {"cls", tu::DrumClassName(r.cls)}, {"conf", r.clsConf},
-                              {"name", r.name}, {"done", r.processed}, {"total", r.total}});
+      {
+        auto fin = [](double v) { return std::isfinite(v) ? v : 0.; };
+        batch.push_back({{"index", r.index}, {"dur", fin(r.durMs)},
+                         {"centroid", fin(r.centroid)}, {"rolloff", fin(r.rolloff)},
+                         {"flatness", fin(r.flatness)}, {"attack", fin(r.attack)},
+                         {"decay", fin(r.decay)}, {"crest", fin(r.crest)},
+                         {"zcr", fin(r.zcr)}, {"rms", fin(r.rms)}, {"peak", fin(r.peak)},
+                         {"lufs", fin(r.lufs)}, {"drum", fin(r.druminess)}, {"late", fin(r.lateTransient)},
+                         {"v", r.featureVersion}, {"analyzed", r.analyzed},
+                         {"cls", tu::DrumClassName(r.cls)}, {"conf", fin(r.clsConf)}});
+        batchDone = r.processed; batchTotal = r.total; batchName = r.name;
+      }
 
-      if (r.processed > 0 && r.processed % 100 == 0)
-        SaveLibrarySettings();
+      // progress is kept every kSaveEverySec (it used to be every 100 files: with a big
+      // library the UI thread spent all its time writing the JSON and froze)
+      const auto now = std::chrono::steady_clock::now();
+      if (r.processed > 0 && now - mLastProgressSave > std::chrono::seconds(kSaveEverySec))
+      {
+        mLastProgressSave = now;
+        SaveLibrarySettingsAsync();
+      }
     }
+    flushBatch();
   }
+  if (mSaveAgain && !mSaveBusy)
+    SaveLibrarySettingsAsync();
 
   const int hits = mHitCount.load();
   if (mUIOpen && hits != mHitCountSent)
@@ -1230,6 +1254,24 @@ void DrumReplacer::LoadLibrarySettings()
 
 void DrumReplacer::SaveLibrarySettings() const
 {
+  if (mSaveThread.joinable()) mSaveThread.join(); // a background save of an older snapshot ends first
+  WriteLibraryFile(mLibraryRoots, mLibraryFiles);
+}
+
+void DrumReplacer::SaveLibrarySettingsAsync()
+{
+  if (mSaveBusy) { mSaveAgain = true; return; } // OnIdle saves again when this one ends
+  if (mSaveThread.joinable()) mSaveThread.join();
+  mSaveAgain = false;
+  mSaveBusy = true;
+  mSaveThread = std::thread([this, roots = mLibraryRoots, files = mLibraryFiles]() {
+    try { WriteLibraryFile(roots, files); } catch (...) {}
+    mSaveBusy = false;
+  });
+}
+
+void DrumReplacer::WriteLibraryFile(const std::vector<std::string>& roots, const std::vector<LibraryFile>& files)
+{
   const std::string path = LibrarySettingsPath();
   if (path.empty())
     return;
@@ -1237,10 +1279,10 @@ void DrumReplacer::SaveLibrarySettings() const
   std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
 
   nlohmann::json j;
-  j["roots"] = mLibraryRoots;
+  j["roots"] = roots;
   j["mapVersion"] = tu::kMapVersion;
   j["files"] = nlohmann::json::array();
-  for (const auto& f : mLibraryFiles)
+  for (const auto& f : files)
   {
     // never write NaN / inf: JSON stores them as null (see the tolerant reader)
     auto fin = [](double v, double def) { return std::isfinite(v) ? v : def; };
@@ -1345,7 +1387,7 @@ void DrumReplacer::ScanLibraryAndSend()
   });
 
   mLibraryScanned = true;
-  SaveLibrarySettings();
+  SaveLibrarySettingsAsync();
   SendLibraryToUI();
   StartLibraryAnalysis();
 }
@@ -1446,11 +1488,19 @@ void DrumReplacer::StartLibraryAnalysis()
   mForceMapRebuild = false;
   mAnalysisThread = std::thread([this, gen, items = std::move(items), numJobs, forceRebuild]() mutable {
    try {
-    int processed = 0;
-    for (auto& it : items)
-    {
-      if (!it.needs) continue;
-      if (mAnalysisGeneration.load() != gen) return;
+    // Files are analysed by several workers (decode + analysis is independent per
+    // file; the preview cache has its own lock). A few cores stay free for the
+    // audio and UI threads. Each worker only touches the items it took.
+    std::vector<size_t> jobs;
+    for (size_t q = 0; q < items.size(); q++) if (items[q].needs) jobs.push_back(q);
+    std::atomic<size_t> nextJob{0};
+    std::atomic<int> processed{0};
+    auto work = [&]() {
+     while (true)
+     {
+      const size_t j = nextJob.fetch_add(1);
+      if (j >= jobs.size() || mAnalysisGeneration.load() != gen) return;
+      auto& it = items[jobs[j]];
 
       WavFeatures feat;
       try { feat = AnalyzeWav(it.path, &mPreviewCache, it.size); } catch (...) { /* unreadable file: stays off the map */ }
@@ -1477,7 +1527,7 @@ void DrumReplacer::StartLibraryAnalysis()
       result.clsConf = feat.conf;
       result.preCls = feat.preCls;
       result.fp = feat.fp;
-      result.processed = ++processed;
+      result.processed = ++processed; // completion order: the UI shows the count
       result.total = numJobs;
 
       it.ok = feat.ok && feat.centroid > 0 && (int) feat.fp.size() == tu::kFeatSize;
@@ -1489,7 +1539,18 @@ void DrumReplacer::StartLibraryAnalysis()
 
       std::lock_guard<std::mutex> lock(mAnalysisMutex);
       mAnalysisResults.push_back(std::move(result));
+     }
+    };
+    auto worker = [&]() { try { work(); } catch (...) {} }; // nothing may escape a std::thread
+    {
+      const unsigned hc = std::max(1u, std::thread::hardware_concurrency());
+      const unsigned nw = std::max(1u, std::min(6u, hc > 2 ? hc - 2 : 1u));
+      std::vector<std::thread> workers;
+      for (unsigned w = 1; w < nw && w < jobs.size(); w++) workers.emplace_back(worker);
+      worker(); // this thread works too
+      for (auto& th : workers) th.join();
     }
+    if (mAnalysisGeneration.load() != gen) return;
 
     int modelClasses = 0, modelFiles = 0;
     // XO-like map over every analysable file: insert new ones into the stored
@@ -1623,7 +1684,7 @@ void DrumReplacer::SendAudioSetupToUI()
 void DrumReplacer::OnUIClose()
 {
   mUIOpen = false;
-  SaveLibrarySettings();
+  SaveLibrarySettingsAsync();
 }
 
 void DrumReplacer::OnUIOpen()
