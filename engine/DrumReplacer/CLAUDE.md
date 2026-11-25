@@ -31,6 +31,8 @@ Validador VST3: `../_iPlug2/Dependencies/IPlug/VST3_SDK/validator` (se compiló 
 | `DSP/SlotEngine.h` | `SampleData`, `SamplerVoice`, `Slot` (8 voces por slot, swap lock-free de samples) |
 | `DSP/Dynamics.h` | `ShapeVelocity` (curvas VELO/DYN) y `HitGate` |
 | `DSP/WavFile.h` | Lector WAV copiado de LReverb (`LoadWavFile`), mantener ambos en sync |
+| `DSP/PretrainedClassifier.h` | Clasificador de tipo de sample pre-entrenado (gradient-boosted trees). Reemplaza a las reglas de `ClassifyDrum` cuando su prob ≥ `kSure`. Lo usan `AnalyzeWav` y el paso de clasificación de la librería (recalculado desde el fingerprint guardado, sin re-analizar) |
+| `DSP/PretrainedWeights.h` | **Generado** por `../../ml/train.py`, no editar a mano. Con `kReady = false` todo sigue con las reglas. Ver `../../ml/README.md` |
 | `resources/web/index.html, style.css, ui.js` | UI |
 | `resources/web/script.js` | Puente JS de iPlug2 (no tocar) |
 | `scripts/build-mac.sh` | Build + firma + validador |
@@ -131,6 +133,8 @@ clang++ -std=c++17 -I.. dynamics_test.cpp -o /tmp/dyn && /tmp/dyn
 - `detector_test` arma un loop con `../samples` (3 kicks y 2 snares a distintos niveles) y exige: cada golpe una sola vez, alineado al inicio (−0.5 a +3 ms) y velocity decreciente con el nivel.
 - `slot_engine_test` cubre offset, velocity, fin del sample, swap y release.
 - `dynamics_test` cubre las curvas y el gate.
+- `pretrained_test` chequea el modelo pre-entrenado. Con los archivos de `ml/` como argumentos (`feat_all.csv predictions.tsv`), exige que el C++ coincida con sklearn.
+- Si cambia `RawFeatureRow`, `AnalyzeSample` o `kAnalysisVersion`, hay que reentrenar con `ml/`. Con otra versión el modelo se apaga solo.
 
 Para calibrar con material real, correr el detector sobre `samples/realdrums` y comparar la cantidad de golpes por pista. Si un golpe de una pista coincide con uno de otra y tiene velocity baja, es bleed.
 

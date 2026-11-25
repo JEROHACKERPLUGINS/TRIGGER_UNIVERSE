@@ -14,3 +14,11 @@ xcuserdata/
 
 # Logs
 *.log
+
+# ml/: intermediate files (paths of the private sample library)
+ml/*.tsv
+ml/*.tsv.gz
+ml/*.csv
+ml/*.csv.gz
+ml/*_report.md
+ml/tu_features

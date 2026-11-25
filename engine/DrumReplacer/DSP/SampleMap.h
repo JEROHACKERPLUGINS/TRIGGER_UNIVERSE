@@ -67,26 +67,33 @@ struct MapParams
 constexpr int kCepCoeffs = 8;
 
 // ------------------------------------------------------------ features
+// Unscaled feature row of one file: cepstrum of each fingerprint segment, log
+// duration, descriptors. Shared by the map, the library model and the
+// pre-trained model (ml/), so all of them see exactly the same numbers.
+constexpr int kRawFeatSize = kFpSegs * kCepCoeffs + 1 + kDescSize;
+inline void RawFeatureRow(const float* f, double durMs, double* out)
+{
+  const int nCep = kFpSegs * kCepCoeffs;
+  for (int s = 0; s < kFpSegs; s++)
+    for (int c = 0; c < kCepCoeffs; c++)
+    {
+      double acc = 0.;
+      for (int b = 0; b < kFpBands; b++)
+        acc += f[s * kFpBands + b] * std::cos(M_PI * c * (b + .5) / kFpBands);
+      out[s * kCepCoeffs + c] = acc;
+    }
+  out[nCep] = std::log10(std::clamp(durMs, 10., 60000.));
+  for (int k = 0; k < kDescSize; k++) out[nCep + 1 + k] = f[kFpSize + k];
+}
+
 inline std::vector<std::vector<double>> MapFeatureRows(const std::vector<MapItem>& items, const MapParams& P)
 {
   const int n = (int) items.size();
   const int nCep = kFpSegs * kCepCoeffs;
-  const int D = nCep + 1 + kDescSize;
+  const int D = kRawFeatSize;
   std::vector<std::vector<double>> R((size_t) n, std::vector<double>((size_t) D, 0.));
   for (int i = 0; i < n; i++)
-  {
-    const float* f = items[(size_t) i].feat;
-    for (int s = 0; s < kFpSegs; s++)
-      for (int c = 0; c < kCepCoeffs; c++)
-      {
-        double acc = 0.;
-        for (int b = 0; b < kFpBands; b++)
-          acc += f[s * kFpBands + b] * std::cos(M_PI * c * (b + .5) / kFpBands);
-        R[(size_t) i][(size_t) (s * kCepCoeffs + c)] = acc;
-      }
-    R[(size_t) i][(size_t) nCep] = std::log10(std::clamp(items[(size_t) i].durMs, 10., 60000.));
-    for (int k = 0; k < kDescSize; k++) R[(size_t) i][(size_t) (nCep + 1 + k)] = f[kFpSize + k];
-  }
+    RawFeatureRow(items[(size_t) i].feat, items[(size_t) i].durMs, R[(size_t) i].data());
   // robust z-score per column
   std::vector<double> col((size_t) n);
   for (int d = 0; d < D; d++)

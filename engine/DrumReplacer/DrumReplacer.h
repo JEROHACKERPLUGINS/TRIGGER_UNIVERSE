@@ -14,6 +14,7 @@
 #include <memory>
 #include "DSP/SampleMap.h"
 #include "DSP/SampleClassifier.h"
+#include "DSP/PretrainedClassifier.h"
 #include <atomic>
 #include <vector>
 #include <string>

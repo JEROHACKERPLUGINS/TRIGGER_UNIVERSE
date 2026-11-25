@@ -196,6 +196,15 @@ static WavFeatures AnalyzeWav(const std::string& path, PreviewCache* pCache = nu
   out.lateTransient = f.lateTransient;
   out.cls = f.cls;
   out.conf = f.conf;
+  // Pre-trained model (ml/, DSP/PretrainedClassifier.h): replaces the rules when it is sure.
+  {
+    float feat[tu::kFeatSize];
+    std::copy(f.fp, f.fp + tu::kFpSize, feat);
+    std::copy(f.desc, f.desc + tu::kDescSize, feat + tu::kFpSize);
+    double prob = 0.;
+    const int cls = tu::PretrainedOrRules(feat, f.durMs, f.cls, &prob);
+    if (prob > 0.) { out.cls = cls; out.conf = prob; }
+  }
   // Ambiguous audio: an explicit word in the file name ("kick", "hat", ...) decides.
   if (f.conf < 0.2)
   {
@@ -1484,7 +1493,11 @@ void DrumReplacer::StartLibraryAnalysis()
           tu::MapItem m; m.feat = items[q].fp.data(); m.durMs = items[q].durMs; m.cls = 0;
           ci.push_back(m); where.push_back(q);
           nameCls.push_back(tu::DrumClassFromName(items[q].name));
-          ruleCls.push_back(items[q].cls);
+          // rules, or the pre-trained model when it is sure (recomputed from the stored
+          // fingerprint, so a new model applies to the whole library without re-analysing)
+          ruleCls.push_back((int) items[q].fp.size() == tu::kFeatSize
+                              ? tu::PretrainedOrRules(items[q].fp.data(), items[q].durMs, items[q].cls)
+                              : items[q].cls);
         }
       if (!ci.empty())
       {
